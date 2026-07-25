@@ -17,10 +17,7 @@
     </el-form-item>
     <el-form-item class="login-options-row">
       <el-checkbox v-model="loginForm.rememberUsername">记住用户名</el-checkbox>
-      <div class="login-links-group">
-        <el-link type="primary" :underline="false" @click="$emit('switch-view', 'register')">立即注册</el-link>
-        <el-link type="primary" :underline="false" @click="$emit('switch-view', 'resetPassword')">忘记密码？</el-link>
-      </div>
+      <el-link type="primary" :underline="false" @click="$emit('switch-view', 'resetPassword')">忘记密码？</el-link>
     </el-form-item>
     <el-form-item>
       <el-button type="primary" native-type="submit" class="login-button" :loading="isLoggingIn">

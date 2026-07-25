@@ -1,28 +1,31 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo   Jabil Smart Office - 启动所有服务
+echo   Jabil Smart Office - Start All Services
 echo ========================================
 echo.
 
-echo [1/3] 启动 Nginx...
-start nginx
-echo       ✓ Nginx 已启动
+echo [1/3] Starting Nginx...
+cd nginx
+start "" nginx
+cd ..
+echo       OK
 
-echo [2/3] 启动后端服务...
+echo [2/3] Starting Backend...
 cd backend
-start cmd /k "npm start"
+echo Set ws=CreateObject("Wscript.Shell") > "%TEMP%\run_hidden.vbs"
+echo ws.Run "cmd /c npm start", 0, False >> "%TEMP%\run_hidden.vbs"
+cscript //nologo "%TEMP%\run_hidden.vbs"
+del "%TEMP%\run_hidden.vbs"
 cd ..
 
-echo [3/3] 等待服务启动...
-timeout /t 3 >nul
+echo [3/3] Waiting...
+timeout /t 2 >nul
 
 echo.
 echo ========================================
-echo   ✓ 所有服务已启动！
-echo.
-echo   本机访问: http://localhost
-echo   局域网:   http://10.114.32.157
+echo   Services started! (running in background)
+echo   http://localhost
 echo ========================================
 echo.
 pause

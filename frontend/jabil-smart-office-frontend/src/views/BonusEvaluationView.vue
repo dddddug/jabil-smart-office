@@ -218,6 +218,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { formatShanghaiDate } from '../utils/dateUtils';
 
 interface Bonus {
   id: number;
@@ -251,7 +252,7 @@ const currentBonus = ref<Bonus>({
   month: '',
   status: 'pending',
   evaluator: '管理员',
-  evaluationDate: new Date().toISOString().split('T')[0] || '',
+  evaluationDate: formatShanghaiDate(),
   description: ''
 });
 
@@ -268,8 +269,8 @@ const pageSize = ref(10);
 
 const filteredBonuses = computed(() => {
   return bonuses.value.filter(bonus => {
-    const matchName = !searchQuery.value.name || bonus.employeeName.toLowerCase().includes(searchQuery.value.name.toLowerCase());
-    const matchEmployeeId = !searchQuery.value.employeeId || bonus.employeeId.includes(searchQuery.value.employeeId);
+    const matchName = !searchQuery.value.name || (bonus.employeeName || '').toString().toLowerCase().includes((searchQuery.value.name || '').toString().toLowerCase());
+    const matchEmployeeId = !searchQuery.value.employeeId || (bonus.employeeId || '').toString().includes(searchQuery.value.employeeId);
     const matchDepartment = !searchQuery.value.department || bonus.department === searchQuery.value.department;
     const matchStatus = !filterStatus.value || bonus.status === filterStatus.value;
     const matchMonth = !filterMonth.value || bonus.month === filterMonth.value;
@@ -333,7 +334,7 @@ const openAddBonusDialog = () => {
     month: '',
     status: 'pending',
     evaluator: '管理员',
-    evaluationDate: new Date().toISOString().split('T')[0] || '',
+    evaluationDate: formatShanghaiDate(),
     description: ''
   };
   isBonusDialogOpen.value = true;

@@ -161,8 +161,9 @@ const loadRoles = async () => {
     if (!response.ok) {
       throw new Error('网络响应异常');
     }
-    const data = await response.json();
-    roles.value = data.roles;
+    const res = await response.json();
+    const data = res?.data || res;
+    roles.value = data?.roles || [];
     showNotification('数据刷新成功', 'success');
   } catch (error) {
     showNotification('加载数据失败，请检查后端服务', 'error');
@@ -251,10 +252,11 @@ const saveRole = async () => {
       if (!response.ok) {
         throw new Error('更新失败');
       }
-      const data = await response.json();
+      const res = await response.json();
+      const data = res?.data || res;
       const index = roles.value.findIndex(r => r.id === currentRole.value.id);
       if (index !== -1) {
-        roles.value[index] = data.role;
+        roles.value[index] = data?.role;
       }
       showNotification('角色更新成功', 'success');
       closeDialog();
@@ -278,8 +280,9 @@ const saveRole = async () => {
       if (!response.ok) {
         throw new Error('创建失败');
       }
-      const data = await response.json();
-      roles.value.push(data.role);
+      const res = await response.json();
+      const data = res?.data || res;
+      roles.value.push(data?.role);
       showNotification('角色创建成功', 'success');
       closeDialog();
     } catch (error) {

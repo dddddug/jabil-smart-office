@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 const router = express.Router();
 
 const TEMPORARY_LEAVE_TABLE = 'jso_hr_temporary_leave';
@@ -10,7 +11,7 @@ const PLANT_TABLE = 'jso_org_plant_management';
 const DEPT_TABLE = 'jso_org_department_management';
 
 // 获取临时请假公差列表
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { plantId, departmentId, employeeId, status, startDate, endDate, page = 1, pageSize = 10 } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(page, pageSize);
@@ -106,7 +107,7 @@ router.get('/', async (req, res) => {
 });
 
 // 创建临时请假公差记录
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { employeeId, plantId, departmentId, leaveType, startDate, endDate, startTime, endTime, hours, reason, proofFile, applicantId } = req.body;
     
@@ -132,7 +133,7 @@ router.post('/', async (req, res) => {
 });
 
 // 更新临时请假公差记录
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { leaveType, startDate, endDate, hours, reason, proofFile, plantId, departmentId } = req.body;
@@ -162,7 +163,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除临时请假公差记录
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM ${TEMPORARY_LEAVE_TABLE} WHERE id = $1 RETURNING *`, [id]);
@@ -179,7 +180,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // 提交临时请假公差记录
-router.put('/:id/submit', async (req, res) => {
+router.put('/:id/submit', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -202,7 +203,7 @@ router.put('/:id/submit', async (req, res) => {
 });
 
 // 撤回临时请假公差记录
-router.put('/:id/withdraw', async (req, res) => {
+router.put('/:id/withdraw', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(

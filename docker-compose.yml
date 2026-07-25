@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: jabil-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jabil_smart_office
+      POSTGRES_USER: ${POSTGRES_USER:-jabiluser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jabil_secure_password}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - jabil-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jabiluser} -d jabil_smart_office"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端 API 服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: jabil-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      # 数据库配置
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: jabil_smart_office
+      DB_USER: ${POSTGRES_USER:-jabiluser}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-jabil_secure_password}
+      # JWT 配置
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_EXPIRES_IN: 7d
+      # CORS 配置
+      CORS_ORIGIN: http://localhost:80
+      # SMTP 邮件配置（可选）
+      SMTP_HOST: ${SMTP_HOST:-smtp.office365.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      # 管理员密码（可选，用于重置）
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+      - ./backend/resources:/app/resources
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - jabil-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3002/api/users/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # 前端 Web 服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: jabil-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - jabil-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:80/index.html || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  jabil-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

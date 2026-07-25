@@ -2,11 +2,12 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const WELFARE_TABLE = 'jso_config_welfare';
 
 // 获取所有福利配置（按员工类型分组，展示所有历史）
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM ${WELFARE_TABLE} ORDER BY employee_type, start_time DESC`);
     res.json(result.rows.map(row => ({
@@ -21,7 +22,7 @@ router.get('/', async (req, res) => {
 });
 
 // 新增一条福利规则（会自动停用同类型的旧规则）
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { employee_type, amount, startTime, endTime } = req.body;
@@ -55,7 +56,7 @@ router.post('/', async (req, res) => {
 });
 
 // 停用一条规则
-router.put('/:id/deactivate', async (req, res) => {
+router.put('/:id/deactivate', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(

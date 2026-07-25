@@ -4,10 +4,12 @@ interface ErrandFixItem {
   department?: string;
   sap: string;
   employeeName: string;
+  errandDate: string;
   startTime: string;
   endTime: string;
   leaveType: string;
   reason: string;
+  status: string;
   ot: number;
   evidence?: string;
 }
@@ -66,18 +68,30 @@ interface Employee {
 }
 
 interface TemporaryOvertimeItem {
+  id?: number;
   employeeId: number | null;
+  employeeName?: string;
   overtimeDate: string;
+  startTime?: string;
+  endTime?: string;
   hours: number;
+  totalHours: number;
+  status?: string;
 }
 
 interface TemporaryLeaveItem {
   id: number;
   employeeId: number;
+  employeeName?: string;
+  leaveDate?: string;
   startDate?: string;
   endDate?: string;
+  startTime?: string;
+  endTime?: string;
   leaveType?: string;
   type?: string;
+  totalHours?: number;
+  status?: string;
   reason?: string;
   proofFile?: string;
 }
@@ -158,21 +172,24 @@ interface AttendanceSubTab {
 
 interface ErrandFixForm {
   employeeId: number | null;
-  date: string;
-  type: string;
+  errandDate: string;
+  startTime: string;
+  endTime: string;
   reason: string;
-  hours: number;
 }
 
 interface IgnoredOverworkItem {
-  id: number;
+  id?: number;
   employeeId: number;
-  overworkDate: string;
+  overworkDate?: string;
+  periodStart: string;
 }
 
 interface SelectedCell {
   employeeId: number;
   date: string;
+  shift?: string;
+  specialStatus?: string;
 }
 
 interface DepartmentSummaryItem {

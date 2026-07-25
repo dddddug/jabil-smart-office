@@ -1,0 +1,50 @@
+# Dependencies
+node_modules
+frontend/jabil-smart-office-frontend/node_modules
+backend/node_modules
+
+# Build outputs
+frontend/jabil-smart-office-frontend/dist
+frontend/jabil-smart-office-frontend/node_modules
+
+# Logs
+*.log
+logs
+backend/logs
+frontend/jabil-smart-office-frontend/frontend.log
+
+# Environment files (keep only .env.example)
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation (not needed in image)
+*.md
+docs
+
+# Test files
+**/*.test.js
+**/*.spec.js
+**/coverage
+**/.nyc_output
+
+# Debug scripts
+*.cjs
+test_*.js
+debug_*.js
+check_*.js

@@ -1,3 +1,4 @@
+-- [已废弃 - 请使用 014b_delete_plant_id_0_data.sql]
 -- 删除所有引用 plant_id = 0 的用户数据
 DELETE FROM jso_system_user_management WHERE plant_id = 0;
 

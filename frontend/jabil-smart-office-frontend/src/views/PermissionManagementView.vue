@@ -123,7 +123,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 
 interface Permission {
   id: number;

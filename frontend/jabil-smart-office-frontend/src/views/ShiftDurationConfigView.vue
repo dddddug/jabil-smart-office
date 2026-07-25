@@ -156,7 +156,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ShiftDurationRuleForm } from '@/types/schedule';
@@ -236,8 +236,8 @@ const dialogDepartments = computed(() => {
 
 const fetchPlants = async () => {
   try {
-    const response = await request.get<PlantsResponse>('/plants');
-    plants.value = response.plants;
+    const res = await request.get<PlantsResponse>('/plants');
+    plants.value = res?.plants || [];
   } catch (error) {
     ElMessage.error('获取厂区列表失败:' + error);
   }
@@ -245,8 +245,8 @@ const fetchPlants = async () => {
 
 const fetchDepartments = async () => {
   try {
-    const response = await request.get<DepartmentsResponse>('/departments');
-    departments.value = response.departments;
+    const data = await request.get<DepartmentsResponse>('/departments');
+    departments.value = data?.departments || [];
     filteredDepartments.value = filterPlantId.value === 0
       ? departments.value
       : departments.value.filter(d => d.plantId === filterPlantId.value);
@@ -273,9 +273,9 @@ const fetchRules = async () => {
       shiftName: filterShiftName.value || undefined,
       status: filterStatus.value || undefined,
     };
-    const response = await request.get<RulesListResponse>('/config/shift-duration-rules', { params });
-    rulesData.value = response.list;
-    totalRules.value = response.total;
+    const res = await request.get<RulesListResponse>('/config/shift-duration-rules', { params });
+    rulesData.value = res?.list || [];
+    totalRules.value = res?.total || 0;
   } catch (error) {
     ElMessage.error('获取部门计算规则失败:' + error);
   }

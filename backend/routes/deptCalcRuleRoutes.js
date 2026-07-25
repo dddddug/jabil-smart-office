@@ -2,13 +2,14 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const DEPT_RULES_TABLE = 'jso_config_dept_calc_rules';
 const PLANT_TABLE = 'jso_org_plant_management';
 const DEPT_TABLE = 'jso_org_department_management';
 
 // 获取所有部门计算规则 (包含完整信息)
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const query = `
       SELECT 
@@ -38,7 +39,7 @@ router.get('/', async (req, res) => {
 });
 
 // 新增部门计算规则
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { plantId, departmentId, businessMonth, estimatedCost, exchangeRate, rateCoefficient, startTime, endTime } = req.body;
@@ -71,7 +72,7 @@ router.post('/', async (req, res) => {
 });
 
 // 停用部门计算规则
-router.put('/:id/deactivate', async (req, res) => {
+router.put('/:id/deactivate', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(

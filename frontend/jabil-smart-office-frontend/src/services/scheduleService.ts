@@ -5,8 +5,8 @@ const API_BASE_URL = 'http://localhost:3001/api';
 
 export async function loadPlants(): Promise<Plant[]> {
   try {
-    const data = await request.get<{ plants: Plant[] }>(`/plants`);
-    return data?.plants || [];
+    const res = await request.get<{ plants: Plant[] }>(`/plants`);
+    return res?.plants || [];
   } catch (error: any) {
     // 检查是否是取消的请求（路由切换时会发生）
     if (error?.code === 'CANCELLED' || error?.isCancelled) {
@@ -19,8 +19,8 @@ export async function loadPlants(): Promise<Plant[]> {
 
 export async function loadDepartments(): Promise<Department[]> {
   try {
-    const data = await request.get<{ departments: Department[] }>(`/departments`);
-    return data?.departments || [];
+    const res = await request.get<{ departments: Department[] }>(`/departments`);
+    return res?.departments || [];
   } catch (error: any) {
     // 检查是否是取消的请求（路由切换时会发生）
     if (error?.code === 'CANCELLED' || error?.isCancelled) {
@@ -33,7 +33,7 @@ export async function loadDepartments(): Promise<Department[]> {
 
 export async function loadEmployeesAndSchedules(startDate: string, endDate: string, plantId?: number | null, departmentId?: number | null): Promise<Employee[]> {
   try {
-    const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
+    const res = await request.get<{ employees: Employee[] }>('/schedule/employees', {
       params: {
         startDate,
         endDate,
@@ -41,7 +41,7 @@ export async function loadEmployeesAndSchedules(startDate: string, endDate: stri
         departmentId: departmentId || undefined,
       },
     });
-    return response.employees || [];
+    return res?.employees || [];
   } catch (error) {
     console.error('加载员工和排班数据失败:', error);
     throw error;
@@ -56,8 +56,9 @@ export async function fetchTemporaryOvertime(startDate: string, endDate: string)
     if (!response.ok) {
       throw new Error(`Failed to fetch temporary overtime: ${response.statusText}`);
     }
-    const data = await response.json();
-    return data.items || [];
+    const res = await response.json();
+    const data = res?.data || res;
+    return data?.items || [];
   } catch (error) {
     console.warn('获取临时加班数据失败:', error);
     return [];
@@ -72,8 +73,9 @@ export async function fetchTemporaryLeave(startDate: string, endDate: string): P
     if (!response.ok) {
       throw new Error(`Failed to fetch temporary leave: ${response.statusText}`);
     }
-    const data = await response.json();
-    return data.items || [];
+    const res = await response.json();
+    const data = res?.data || res;
+    return data?.items || [];
   } catch (error) {
     console.warn('获取临时请假数据失败:', error);
     return [];

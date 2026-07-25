@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
+      path: '/print',
+      name: 'print',
+      component: () => import('../views/PrintPage.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
       path: '/first-time-setup',
       name: 'first-time-setup',
       component: () => import('../views/FirstTimeSetup.vue'),
@@ -38,9 +44,16 @@ const router = createRouter({
           component: () => import('../views/StationArrangementView.vue'),
         },
         {
-          path: 'receipt-management',
-          name: 'receipt-management',
-          component: () => import('../views/ReceiptManagementView.vue'),
+          path: 'da-material',
+          name: 'da-material',
+          component: () => import('../views/DAMaterialView.vue'),
+          meta: { requiresAuth: true, title: '管控物料 单据管理' },
+        },
+        {
+          path: 'k045',
+          name: 'k045',
+          component: () => import('../views/K045View.vue'),
+          meta: { requiresAuth: true, title: 'K045 单据管理' },
         },
         {
           path: 'convenient-print',
@@ -141,6 +154,12 @@ const router = createRouter({
           component: () => import('../views/SmartScheduleRulesConfigView.vue'),
         },
         {
+          path: 'workstation-config',
+          name: 'workstation-config',
+          component: () => import('../views/WorkstationConfigView.vue'),
+          meta: { requiresAuth: true, title: '工位配置' },
+        },
+        {
           path: 'employee-hourly-rate-config',
           name: 'employee-hourly-rate-config',
           component: () => import('../views/EmployeeHourlyRateConfigView.vue'),
@@ -154,6 +173,36 @@ const router = createRouter({
           path: 'announcement-management',
           name: 'announcement-management',
           component: () => import('../views/AnnouncementManagementView.vue'),
+        },
+        {
+          path: 'k045-config',
+          name: 'k045-config',
+          component: () => import('../views/K045ConfigView.vue'),
+          meta: { requiresAuth: true, title: 'K045 规则配置' },
+        },
+        {
+          path: 'da-material-config',
+          name: 'da-material-config',
+          component: () => import('../views/DAMaterialConfigView.vue'),
+          meta: { requiresAuth: true, title: '管控物料 规则配置' },
+        },
+        {
+          path: 'pnc-transfer-config',
+          name: 'pnc-transfer-config',
+          component: () => import('../views/PncTransferConfigView.vue'),
+          meta: { requiresAuth: true, title: 'PNC转仓打印配置' },
+        },
+        {
+          path: 'k2-diff-registration',
+          name: 'k2-diff-registration',
+          component: () => import('../views/K2DiffRegistrationView.vue'),
+          meta: { requiresAuth: true, title: 'K**差异登记' },
+        },
+        {
+          path: 'k2-diff-config',
+          name: 'k2-diff-config',
+          component: () => import('../views/K2DiffConfigView.vue'),
+          meta: { requiresAuth: true, title: 'K**差异登记 规则配置' },
         },
       ],
     },

@@ -1,6 +1,7 @@
 import express from 'express';
 import pool from '../config/db.js';
 import { buildPagination, buildWhereClause } from '../utils/sqlUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 import { checkApproverRole } from '../utils/authMiddleware.js'; // 导入审批角色检查中间件
 const router = express.Router();
 
@@ -55,7 +56,6 @@ const buildResignationTransferQuery = (filters) => {
         LEFT JOIN jso_org_department_management tr_od ON rt.transfer_department_id = tr_od.id
         LEFT JOIN jso_system_user_management tout_su ON rt.transfer_out_approver_id = tout_su.id
         LEFT JOIN jso_system_user_management tin_su ON rt.transfer_in_approver_id = tin_su.id
-        WHERE 1=1
     `;
     const conditions = [
         { sql: ' AND rt.type = ?', value: filters.type },
@@ -72,7 +72,7 @@ const buildResignationTransferQuery = (filters) => {
 
 
 // GET all resignation and transfer records
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     const { page = 1, pageSize = 10, type, status, employeeName, startDate, endDate } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(page, pageSize);
 
@@ -124,7 +124,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST to create a new resignation or transfer record
-router.post('/', checkApproverRole, async (req, res) => {
+router.post('/', authenticateToken, checkApproverRole, async (req, res) => {
     const {
         employeeId, type, reason, proofFile, status = 'pending', applicantId, approverId, approvalComment,
         transferToId, transferReason, transferPlantId, transferDepartmentId, transferDate,
@@ -153,7 +153,7 @@ router.post('/', checkApproverRole, async (req, res) => {
 });
 
 // PUT to update a resignation or transfer record
-router.put('/:id', checkApproverRole, async (req, res) => {
+router.put('/:id', authenticateToken, checkApproverRole, async (req, res) => {
     const { id } = req.params;
     const {
         employeeId, type, reason, proofFile, status, applicantId, approverId, approvalComment,
@@ -187,7 +187,7 @@ router.put('/:id', checkApproverRole, async (req, res) => {
 });
 
 // DELETE a resignation or transfer record
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
         const result = await pool.query(

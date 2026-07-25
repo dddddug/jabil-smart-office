@@ -89,8 +89,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { ElMessage } from 'element-plus';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
+import { formatShanghaiDateTime } from '../utils/dateUtils';
 
 // Interfaces
 interface WelfareConfig {
@@ -128,8 +129,9 @@ const getStatus = (welfare: WelfareConfig) => {
 const loadWelfareConfigs = async () => {
       isLoading.value = true;
       try {
-        const response = await request.get<WelfareConfig[]>('/config/welfare');
-        welfareConfigs.value = response;
+        const res = await request.get('/config/welfare');
+        const data = (res as any)?.data || res;
+        welfareConfigs.value = Array.isArray(data) ? data : [];
       } catch (error) {
         ElMessage.error('加载福利配置失败: ' + error);
       } finally {
@@ -162,8 +164,8 @@ const saveWelfare = async () => {
     const welfareToSave = {
       employee_type: currentWelfare.value.employee_type,
       amount: currentWelfare.value.amount,
-      startTime: dayjs(currentWelfare.value.startTime).toISOString(),
-      endTime: currentWelfare.value.endTime ? dayjs(currentWelfare.value.endTime).toISOString() : null
+      startTime: dayjs(currentWelfare.value.startTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'),
+      endTime: currentWelfare.value.endTime ? dayjs(currentWelfare.value.endTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss') : null
     };
     await request.post('/config/welfare', welfareToSave);
     await loadWelfareConfigs();

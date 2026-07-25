@@ -176,7 +176,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 
 interface ExpiredMaterial {
   id: string;

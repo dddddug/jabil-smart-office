@@ -8,8 +8,9 @@ import { fileURLToPath } from 'url';
 import { createExcelMemoryUpload } from '../utils/fileUtils.js';
 import { parseExcel } from '../utils/excelUtils.js';
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
-import { SPECIAL_WORKING_HOURS_TABLE, USER_TABLE } from '../config/db_constants.js';
+import { SPECIAL_WORKING_HOURS_TABLE, USER_TABLE, WORKSTATION_ARRANGEMENT_TABLE } from '../config/db_constants.js';
 import { handleSpecialWorkingHoursUpload } from '../services/batchUploadService.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -19,7 +20,7 @@ const router = express.Router();
 const memoryUpload = createExcelMemoryUpload();
 
 // 获取特殊工时列表
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { date, event, employeeName, startDate, endDate, pageNum = 1, pageSize = 10 } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(pageNum, pageSize);
@@ -70,7 +71,7 @@ router.get('/', async (req, res) => {
 });
 
 // 新增单条特殊工时记录
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { date, event, employeeNames, startTime, endTime } = req.body;
 
@@ -158,40 +159,106 @@ router.post('/', async (req, res) => {
 });
 
 // 批量删除特殊工时记录
-router.delete('/', async (req, res) => {
+router.delete('/', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { ids } = req.query; // 获取查询参数中的 ids
-    if (!ids) {
-      return res.status(400).json({ error: '请提供要删除的特殊工时记录ID' });
+    const { ids, employeeName, date, event } = req.query; // 获取查询参数
+
+    // 如果有 ids 参数，使用原有的批量删除逻辑
+    if (ids) {
+      const idList = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+      if (idList.length === 0) {
+        return res.status(400).json({ error: '请提供有效的特殊工时记录ID' });
+      }
+
+      // 构建IN查询的占位符，例如：$1, $2, $3
+      const placeholders = idList.map((_, index) => `$${index + 1}`).join(', ');
+
+      // 先查询要删除的记录，获取员工姓名和日期，用于删除工位安排表中的记录
+      const recordsToDelete = await client.query(
+        `SELECT date, employee_name FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE id IN (${placeholders})`,
+        idList
+      );
+
+      // 使用事务删除数据
+      await client.query('BEGIN');
+
+      // 删除特殊工时记录
+      const deleteResult = await client.query(
+        `DELETE FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE id IN (${placeholders}) RETURNING *`,
+        idList
+      );
+
+      if (deleteResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: '没有找到匹配的特殊工时记录进行删除' });
+      }
+
+      // 删除工位安排表中对应的记录（根据员工姓名和日期，删除特殊工时工位的安排）
+      for (const record of recordsToDelete.rows) {
+        // 查找该员工在该日期的特殊工时工位安排并删除
+        await client.query(
+          `DELETE FROM ${WORKSTATION_ARRANGEMENT_TABLE}
+           WHERE arrangement_date = $1
+           AND employee_id IN (
+             SELECT id FROM ${USER_TABLE} WHERE real_name = $2
+           )
+           AND workstation_id IN (
+             SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%'
+           )`,
+          [record.date, record.employee_name]
+        );
+      }
+
+      await client.query('COMMIT');
+      return res.json({ success: true, deletedCount: deleteResult.rows.length });
     }
 
-    const idList = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    // 如果有 employeeName, date, event 参数，根据这些条件删除
+    if (employeeName && date && event) {
+      await client.query('BEGIN');
 
-    if (idList.length === 0) {
-      return res.status(400).json({ error: '请提供有效的特殊工时记录ID' });
+      const deleteResult = await client.query(
+        `DELETE FROM ${SPECIAL_WORKING_HOURS_TABLE}
+         WHERE employee_name = $1 AND date = $2 AND event = $3 RETURNING *`,
+        [employeeName, date, event]
+      );
+
+      if (deleteResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: '没有找到匹配的特殊工时记录进行删除' });
+      }
+
+      // 删除工位安排表中对应的记录
+      await client.query(
+        `DELETE FROM ${WORKSTATION_ARRANGEMENT_TABLE}
+         WHERE arrangement_date = $1
+         AND employee_id IN (
+           SELECT id FROM ${USER_TABLE} WHERE real_name = $2
+         )
+         AND workstation_id IN (
+           SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%'
+         )`,
+        [date, employeeName]
+      );
+
+      await client.query('COMMIT');
+      return res.json({ success: true, deletedCount: deleteResult.rows.length });
     }
 
-    // 构建IN查询的占位符，例如：$1, $2, $3
-    const placeholders = idList.map((_, index) => `$${index + 1}`).join(', ');
-
-    const result = await pool.query(
-      `DELETE FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE id IN (${placeholders}) RETURNING *`,
-      idList
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: '没有找到匹配的特殊工时记录进行删除' });
-    }
-
-    res.json({ success: true, deletedCount: result.rows.length });
+    return res.status(400).json({ error: '请提供要删除的特殊工时记录ID或员工姓名、日期、事件名称' });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('批量删除特殊工时记录失败:', error);
     res.status(500).json({ error: '批量删除特殊工时记录失败' });
+  } finally {
+    client.release();
   }
 });
 
 // 下载特殊工时导入模板
-router.get('/template', (req, res) => {
+router.get('/template', authenticateToken, (req, res) => {
   try {
     const filePath = path.join(__dirname, '..', 'resources', 'excel_templates', 'SpecialWorkingHoursImportTemplate.xlsx');
     if (fs.existsSync(filePath)) {
@@ -206,7 +273,7 @@ router.get('/template', (req, res) => {
 });
 
 // 批量导入特殊工时
-router.post('/import', memoryUpload.single('file'), async (req, res) => {
+router.post('/import', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ code: 400, message: '请上传Excel文件' });
@@ -234,7 +301,7 @@ router.post('/import', memoryUpload.single('file'), async (req, res) => {
 });
 
 // 导出特殊工时
-router.get('/export', async (req, res) => {
+router.get('/export', authenticateToken, async (req, res) => {
   try {
     const { date, event, employeeName, startDate, endDate } = req.query;
 

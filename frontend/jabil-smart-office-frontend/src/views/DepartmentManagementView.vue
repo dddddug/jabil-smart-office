@@ -143,7 +143,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus'; // Import ElMessage and ElMessageBox
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request'; // 导入 axios 实例
 
 interface Department {
@@ -226,10 +226,11 @@ const loadDepartments = async () => {
       request.get('/plants'),
       request.get('/users')
     ]);
-    
-    departments.value = deptRes.items || deptRes.departments || [];
-    availablePlants.value = plantRes.items || plantRes.plants || [];
-    availableUsers.value = userRes.items || [];
+
+    // 拦截器已自动解包 data，res 直接是数据对象
+    departments.value = deptRes?.items || deptRes?.departments || [];
+    availablePlants.value = plantRes?.items || plantRes?.plants || [];
+    availableUsers.value = userRes?.items || [];
     
     // 默认收起所有厂区
     expandedPlants.value = new Set();
@@ -335,7 +336,7 @@ const filteredDepartments = computed(() => {
     return deptsList;
   }
   return deptsList.filter(dept =>
-    dept.name.toLowerCase().includes(searchQuery.name.toLowerCase())
+    (dept.name || '').toLowerCase().includes((searchQuery.name || '').toLowerCase())
   );
 });
 

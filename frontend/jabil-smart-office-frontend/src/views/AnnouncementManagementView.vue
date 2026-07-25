@@ -282,11 +282,11 @@ const loadPlantsAndDepartments = async () => {
       request.get('/plants'),
       request.get('/departments')
     ])
-    
-    const plantsData = plantsRes;
-    const deptsData = deptsRes;
-    plants.value = plantsData.plants || [];
-    departments.value = deptsData.departments || [];
+
+    const plantsData = plantsRes?.data || plantsRes;
+    const deptsData = deptsRes?.data || deptsRes;
+    plants.value = plantsData?.plants || [];
+    departments.value = deptsData?.departments || [];
   } catch (error: any) {
     ElMessage.error('获取数据失败:' + (error?.message || error))
   }
@@ -296,7 +296,7 @@ const loadPlantsAndDepartments = async () => {
 const loadAnnouncements = async () => {
   try {
     const user = getCurrentUser()
-    let url = '/announcements'
+    const url = '/announcements'
     const params = new URLSearchParams()
     if (user) {
       params.append('userId', user.id.toString())
@@ -309,7 +309,7 @@ const loadAnnouncements = async () => {
     }
     
     const response = await request.get<any>(`${url}?${params.toString()}`)
-    announcements.value = response.items || []
+    announcements.value = response?.data?.items || response?.items || []
   } catch (error: any) {
     ElMessage.error('获取公告列表失败:' + (error?.message || error))
   }
@@ -321,7 +321,7 @@ const loadManageList = async () => {
     loadingManage.value = true
     const user = getCurrentUser()
     const response = await request.get<any>(`/announcements/admin?userId=${user.id}`)
-    manageList.value = response.items || []
+    manageList.value = response?.data?.items || response?.items || []
   } catch (error: any) {
     ElMessage.error('获取管理列表失败:' + (error?.message || error))
   } finally {

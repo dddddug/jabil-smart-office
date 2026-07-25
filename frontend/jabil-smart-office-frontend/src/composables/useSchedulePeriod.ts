@@ -1,13 +1,9 @@
 import { ref, computed, watch } from 'vue';
-import dayjs from 'dayjs';
-import weekday from 'dayjs/plugin/weekday';
-import isoWeek from 'dayjs/plugin/isoWeek';
+import dayjs from '@/plugins/dayjs';
 import 'dayjs/locale/zh-cn';
 import { useLocalStorageState } from './useLocalStorageState';
-import type { Day } from '../types/schedule'; // Import Day type
+import type { Day } from '../types/schedule';
 
-dayjs.extend(weekday);
-dayjs.extend(isoWeek);
 dayjs.locale('zh-cn');
 
 export function useSchedulePeriod(
@@ -157,7 +153,9 @@ export function useSchedulePeriod(
     }
   };
 
-  const goToDate = (date: string) => {
+  const goToDate = (dateOrEvent: string | Event) => {
+    // Handle both string and Event from @change handler
+    const date = typeof dateOrEvent === 'string' ? dateOrEvent : (dateOrEvent.target as HTMLInputElement).value;
     if (scheduleViewMode.value === 'week') {
       currentPeriodStart.value = dayjs(date).startOf('isoWeek').format('YYYY-MM-DD');
     } else if (scheduleViewMode.value === 'month') {

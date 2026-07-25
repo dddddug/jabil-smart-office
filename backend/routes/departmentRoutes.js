@@ -2,6 +2,7 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const DEPT_TABLE = 'jso_org_department_management';
 const PLANT_TABLE = 'jso_org_plant_management'; // 需要厂区表来获取厂区名称
@@ -9,7 +10,7 @@ const USER_TABLE = 'jso_system_user_management'; // 需要用户表来关联 man
 
 
 // 获取所有部门（带厂区信息）
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT d.*, p.name as plant_name, u.real_name as manager_name, u.id as manager_id
@@ -36,7 +37,7 @@ router.get('/', async (req, res) => {
 });
 
 // 获取指定厂区的部门
-router.get('/plants/:plantId/departments', async (req, res) => {
+router.get('/plants/:plantId/departments', authenticateToken, async (req, res) => {
   try {
     const { plantId } = req.params;
     const result = await pool.query(
@@ -63,7 +64,7 @@ router.get('/plants/:plantId/departments', async (req, res) => {
 });
 
 // 创建部门
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
 
   try {
     const { plantId, name, description, managerId } = req.body;
@@ -95,7 +96,7 @@ router.post('/', async (req, res) => {
 });
 
 // 更新部门
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { plantId, name, description, managerId } = req.body;
@@ -130,7 +131,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除部门
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM ${DEPT_TABLE} WHERE id = $1 RETURNING *`, [id]);

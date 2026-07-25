@@ -1,6 +1,7 @@
 import express from 'express';
 import { parseExcel } from '../utils/excelUtils.js';
 import { createExcelMemoryUpload } from '../utils/fileUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 import {
   handleTemporaryOvertimeUpload,
   handleTemporaryLeaveUpload,
@@ -14,7 +15,7 @@ const router = express.Router();
 const memoryUpload = createExcelMemoryUpload();
 
 // 批量上传临时加班
-router.post('/temporary-overtime/batch-upload', memoryUpload.single('file'), async (req, res) => {
+router.post('/temporary-overtime/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传Excel文件' });
@@ -36,7 +37,7 @@ router.post('/temporary-overtime/batch-upload', memoryUpload.single('file'), asy
 });
 
 // 批量上传临时请假&公差
-router.post('/temporary-leave/batch-upload', memoryUpload.single('file'), async (req, res) => {
+router.post('/temporary-leave/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传Excel文件' });
@@ -58,7 +59,7 @@ router.post('/temporary-leave/batch-upload', memoryUpload.single('file'), async 
 });
 
 // 批量上传正式请假
-router.post('/formal-leave/batch-upload', memoryUpload.single('file'), async (req, res) => {
+router.post('/formal-leave/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传Excel文件' });
@@ -80,7 +81,7 @@ router.post('/formal-leave/batch-upload', memoryUpload.single('file'), async (re
 });
 
 // 批量上传离职/转岗
-router.post('/resignation-transfer/batch-upload', memoryUpload.single('file'), async (req, res) => {
+router.post('/resignation-transfer/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传Excel文件' });
@@ -102,7 +103,7 @@ router.post('/resignation-transfer/batch-upload', memoryUpload.single('file'), a
 });
 
 // 批量上传员工排班
-router.post('/schedule/batch-upload', memoryUpload.single('file'), async (req, res) => {
+router.post('/schedule/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传Excel文件' });
@@ -124,7 +125,7 @@ router.post('/schedule/batch-upload', memoryUpload.single('file'), async (req, r
 
 
 // 下载Excel模板 (Updated to use static files)
-router.get('/:type/download-template', async (req, res) => {
+router.get('/:type/download-template', authenticateToken, async (req, res) => {
   const { type } = req.params;
   
   let templateFileName;

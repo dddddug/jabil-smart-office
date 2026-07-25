@@ -1,6 +1,7 @@
 import express from 'express';
 import dayjs from 'dayjs';
 import pool from '../config/db.js'; // Import the shared pool instance
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 import { checkApproverRole } from '../utils/authMiddleware.js'; // 导入审批角色检查中间件
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
 
@@ -11,9 +12,108 @@ const RESIGNATION_TRANSFER_TABLE = 'jso_hr_resignation_transfer';
 const USER_TABLE = 'jso_system_user_management';
 const PLANT_TABLE = 'jso_org_plant_management';
 const DEPT_TABLE = 'jso_org_department_management';
+const SCHEDULE_TABLE = 'jso_hr_employee_schedule';
+
+/**
+ * 将请假/年假写入排班表（特殊状态）
+ * @param {Object} client - 数据库客户端
+ * @param {number} employeeId - 员工ID
+ * @param {string} startDate - 开始日期
+ * @param {string} endDate - 结束日期
+ * @param {string} leaveType - 请假类型
+ */
+async function writeLeaveToSchedule(client, employeeId, startDate, endDate, leaveType) {
+  const start = dayjs(startDate);
+  const end = dayjs(endDate);
+
+  // 确定特殊状态显示（统一显示为"请假"，前端可再区分）
+  const specialStatus = '请假';
+
+  // 遍历日期范围内的每一天
+  let currentDate = start;
+  while (currentDate.isBefore(end) || currentDate.isSame(end)) {
+    const dateStr = currentDate.format('YYYY-MM-DD');
+
+    // 检查是否已存在排班记录
+    const existing = await client.query(
+      `SELECT id, special_status FROM ${SCHEDULE_TABLE} WHERE employee_id = $1 AND schedule_date = $2`,
+      [employeeId, dateStr]
+    );
+
+    if (existing.rows.length > 0) {
+      // 更新现有记录，追加特殊状态
+      const currentStatus = existing.rows[0].special_status || '';
+      const newStatus = currentStatus ? `${currentStatus}, ${specialStatus}` : specialStatus;
+      await client.query(
+        `UPDATE ${SCHEDULE_TABLE} SET special_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [newStatus, existing.rows[0].id]
+      );
+    } else {
+      // 插入新记录
+      await client.query(
+        `INSERT INTO ${SCHEDULE_TABLE} (employee_id, schedule_date, shift, special_status) VALUES ($1, $2, '休息', $3)`,
+        [employeeId, dateStr, specialStatus]
+      );
+    }
+
+    currentDate = currentDate.add(1, 'day');
+  }
+
+  console.log(`请假/年假已写入排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}`);
+}
+
+/**
+ * 将离职写入排班表（离职日期之后标记为离职）
+ * @param {Object} client - 数据库客户端
+ * @param {number} employeeId - 员工ID
+ * @param {string} resignationDate - 离职日期
+ */
+async function writeResignationToSchedule(client, employeeId, resignationDate) {
+  // 离职日期之后的所有排班记录标记为离职
+  await client.query(
+    `UPDATE ${SCHEDULE_TABLE} SET special_status = '离职', updated_at = CURRENT_TIMESTAMP
+     WHERE employee_id = $1 AND schedule_date >= $2 AND (special_status IS NULL OR special_status NOT LIKE '%离职%')`,
+    [employeeId, resignationDate]
+  );
+
+  // 离职日期当天的排班也标记（如果没有其他状态）
+  await client.query(
+    `UPDATE ${SCHEDULE_TABLE} SET special_status = '离职', updated_at = CURRENT_TIMESTAMP
+     WHERE employee_id = $1 AND schedule_date = $2 AND (special_status IS NULL OR special_status = '')`,
+    [employeeId, resignationDate]
+  );
+
+  console.log(`离职已写入排班表: 员工ID=${employeeId}, 离职日期=${resignationDate}`);
+}
+
+/**
+ * 将转岗写入排班表（标记为转岗，并更新员工部门信息）
+ * @param {Object} client - 数据库客户端
+ * @param {number} employeeId - 员工ID
+ * @param {number} transferDepartmentId - 转入部门ID
+ * @param {string} transferDate - 转岗日期
+ */
+async function writeTransferToSchedule(client, employeeId, transferDepartmentId, transferDate) {
+  // 将转岗日期及之后的排班记录标记为转岗
+  if (transferDate) {
+    await client.query(
+      `UPDATE ${SCHEDULE_TABLE} SET special_status = '转岗', updated_at = CURRENT_TIMESTAMP
+       WHERE employee_id = $1 AND schedule_date >= $2 AND (special_status IS NULL OR special_status NOT LIKE '%转岗%')`,
+      [employeeId, transferDate]
+    );
+  }
+
+  // 更新员工的部门信息
+  await client.query(
+    `UPDATE ${USER_TABLE} SET department_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    [transferDepartmentId, employeeId]
+  );
+
+  console.log(`转岗已写入排班表: 员工ID=${employeeId}, 转入部门ID=${transferDepartmentId}, 转岗日期=${transferDate || '今天'}`);
+}
 
 // 获取请假/年假和离职/转岗列表
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { plantId, departmentId, employeeId, status, startDate, endDate, page = 1, pageSize = 10, type } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(page, pageSize);
@@ -30,8 +130,6 @@ router.get('/', async (req, res) => {
     }
 
     const where = buildWhereClause([
-      { sql: ` AND ${targetTableAlias}.type IN ('离职', '转岗')`, value: type === 'resignation' ? true : null },
-      { sql: ` AND ${targetTableAlias}.leave_type NOT IN ('离职', '转岗')`, value: type === 'resignation' ? null : true },
       { sql: ` AND ${targetTableAlias}.plant_id = ?`, value: plantId },
       { sql: ` AND ${targetTableAlias}.department_id = ?`, value: departmentId },
       { sql: ` AND ${targetTableAlias}.employee_id = ?`, value: employeeId },
@@ -181,7 +279,7 @@ router.get('/', async (req, res) => {
 });
 
 // 创建请假/年假或离职/转岗记录
-router.post('/', checkApproverRole, async (req, res) => {
+router.post('/', authenticateToken, checkApproverRole, async (req, res) => {
   try {
     const { 
       employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId, 
@@ -227,7 +325,7 @@ router.post('/', checkApproverRole, async (req, res) => {
 });
 
 // 更新请假/年假或离职/转岗记录
-router.put('/:id', checkApproverRole, async (req, res) => {
+router.put('/:id', authenticateToken, checkApproverRole, async (req, res) => {
   try {
     const { id } = req.params;
     const { 
@@ -304,8 +402,71 @@ router.put('/:id', checkApproverRole, async (req, res) => {
   }
 });
 
+// 根据员工ID和日期删除请假/年假记录（清除排班时同步删除）
+// 注意：此路由必须在 /:id 路由之前定义，否则会被 /:id 路由先匹配
+router.delete('/by-employee-date', authenticateToken, async (req, res) => {
+  try {
+    const { employeeId, date } = req.query;
+
+    if (!employeeId || !date) {
+      return res.status(400).json({ error: '缺少员工ID或日期参数' });
+    }
+
+    // 删除该员工在该日期范围内的请假/年假记录
+    // 日期格式应为 YYYY-MM-DD，清除排班时会删除该日期的特殊状态
+    // 如果请假/年假覆盖该日期，则一并删除
+    const result = await pool.query(
+      `DELETE FROM ${FORMAL_LEAVE_TABLE}
+       WHERE employee_id = $1
+       AND status = 'approved'
+       AND start_date <= $2
+       AND end_date >= $2
+       RETURNING id`,
+      [employeeId, date]
+    );
+
+    res.json({
+      success: true,
+      deletedCount: result.rowCount,
+      deletedIds: result.rows.map(r => r.id)
+    });
+  } catch (error) {
+    console.error('删除请假/年假记录失败:', error);
+    res.status(500).json({ error: '删除请假/年假记录失败' });
+  }
+});
+
+// 根据员工ID和日期删除离职/转岗记录（清除排班时同步删除）
+router.delete('/resignation/by-employee-date', authenticateToken, async (req, res) => {
+  try {
+    const { employeeId, date } = req.query;
+
+    if (!employeeId || !date) {
+      return res.status(400).json({ error: '缺少员工ID或日期参数' });
+    }
+
+    // 删除该员工在该日期的离职/转岗记录（如果 transfer_date 等于该日期）
+    const result = await pool.query(
+      `DELETE FROM ${RESIGNATION_TRANSFER_TABLE}
+       WHERE employee_id = $1
+       AND DATE(transfer_date) = $2
+       RETURNING id`,
+      [employeeId, date]
+    );
+
+    res.json({
+      success: true,
+      deletedCount: result.rowCount,
+      deletedIds: result.rows.map(r => r.id)
+    });
+  } catch (error) {
+    console.error('删除离职/转岗记录失败:', error);
+    res.status(500).json({ error: '删除离职/转岗记录失败' });
+  }
+});
+
 // 删除请假/年假或离职/转岗记录
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -334,11 +495,11 @@ router.delete('/:id', async (req, res) => {
     }
 
     const result = await pool.query(`DELETE FROM ${targetTable} WHERE id = $1 RETURNING *`, [id]);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '记录不存在或删除失败' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('删除记录失败:', error);
@@ -347,7 +508,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // 批准请假/年假或离职/转岗记录
-router.put('/:id/approve', checkApproverRole, async (req, res) => {
+router.put('/:id/approve', authenticateToken, checkApproverRole, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -360,7 +521,7 @@ router.put('/:id/approve', checkApproverRole, async (req, res) => {
     let leaveRecord;
 
     // Determine which table the record belongs to
-    let checkResult = await client.query(`SELECT leave_type, employee_id, transfer_date FROM ${FORMAL_LEAVE_TABLE} WHERE id = $1`, [id]);
+    let checkResult = await client.query(`SELECT leave_type, employee_id FROM ${FORMAL_LEAVE_TABLE} WHERE id = $1`, [id]);
     if (checkResult.rows.length > 0) {
       const row = checkResult.rows[0];
       if (!['离职', '转岗'].includes(row.leave_type)) {
@@ -371,7 +532,7 @@ router.put('/:id/approve', checkApproverRole, async (req, res) => {
     }
 
     if (!targetTable) {
-      checkResult = await client.query(`SELECT type, employee_id, transfer_date FROM ${RESIGNATION_TRANSFER_TABLE} WHERE id = $1`, [id]);
+      checkResult = await client.query(`SELECT type, employee_id FROM ${RESIGNATION_TRANSFER_TABLE} WHERE id = $1`, [id]);
       if (checkResult.rows.length > 0) {
         const row = checkResult.rows[0];
         targetTable = RESIGNATION_TRANSFER_TABLE;
@@ -399,42 +560,50 @@ router.put('/:id/approve', checkApproverRole, async (req, res) => {
     }
 
     const result = await client.query(updateQuery, [approverId, approvalComment, id]);
-    
+
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: '记录不存在或已处理' });
     }
-    
+
     const updatedRecord = result.rows[0];
 
-    // 如果是离职类型，将离职日期写入用户表
+    // 如果是请假/年假类型，将特殊状态写入排班表
+    if (targetTable === FORMAL_LEAVE_TABLE && ['请假', '年假', '病假', '事假'].includes(recordType)) {
+      await writeLeaveToSchedule(client, updatedRecord.employee_id, updatedRecord.start_date, updatedRecord.end_date, recordType);
+    }
+
+    // 如果是离职类型，将离职日期写入用户表和排班表
     if (targetTable === RESIGNATION_TRANSFER_TABLE && updatedRecord.type === '离职') {
       // 获取审批日期作为离职办理日期（如果申请中没有指定日期）
       const approvalDate = dayjs().format('YYYY-MM-DD');
       const resignationDate = updatedRecord.transfer_date || approvalDate;
-      
+
       // 检查离职日期是否已到
-      const isResignationDateReached = dayjs().isAfter(dayjs(resignationDate), 'day') || 
+      const isResignationDateReached = dayjs().isAfter(dayjs(resignationDate), 'day') ||
                                  dayjs().isSame(dayjs(resignationDate), 'day');
-      
+
       // 如果离职日期已到，则设置状态为 inactive；否则只更新离职日期
       if (isResignationDateReached) {
         await client.query(
-          `UPDATE jso_system_user_management 
+          `UPDATE jso_system_user_management
            SET leave_date = $1, status = 'inactive', updated_at = CURRENT_TIMESTAMP
            WHERE id = $2`,
           [resignationDate, updatedRecord.employee_id]
         );
       } else {
         await client.query(
-          `UPDATE jso_system_user_management 
+          `UPDATE jso_system_user_management
            SET leave_date = $1, updated_at = CURRENT_TIMESTAMP
            WHERE id = $2`,
           [resignationDate, updatedRecord.employee_id]
         );
       }
+
+      // 将离职写入排班表
+      await writeResignationToSchedule(client, updatedRecord.employee_id, resignationDate);
     }
-    
+
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (error) {
@@ -447,7 +616,7 @@ router.put('/:id/approve', checkApproverRole, async (req, res) => {
 });
 
 // 拒绝请假/年假或离职/转岗记录
-router.put('/:id/reject', checkApproverRole, async (req, res) => {
+router.put('/:id/reject', authenticateToken, checkApproverRole, async (req, res) => {
   try {
     const { id } = req.params;
     const { approverId, approvalComment } = req.body;
@@ -503,7 +672,7 @@ router.put('/:id/reject', checkApproverRole, async (req, res) => {
 });
 
 // 转审请假/年假记录 (不适用于离职/转岗)
-router.put('/:id/transfer', async (req, res) => {
+router.put('/:id/transfer', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { transferToId, transferReason } = req.body;
@@ -544,7 +713,7 @@ router.put('/:id/transfer', async (req, res) => {
 });
 
 // 打回重提请假/年假或离职/转岗记录
-router.put('/:id/resubmit', async (req, res) => {
+router.put('/:id/resubmit', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -592,7 +761,7 @@ router.put('/:id/resubmit', async (req, res) => {
 });
 
 // 转岗 - 转出部门审批
-router.put('/:id/transfer-out-approve', checkApproverRole, async (req, res) => {
+router.put('/:id/transfer-out-approve', authenticateToken, checkApproverRole, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -621,17 +790,25 @@ router.put('/:id/transfer-out-approve', checkApproverRole, async (req, res) => {
     }
     
     const resignationTransferRecord = result.rows[0];
-    
+
     // 检查是否两个审批都完成了
     if (resignationTransferRecord.transfer_out_approval_status === 'approved' && resignationTransferRecord.transfer_in_approval_status === 'approved') {
       await client.query(
-        `UPDATE ${RESIGNATION_TRANSFER_TABLE} 
+        `UPDATE ${RESIGNATION_TRANSFER_TABLE}
          SET status = 'approved', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
         [id]
       );
+
+      // 将转岗写入排班表（标记转岗状态，更新员工部门信息）
+      await writeTransferToSchedule(
+        client,
+        resignationTransferRecord.employee_id,
+        resignationTransferRecord.transfer_department_id,
+        resignationTransferRecord.transfer_date
+      );
     }
-    
+
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (error) {
@@ -644,14 +821,14 @@ router.put('/:id/transfer-out-approve', checkApproverRole, async (req, res) => {
 });
 
 // 转岗 - 转入部门审批
-router.put('/:id/transfer-in-approve', checkApproverRole, async (req, res) => {
+router.put('/:id/transfer-in-approve', authenticateToken, checkApproverRole, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
+
     const { id } = req.params;
     const { approverId, approvalComment } = req.body;
-    
+
     // Ensure it's a record in RESIGNATION_TRANSFER_TABLE and of '转岗' type
     const checkResult = await client.query(`SELECT * FROM ${RESIGNATION_TRANSFER_TABLE} WHERE id = $1 AND type = '转岗'`, [id]);
     if (checkResult.rows.length === 0) {
@@ -660,30 +837,38 @@ router.put('/:id/transfer-in-approve', checkApproverRole, async (req, res) => {
     }
 
     const result = await client.query(
-      `UPDATE ${RESIGNATION_TRANSFER_TABLE} 
+      `UPDATE ${RESIGNATION_TRANSFER_TABLE}
        SET transfer_in_approver_id = $1, transfer_in_approval_status = 'approved', transfer_in_approval_comment = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3 AND type = '转岗'
        RETURNING *`,
       [approverId, approvalComment, id]
     );
-    
+
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: '记录不存在或已处理' });
     }
-    
+
     const resignationTransferRecord = result.rows[0];
-    
+
     // 检查是否两个审批都完成了
     if (resignationTransferRecord.transfer_out_approval_status === 'approved' && resignationTransferRecord.transfer_in_approval_status === 'approved') {
       await client.query(
-        `UPDATE ${RESIGNATION_TRANSFER_TABLE} 
+        `UPDATE ${RESIGNATION_TRANSFER_TABLE}
          SET status = 'approved', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
         [id]
       );
+
+      // 将转岗写入排班表（标记转岗状态，更新员工部门信息）
+      await writeTransferToSchedule(
+        client,
+        resignationTransferRecord.employee_id,
+        resignationTransferRecord.transfer_department_id,
+        resignationTransferRecord.transfer_date
+      );
     }
-    
+
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (error) {
@@ -696,7 +881,7 @@ router.put('/:id/transfer-in-approve', checkApproverRole, async (req, res) => {
 });
 
 // 转岗 - 转出部门拒绝
-router.put('/:id/transfer-out-reject', checkApproverRole, async (req, res) => {
+router.put('/:id/transfer-out-reject', authenticateToken, checkApproverRole, async (req, res) => {
   try {
     const { id } = req.params;
     const { approverId, approvalComment } = req.body;
@@ -727,7 +912,7 @@ router.put('/:id/transfer-out-reject', checkApproverRole, async (req, res) => {
 });
 
 // 转岗 - 转入部门拒绝
-router.put('/:id/transfer-in-reject', checkApproverRole, async (req, res) => {
+router.put('/:id/transfer-in-reject', authenticateToken, checkApproverRole, async (req, res) => {
   try {
     const { id } = req.params;
     const { approverId, approvalComment } = req.body;

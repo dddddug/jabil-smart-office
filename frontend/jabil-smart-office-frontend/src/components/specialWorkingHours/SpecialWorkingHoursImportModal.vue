@@ -14,7 +14,9 @@
     >
       <i class="el-icon-upload"></i>
       <div class="el-upload__text">将文件拖到此处，或<em>点击上传</em></div>
-      <div class="el-upload__tip" slot="tip">只能上传 .xlsx 文件</div>
+      <template v-slot:tip>
+<div class="el-upload__tip" >只能上传 .xlsx 文件</div>
+</template>
     </el-upload>
 
     <div v-if="importResult" class="import-result-section">
@@ -39,17 +41,20 @@
       </div>
     </div>
 
-    <span slot="footer" class="dialog-footer">
+    <template v-slot:footer>
+<span  class="dialog-footer">
       <el-button type="info" icon="el-icon-download" @click="handleDownloadTemplate">下载导入模板</el-button>
       <el-button @click="handleClose">取 消</el-button>
       <el-button type="primary" :disabled="!selectedFile" @click="handleImport">导 入</el-button>
     </span>
+</template>
   </el-dialog>
 </template>
 
 <script>
 import { importSpecialWorkingHours, downloadImportTemplate } from '@/api/specialWorkingHours'
 import { downloadFile } from '@/utils/excelUtils'
+import eventBus from '@/utils/eventBus'
 
 export default {
   name: 'SpecialWorkingHoursImportModal',
@@ -80,6 +85,7 @@ export default {
       this.resetModal()
       this.$emit('update:visible', false)
       this.$emit('import-success') // 通知父组件导入成功，刷新列表
+      eventBus.emit('special-working-hours-changed') // 通知工位安排页面刷新
     },
     handleFileChange(file, fileList) {
       this.fileList = [file]
@@ -116,6 +122,7 @@ export default {
           this.$message.success('文件导入成功！')
         }
         this.$emit('import-success') // 通知父组件导入成功，刷新列表
+        eventBus.emit('special-working-hours-changed') // 通知工位安排页面刷新
       } catch (error) {
         console.error('导入失败:', error)
         // error 对象现在包含 code, message, 以及可能的 details
@@ -143,7 +150,7 @@ export default {
         downloadFile(res.data, 'SpecialWorkingHoursImportTemplate.xlsx')
         this.$message.success('导入模板下载成功')
       } catch (error) {
-        this.$message.error('导入模板下载失败：' + error.message)
+        this.$message.error('导入模板下载失败：' + (error?.message || '未知错误'))
       }
     },
     resetModal() {

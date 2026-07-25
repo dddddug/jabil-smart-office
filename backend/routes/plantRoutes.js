@@ -2,12 +2,13 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const PLANT_TABLE = 'jso_org_plant_management';
 const USER_TABLE = 'jso_system_user_management'; // 需要用户表来关联 manager_name
 
 // 获取所有厂区
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT p.*, u.real_name as manager_name, u.id as manager_id
@@ -31,7 +32,7 @@ router.get('/', async (req, res) => {
 });
 
 // 创建厂区
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name, description, managerId } = req.body;
     const result = await pool.query(
@@ -55,7 +56,7 @@ router.post('/', async (req, res) => {
 });
 
 // 更新厂区
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, managerId } = req.body;
@@ -83,7 +84,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除厂区
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;

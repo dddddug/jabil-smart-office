@@ -214,6 +214,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { formatShanghaiDate } from '../utils/dateUtils';
 
 interface CheckRecord {
   id: number;
@@ -260,8 +261,8 @@ const pageSize = ref(10);
 
 const filteredChecks = computed(() => {
   return checks.value.filter(check => {
-    const matchCheckNo = !searchQuery.value.checkNo || check.checkNo.toLowerCase().includes(searchQuery.value.checkNo.toLowerCase());
-    const matchChecker = !searchQuery.value.checker || check.checker.toLowerCase().includes(searchQuery.value.checker.toLowerCase());
+    const matchCheckNo = !searchQuery.value.checkNo || (check.checkNo || '').toLowerCase().includes((searchQuery.value.checkNo || '').toLowerCase());
+    const matchChecker = !searchQuery.value.checker || (check.checker || '').toLowerCase().includes((searchQuery.value.checker || '').toLowerCase());
     const matchStatus = !filterStatus.value || check.status === filterStatus.value;
     const matchArea = !filterArea.value || check.area === filterArea.value;
     return matchCheckNo && matchChecker && matchStatus && matchArea;
@@ -345,7 +346,7 @@ const openAddCheckDialog = () => {
     severity: '',
     status: 'pending',
     checker: '',
-    checkDate: new Date().toISOString().split('T')[0] || ''
+    checkDate: formatShanghaiDate()
   };
   isCheckDialogOpen.value = true;
 };

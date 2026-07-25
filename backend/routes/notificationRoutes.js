@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
 import { buildWhereClause } from '../utils/sqlUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ const USER_TABLE = 'jso_system_user_management';
 // ========== 通知管理 API ==========
 
 // 获取当前用户的通知列表
-router.get('/notifications', async (req, res) => {
+router.get('/notifications', authenticateToken, async (req, res) => {
   try {
     const { userId, read } = req.query;
     const where = buildWhereClause([
@@ -50,7 +51,7 @@ router.get('/notifications', async (req, res) => {
 });
 
 // 获取未读通知数量
-router.get('/notifications/unread-count', async (req, res) => {
+router.get('/notifications/unread-count', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.query;
     const where = buildWhereClause([
@@ -70,7 +71,7 @@ router.get('/notifications/unread-count', async (req, res) => {
 });
 
 // 标记通知为已读
-router.put('/notifications/:id/read', async (req, res) => {
+router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -91,7 +92,7 @@ router.put('/notifications/:id/read', async (req, res) => {
 });
 
 // 标记所有通知为已读
-router.put('/notifications/read-all', async (req, res) => {
+router.put('/notifications/read-all', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.body;
     const where = buildWhereClause([
@@ -110,7 +111,7 @@ router.put('/notifications/read-all', async (req, res) => {
 });
 
 // 创建通知
-router.post('/notifications', async (req, res) => {
+router.post('/notifications', authenticateToken, async (req, res) => {
   try {
     const { userId, icon, title, message, detail, type, relatedData } = req.body;
     
@@ -144,7 +145,7 @@ router.post('/notifications', async (req, res) => {
 });
 
 // 删除通知
-router.delete('/notifications/:id', async (req, res) => {
+router.delete('/notifications/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     

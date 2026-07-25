@@ -209,6 +209,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { formatShanghaiDate } from '../utils/dateUtils';
 
 interface Bin {
   id: number;
@@ -242,7 +243,7 @@ const currentBin = ref<Bin>({
   usedCapacity: 0,
   usageRate: 0,
   status: 'normal',
-  lastUpdated: new Date().toISOString().split('T')[0] || '',
+  lastUpdated: formatShanghaiDate(),
   remark: ''
 });
 
@@ -259,9 +260,9 @@ const pageSize = ref(10);
 
 const filteredBins = computed(() => {
   return bins.value.filter(bin => {
-    const matchBinCode = !searchQuery.value.binCode || bin.binCode.toLowerCase().includes(searchQuery.value.binCode.toLowerCase());
-    const matchMaterialCode = !searchQuery.value.materialCode || bin.materialCode.toLowerCase().includes(searchQuery.value.materialCode.toLowerCase());
-    const matchLocation = !searchQuery.value.location || bin.location.toLowerCase().includes(searchQuery.value.location.toLowerCase());
+    const matchBinCode = !searchQuery.value.binCode || (bin.binCode || '').toString().toLowerCase().includes((searchQuery.value.binCode || '').toString().toLowerCase());
+    const matchMaterialCode = !searchQuery.value.materialCode || (bin.materialCode || '').toString().toLowerCase().includes((searchQuery.value.materialCode || '').toString().toLowerCase());
+    const matchLocation = !searchQuery.value.location || (bin.location || '').toString().toLowerCase().includes((searchQuery.value.location || '').toString().toLowerCase());
     const matchZone = !filterZone.value || bin.zone === filterZone.value;
     const matchStatus = !filterStatus.value || bin.status === filterStatus.value;
     return matchBinCode && matchMaterialCode && matchLocation && matchZone && matchStatus;
@@ -340,7 +341,7 @@ const openAddBinDialog = () => {
     usedCapacity: 0,
     usageRate: 0,
     status: 'normal',
-    lastUpdated: new Date().toISOString().split('T')[0] || '',
+    lastUpdated: formatShanghaiDate(),
     remark: ''
   };
   isBinDialogOpen.value = true;

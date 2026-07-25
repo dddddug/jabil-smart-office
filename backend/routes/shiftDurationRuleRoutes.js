@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 const router = express.Router();
 
 const SHIFT_DURATION_RULES_TABLE = 'jso_config_shift_duration_rules';
@@ -9,7 +10,7 @@ const PLANT_TABLE = 'jso_org_plant_management'; // 需要厂区表来获取厂�
 const DEPT_TABLE = 'jso_org_department_management'; // 需要部门表来获取部门名称
 
 // 获取班次时长规则列表
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { page = 1, pageSize = 10, plantId, departmentId, shiftName, status } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(page, pageSize);
@@ -58,7 +59,7 @@ router.get('/', async (req, res) => {
 });
 
 // 创建班次时长规则
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { plantId, departmentId, shiftName, durationHours, description = '' } = req.body;
 
@@ -75,7 +76,7 @@ router.post('/', async (req, res) => {
 });
 
 // 更新班次时长规则
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { shiftName, durationHours, description = '' } = req.body;
@@ -96,7 +97,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除班次时长规则
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM ${SHIFT_DURATION_RULES_TABLE} WHERE id = $1 RETURNING *`, [id]);
@@ -112,7 +113,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // 启用班次时长规则
-router.post('/:id/enable', async (req, res) => {
+router.post('/:id/enable', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -131,7 +132,7 @@ router.post('/:id/enable', async (req, res) => {
 });
 
 // 停用班次时长规则
-router.post('/:id/disable', async (req, res) => {
+router.post('/:id/disable', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(

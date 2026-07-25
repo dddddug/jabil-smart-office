@@ -640,6 +640,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 
+// 错误信息处理辅助函数
+const getErrorMessage = (error: any): string => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null) {
+    return error.message || error.msg || JSON.stringify(error);
+  }
+  return String(error);
+}
+
 // 获取当前登录用户信息
 const getCurrentUser = () => {
   try {
@@ -648,7 +657,7 @@ const getCurrentUser = () => {
       return JSON.parse(userStr)
     }
   } catch (error) {
-    ElMessage.error('获取用户信息失败:' + error)
+    ElMessage.error('获取用户信息失败: ' + getErrorMessage(error))
   }
   return null
 }
@@ -656,7 +665,7 @@ const getCurrentUser = () => {
 const currentUser = getCurrentUser()
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Document, Clock, SuccessFilled, Close, Plus, Upload, Download, UploadFilled } from '@element-plus/icons-vue'
-import dayjs from 'dayjs'
+import dayjs from '@/plugins/dayjs'
 
 interface Props {
   tabType: 'overtime' | 'temporary' | 'annual' | 'resignation'
@@ -811,7 +820,7 @@ const loadState = () => {
       filterEmployee.value = state.filterEmployee || ''
     }
   } catch (error) {
-    ElMessage.error('加载状态失败:' + error)
+    ElMessage.error('加载状态失败: ' + getErrorMessage(error))
   }
 }
 
@@ -843,7 +852,7 @@ const loadEmployees = async () => {
       }))
     }
   } catch (error) {
-    ElMessage.error('加载员工列表失败:' + error)
+    ElMessage.error('加载员工列表失败: ' + getErrorMessage(error))
   }
 }
 
@@ -854,11 +863,13 @@ const loadDepartments = async () => {
       headers: getAuthHeaders()
     })
     if (response.ok) {
-      const data = await response.json()
-      departments.value = data.departments
+      // fetch 不经过拦截器，需要手动解包
+      const res = await response.json()
+      const data = res?.data || res;
+      departments.value = data?.departments || []
     }
   } catch (error) {
-    ElMessage.error('加载部门列表失败:' + error)
+    ElMessage.error('加载部门列表失败: ' + getErrorMessage(error))
   }
 }
 
@@ -869,11 +880,13 @@ const loadApprovers = async () => {
       headers: getAuthHeaders()
     })
     if (response.ok) {
-      const data = await response.json()
-      approvers.value = data.data.approvers
+      // fetch 不经过拦截器，需要手动解包
+      const res = await response.json()
+      const data = res?.data || res;
+      approvers.value = data?.approvers || []
     }
   } catch (error) {
-    ElMessage.error('加载审批人列表失败:' + error)
+    ElMessage.error('加载审批人失败: ' + getErrorMessage(error))
   }
 }
 
@@ -1004,7 +1017,8 @@ const loadData = async () => {
       })
     }
   } catch (error) {
-    ElMessage.error('加载数据失败:' + error)
+    const errorMessage = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error));
+    ElMessage.error('加载数据失败: ' + errorMessage)
   }
 }
 
@@ -1085,7 +1099,7 @@ const formatDateTime = (dateTime: string) => {
     
     return result || dateTime
   } catch (error) {
-    ElMessage.error('Error formatting date:' + dateTime + ', ' + error)
+    ElMessage.error('日期格式化错误: ' + dateTime + ', ' + getErrorMessage(error))
     return dateTime || '-'
   }
 }
@@ -1113,15 +1127,12 @@ const form = ref({
 const approvers = ref<Approver[]>([])
 
 // Helper function to get the authentication token
-const getAuthHeaders = () => {
+const getAuthHeaders = (): Record<string, string> => {
   const user = getCurrentUser();
-  if (user && user.token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${user.token}`
-    };
-  }
-  return { 'Content-Type': 'application/json' };
+  return {
+    'Content-Type': 'application/json',
+    ...(user && user.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+  };
 };
 
 // 当前可选审批人（根据选择的员工筛选）
@@ -1602,7 +1613,7 @@ const hasEditPermission = (row: any) => {
 const isImageFile = (fileName: string) => {
   if (!fileName) return false
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']
-  const lowerFileName = fileName.toLowerCase()
+  const lowerFileName = (fileName || '').toLowerCase()
   return imageExtensions.some(ext => lowerFileName.endsWith(ext))
 }
 
@@ -1639,9 +1650,9 @@ const handleAdd = () => {
   isEdit.value = false
   form.value = {
     employeeId: null,
-    type: 
-      props.tabType === 'overtime' ? '临时加班' : 
-      props.tabType === 'temporary' ? '' : 
+    type:
+      props.tabType === 'overtime' ? '临时加班' :
+      props.tabType === 'temporary' ? '' :
       props.tabType === 'resignation' ? '离职' : '',
     startDate: null,
     endDate: null,
@@ -1649,6 +1660,8 @@ const handleAdd = () => {
     approverId: null,
     transferDate: null,
     transferDepartmentId: null,
+    transferToId: null,
+    transferPlantId: null,
   }
   
   // 重置所有日期时间控件
@@ -1679,15 +1692,18 @@ const handleEdit = (row: LeaveRequest) => {
   }
   isEdit.value = true
   editingId.value = row.id
+  const rowAny = row as any
   form.value = {
             employeeId: row.employeeId,
             type: row.type,
             startDate: new Date(row.startDate),
             endDate: new Date(row.endDate),
             reason: row.reason,
-            approverId: (row as any).approverId || null,
-            transferDate: (row as any).transferDate ? new Date((row as any).transferDate) : null,
-            transferDepartmentId: (row as any).transferDepartmentId || null,
+            approverId: rowAny.approverId ?? null,
+            transferDate: rowAny.transferDate ? new Date(rowAny.transferDate) : null,
+            transferDepartmentId: rowAny.transferDepartmentId ?? null,
+            transferToId: rowAny.transferToId ?? null,
+            transferPlantId: rowAny.transferPlantId ?? null,
           }
   
   // 初始化已上传的文件信息
@@ -1995,7 +2011,7 @@ const handleSubmit = async () => {
         return
       }
 
-      let requestBody: any = {
+      const requestBody: any = {
         employeeId: form.value.employeeId,
         reason: form.value.reason,
         applicantId: currentUser?.id, // 记录申请人ID
@@ -2212,9 +2228,9 @@ const handleFileUploadChange = (file: any) => {
 const downloadTemplate = () => {
   const apiType = getApiType()
   let templateName = ''
-  if (apiType === 'overtime') {
+  if (apiType === 'temporary-overtime') {
     templateName = 'overtime_template.xlsx'
-  } else if (apiType === 'temporary-leave-errand') {
+  } else if (apiType === 'temporary-leave') {
     templateName = 'temporary_leave_errand_template.xlsx'
   } else if (apiType === 'formal-leave') {
     templateName = 'formal_leave_template.xlsx'

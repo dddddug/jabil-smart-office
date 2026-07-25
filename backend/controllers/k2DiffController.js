@@ -1,0 +1,735 @@
+/**
+ * K**差异登记 主数据控制器
+ */
+import pool from '../config/db.js';
+import { success, paginated } from '../utils/responseHelper.js';
+import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
+import { logInfo, logDebug } from '../utils/logger.js';
+import { formatShanghaiDate, formatShanghaiDateTime, getDaysAgoShanghai, getShanghaiNow } from '../utils/dateUtils.js';
+
+// 数据表名
+const K2_DIFF_REGISTRATION_TABLE = 'jso_k2_diff_registration';
+
+/**
+ * 格式化日期为 YYYY-MM-DD 字符串
+ * PostgreSQL date 类型返回的是字符串（如 "2026-07-24"），直接使用
+ */
+const formatDate = (dateValue) => {
+  if (!dateValue) return null;
+  if (typeof dateValue === 'string') {
+    // 已经是字符串，检查是否是日期格式
+    if (dateValue.includes('T')) {
+      // ISO 格式日期，转为本地日期
+      const d = new Date(dateValue);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    // 直接返回日期字符串部分（去掉时间部分如果有的话）
+    return dateValue.split('T')[0];
+  }
+  // Date 对象
+  const year = dateValue.getFullYear();
+  const month = String(dateValue.getMonth() + 1).padStart(2, '0');
+  const day = String(dateValue.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * 格式化日期时间为本地时间字符串 YYYY-MM-DD HH:mm:ss
+ */
+const formatDateTime = (dateValue) => {
+  if (!dateValue) return null;
+  let d;
+  if (typeof dateValue === 'string') {
+    // ISO 格式字符串
+    d = new Date(dateValue);
+  } else {
+    d = dateValue;
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+/**
+ * 根据时间判断班次
+ * 7:00-19:00 = A班（白班）
+ * 19:00-次日7:00 = C班（夜班）
+ */
+const getShiftByTime = (date) => {
+  const hour = date.getHours();
+  if (hour >= 7 && hour < 19) {
+    return 'A';
+  } else {
+    return 'C';
+  }
+};
+
+/**
+ * 邮件配置结构
+ */
+const EMAIL_CONFIG_KEYS = ['email_notification_enabled', 'email_recipients', 'email_cc'];
+
+/**
+ * 获取邮件配置
+ * @returns {Promise<{enabled: boolean, recipients: string, cc: string}>}
+ */
+const getEmailConfig = async () => {
+  const result = await pool.query(`
+    SELECT config_key, config_value
+    FROM jso_k2_diff_config
+    WHERE config_key = ANY($1)
+  `, [EMAIL_CONFIG_KEYS]);
+
+  let enabled = false;
+  let recipients = '';
+  let cc = '';
+
+  result.rows.forEach(row => {
+    switch (row.config_key) {
+      case 'email_notification_enabled':
+        enabled = row.config_value === 'true';
+        break;
+      case 'email_recipients':
+        recipients = row.config_value || '';
+        break;
+      case 'email_cc':
+        cc = row.config_value || '';
+        break;
+    }
+  });
+
+  return { enabled, recipients, cc };
+};
+
+/**
+ * 获取登记记录列表
+ */
+export const getRegistrations = async (req, res, next) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      shift,
+      partNo,
+      grn,
+      returnLocation,
+      recorder,
+      page = 1,
+      pageSize = 20
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(pageSize);
+    const params = [];
+    let whereClause = 'WHERE 1=1';
+
+    // 动态构建查询条件
+    if (startDate) {
+      params.push(startDate);
+      whereClause += ` AND registration_date >= $${params.length}`;
+    }
+
+    if (endDate) {
+      params.push(endDate);
+      whereClause += ` AND registration_date <= $${params.length}`;
+    }
+
+    if (shift) {
+      params.push(shift);
+      whereClause += ` AND shift = $${params.length}`;
+    }
+
+    if (partNo) {
+      params.push(`%${partNo}%`);
+      whereClause += ` AND part_no ILIKE $${params.length}`;
+    }
+
+    if (grn) {
+      params.push(`%${grn}%`);
+      whereClause += ` AND grn ILIKE $${params.length}`;
+    }
+
+    if (returnLocation) {
+      params.push(`%${returnLocation}%`);
+      whereClause += ` AND return_location ILIKE $${params.length}`;
+    }
+
+    if (recorder) {
+      params.push(`%${recorder}%`);
+      whereClause += ` AND recorder ILIKE $${params.length}`;
+    }
+
+    // 查询列表
+    const listParams = [...params, parseInt(pageSize), offset];
+    const listResult = await pool.query(`
+      SELECT
+        id,
+        registration_date,
+        shift,
+        part_no,
+        grn,
+        qty,
+        location,
+        problem_description,
+        registration_time,
+        return_location,
+        recorder,
+        created_at,
+        updated_at
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      ${whereClause}
+      ORDER BY registration_time DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `, listParams);
+
+    // 查询总数
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total FROM ${K2_DIFF_REGISTRATION_TABLE} ${whereClause}
+    `, params);
+
+    const registrations = listResult.rows.map(row => ({
+      id: row.id,
+      registrationDate: formatDate(row.registration_date),
+      shift: row.shift,
+      partNo: row.part_no,
+      grn: row.grn,
+      qty: parseFloat(row.qty) || 0,
+      location: row.location,
+      problemDescription: row.problem_description,
+      registrationTime: formatDateTime(row.registration_time),
+      returnLocation: row.return_location,
+      recorder: row.recorder,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+
+    paginated(res, {
+      items: registrations,
+      total: parseInt(countResult.rows[0].total),
+      page: parseInt(page),
+      pageSize: parseInt(pageSize)
+    }, '获取成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 获取登记记录详情
+ */
+export const getRegistrationById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(`
+      SELECT
+        id,
+        registration_date,
+        shift,
+        part_no,
+        grn,
+        qty,
+        location,
+        problem_description,
+        registration_time,
+        return_location,
+        recorder,
+        created_at,
+        updated_at
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      WHERE id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      throw new AppError('记录不存在', 404);
+    }
+
+    const row = result.rows[0];
+    const registration = {
+      id: row.id,
+      registrationDate: formatDate(row.registration_date),
+      shift: row.shift,
+      partNo: row.part_no,
+      grn: row.grn,
+      qty: parseFloat(row.qty) || 0,
+      location: row.location,
+      problemDescription: row.problem_description,
+      registrationTime: formatDateTime(row.registration_time),
+      returnLocation: row.return_location,
+      recorder: row.recorder,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+
+    success(res, registration, '获取成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 创建登记记录
+ */
+export const createRegistration = async (req, res, next) => {
+  try {
+    const {
+      partNo,
+      grn,
+      qty,
+      location,
+      problemDescription,
+      returnLocation
+    } = req.body;
+
+    // 验证必填字段
+    if (!partNo) {
+      throw BadRequestError('请填写 Part no');
+    }
+
+    // 获取当前用户信息
+    const user = req.user;
+    const recorder = user?.oldEmployeeId || user?.username || 'Unknown';
+
+    const result = await pool.query(`
+      INSERT INTO ${K2_DIFF_REGISTRATION_TABLE} (
+        registration_date,
+        shift,
+        part_no,
+        grn,
+        qty,
+        location,
+        problem_description,
+        registration_time,
+        return_location,
+        recorder
+      ) VALUES (
+        (CURRENT_DATE AT TIME ZONE 'Asia/Shanghai')::date,
+        CASE WHEN EXTRACT(HOUR FROM CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') >= 7 AND EXTRACT(HOUR FROM CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai') < 19 THEN 'A' ELSE 'C' END,
+        $1, $2, $3, $4, $5, CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai', $6, $7
+      )
+      RETURNING *
+    `, [
+      partNo,
+      grn || null,
+      qty || 0,
+      location || null,
+      problemDescription || null,
+      returnLocation || null,
+      recorder
+    ]);
+
+    const row = result.rows[0];
+    const registration = {
+      id: row.id,
+      registrationDate: formatDate(row.registration_date),
+      shift: row.shift,
+      partNo: row.part_no,
+      grn: row.grn,
+      qty: parseFloat(row.qty) || 0,
+      location: row.location,
+      problemDescription: row.problem_description,
+      registrationTime: formatDateTime(row.registration_time),
+      returnLocation: row.return_location,
+      recorder: row.recorder
+    };
+
+    logInfo('K**差异登记记录创建成功', { id: row.id, partNo, shift: row.shift, recorder });
+    success(res, registration, '登记成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 更新登记记录
+ */
+export const updateRegistration = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      partNo,
+      grn,
+      qty,
+      location,
+      problemDescription,
+      returnLocation
+    } = req.body;
+
+    // 检查记录是否存在
+    const existing = await pool.query(
+      'SELECT * FROM ' + K2_DIFF_REGISTRATION_TABLE + ' WHERE id = $1',
+      [id]
+    );
+
+    if (existing.rows.length === 0) {
+      throw new AppError('记录不存在', 404);
+    }
+
+    const result = await pool.query(`
+      UPDATE ${K2_DIFF_REGISTRATION_TABLE}
+      SET
+        part_no = COALESCE($1, part_no),
+        grn = COALESCE($2, grn),
+        qty = COALESCE($3, qty),
+        location = COALESCE($4, location),
+        problem_description = COALESCE($5, problem_description),
+        return_location = COALESCE($6, return_location),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+      RETURNING *
+    `, [
+      partNo,
+      grn,
+      qty,
+      location,
+      problemDescription,
+      returnLocation,
+      id
+    ]);
+
+    const row = result.rows[0];
+    const registration = {
+      id: row.id,
+      registrationDate: formatDate(row.registration_date),
+      shift: row.shift,
+      partNo: row.part_no,
+      grn: row.grn,
+      qty: parseFloat(row.qty) || 0,
+      location: row.location,
+      problemDescription: row.problem_description,
+      registrationTime: formatDateTime(row.registration_time),
+      returnLocation: row.return_location,
+      recorder: row.recorder
+    };
+
+    success(res, registration, '更新成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 删除登记记录
+ */
+export const deleteRegistration = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // 检查记录是否存在
+    const existing = await pool.query(
+      'SELECT * FROM ' + K2_DIFF_REGISTRATION_TABLE + ' WHERE id = $1',
+      [id]
+    );
+
+    if (existing.rows.length === 0) {
+      throw new AppError('记录不存在', 404);
+    }
+
+    await pool.query('DELETE FROM ' + K2_DIFF_REGISTRATION_TABLE + ' WHERE id = $1', [id]);
+
+    logInfo('K**差异登记记录删除成功', { id });
+    success(res, null, '删除成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 获取统计数据
+ * - 今日登记数量
+ * - 近7天登记数量
+ * - 今日各班次数量
+ */
+export const getStats = async (req, res, next) => {
+  try {
+    // 获取今天的日期范围（使用上海时间）
+    const now = getShanghaiNow();
+    const todayStr = formatShanghaiDate(now);
+
+    // 获取7天前的日期
+    const sevenDaysAgo = getDaysAgoShanghai(7, now);
+    const sevenDaysAgoStr = formatShanghaiDate(sevenDaysAgo);
+
+    // 今日统计
+    const todayResult = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
+        COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      WHERE registration_date = $1
+    `, [todayStr]);
+
+    // 近7天统计
+    const weekResult = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
+        COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      WHERE registration_date >= $1 AND registration_date <= $2
+    `, [sevenDaysAgoStr, todayStr]);
+
+    // 近7天每日统计
+    const dailyResult = await pool.query(`
+      SELECT
+        registration_date,
+        COUNT(*) as count,
+        COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
+        COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      WHERE registration_date >= $1 AND registration_date <= $2
+      GROUP BY registration_date
+      ORDER BY registration_date DESC
+    `, [sevenDaysAgoStr, todayStr]);
+
+    const stats = {
+      today: {
+        total: parseInt(todayResult.rows[0].total) || 0,
+        shiftA: parseInt(todayResult.rows[0].shift_a) || 0,
+        shiftC: parseInt(todayResult.rows[0].shift_c) || 0
+      },
+      last7Days: {
+        total: parseInt(weekResult.rows[0].total) || 0,
+        shiftA: parseInt(weekResult.rows[0].shift_a) || 0,
+        shiftC: parseInt(weekResult.rows[0].shift_c) || 0
+      },
+      daily: dailyResult.rows.map(row => ({
+        date: formatDate(row.registration_date),
+        count: parseInt(row.count) || 0,
+        shiftA: parseInt(row.shift_a) || 0,
+        shiftC: parseInt(row.shift_c) || 0
+      }))
+    };
+
+    success(res, stats, '获取成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 获取类型统计（数据库聚合，避免前端获取大量原始数据）
+ * - 按问题描述分组统计
+ */
+export const getTypeStats = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    // 默认近7天
+    let start = startDate;
+    let end = endDate;
+
+    if (!start || !end) {
+      const now = getShanghaiNow();
+      end = formatShanghaiDate(now);
+      const sevenDaysAgo = getDaysAgoShanghai(6, now);
+      start = formatShanghaiDate(sevenDaysAgo);
+    }
+
+    // 按问题描述分组统计
+    const result = await pool.query(`
+      SELECT
+        COALESCE(problem_description, '未分类') as type_name,
+        COUNT(*) as count
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      WHERE registration_date >= $1 AND registration_date <= $2
+      GROUP BY problem_description
+      ORDER BY count DESC
+    `, [start, end]);
+
+    const typeStats = result.rows.map(row => ({
+      name: row.type_name,
+      value: parseInt(row.count) || 0
+    }));
+
+    success(res, typeStats, '获取成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 批量发送邮件通知（合并所有记录为一封邮件）
+ */
+export const sendBulkNotification = async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      throw new AppError('请选择要发送的记录', 400);
+    }
+
+    // 获取所有记录信息
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+    const recordsResult = await pool.query(
+      `SELECT * FROM ${K2_DIFF_REGISTRATION_TABLE} WHERE id IN (${placeholders}) ORDER BY registration_date DESC, registration_time DESC`,
+      ids
+    );
+
+    if (recordsResult.rows.length === 0) {
+      throw new AppError('没有找到对应的记录', 404);
+    }
+
+    const records = recordsResult.rows;
+
+    // 获取邮件配置
+    const emailConfig = await getEmailConfig();
+
+    if (!emailConfig.enabled || !emailConfig.recipients) {
+      throw new AppError('邮件通知未启用或未配置收件人', 400);
+    }
+
+    const { recipients, cc } = emailConfig;
+
+    // 构建邮件主题：当前日期【K**差异登记Report】
+    const today = getShanghaiNow();
+    const todayStr = formatDate(today);
+    const subject = `${todayStr}【K**差异登记Report】`;
+
+    // 构建邮件正文
+    let body = `HI ALL: 以下是每日K**异常物料，请核查并改善，谢谢！\n\n`;
+
+    // 数据行（每行包含字段名和值）
+    records.forEach((record, index) => {
+      const regDate = formatDate(record.registration_date);
+      const regTime = formatDateTime(record.registration_time);
+      if (index > 0) {
+        body += '\n';
+      }
+      body += `  日期:${regDate}|班次:${record.shift}班|Part No:${record.part_no}|GRN:${record.grn || '-'}|数量:${record.qty}|位置:${record.location || '-'}|问题:${record.problem_description || '-'}|退料:${record.return_location || '-'}|记录人:${record.recorder}|时间:${regTime}`;
+    });
+
+    body += `\n---
+此邮件由系统自动发送，请勿回复。`;
+
+    logInfo('K**差异登记批量邮件通知', {
+      recordCount: records.length,
+      recipients,
+      cc
+    });
+
+    // 构建 mailto 链接
+    const mailtoSubject = encodeURIComponent(subject);
+    const mailtoBody = encodeURIComponent(body);
+    let mailtoLink = `mailto:${recipients}?subject=${mailtoSubject}&body=${mailtoBody}`;
+    if (cc) {
+      mailtoLink += `&cc=${encodeURIComponent(cc)}`;
+    }
+
+    success(res, {
+      count: records.length,
+      recipients,
+      cc,
+      subject,
+      mailtoLink,
+      body
+    }, '邮件已准备');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 发送邮件通知（单个记录，保留兼容）
+ */
+export const sendNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // 获取记录信息
+    const recordResult = await pool.query(
+      'SELECT * FROM ' + K2_DIFF_REGISTRATION_TABLE + ' WHERE id = $1',
+      [id]
+    );
+
+    if (recordResult.rows.length === 0) {
+      throw new AppError('记录不存在', 404);
+    }
+
+    const record = recordResult.rows[0];
+
+    // 获取邮件配置
+    const emailConfig = await getEmailConfig();
+
+    if (!emailConfig.enabled || !emailConfig.recipients) {
+      throw new AppError('邮件通知未启用或未配置收件人', 400);
+    }
+
+    const { recipients, cc } = emailConfig;
+
+    // 构建邮件内容
+    const registrationDate = formatDate(record.registration_date);
+    const registrationTime = formatDateTime(record.registration_time);
+    const subject = `【K**差异登记通知】${registrationDate} ${record.shift}班 ${record.part_no}`;
+    const body = `K**差异登记通知
+
+日期: ${registrationDate}
+班次: ${record.shift}班
+Part No: ${record.part_no}
+GRN: ${record.grn || '-'}
+数量: ${record.qty}
+位置: ${record.location || '-'}
+问题描述: ${record.problem_description || '-'}
+退料地点: ${record.return_location || '-'}
+记录人: ${record.recorder}
+登记时间: ${registrationTime}
+
+---
+此邮件由系统自动发送`;
+
+    logInfo('K**差异登记邮件通知', {
+      id,
+      partNo: record.part_no,
+      recipients,
+      cc
+    });
+
+    // 构建 mailto 链接
+    const mailtoSubject = encodeURIComponent(subject);
+    const mailtoBody = encodeURIComponent(body);
+    let mailtoLink = `mailto:${recipients}?subject=${mailtoSubject}&body=${mailtoBody}`;
+    if (cc) {
+      mailtoLink += `&cc=${encodeURIComponent(cc)}`;
+    }
+
+    success(res, {
+      id: record.id,
+      partNo: record.part_no,
+      recipients,
+      cc,
+      subject,
+      mailtoLink,
+      body
+    }, '邮件已准备');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+export default {
+  getRegistrations,
+  getRegistrationById,
+  createRegistration,
+  updateRegistration,
+  deleteRegistration,
+  getStats,
+  getTypeStats,
+  sendBulkNotification,
+  sendNotification
+};

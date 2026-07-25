@@ -12,272 +12,886 @@
 
     <div class="table-card">
       <div class="table-card-header">
-        <div class="table-card-title">🏭 工位管理</div>
+        <div class="table-card-title">🏭 工位安排</div>
         <div class="table-card-actions">
-          <button class="btn btn-primary" @click="openAddStationDialog">➕ 新增工位</button>
+          <el-button type="default" size="small" @click="resetSelection">🔄 重置</el-button>
+          <el-button type="primary" size="small" @click="openBatchAssignDialog">
+            📋 批量分配
+          </el-button>
         </div>
       </div>
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>工位名称</th>
-              <th>所属区域</th>
-              <th>状态</th>
-              <th>分配员工</th>
-              <th>分配时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="station in stations" :key="station.id" @click="selectStation(station)" :class="{ 'selected': selectedStation && selectedStation.id === station.id }">
-              <td>{{ station.id }}</td>
-              <td>{{ station.name }}</td>
-              <td>{{ station.area }}</td>
-              <td>
-                <span class="status-badge" :class="getStatusClass(station.status)">{{ station.status }}</span>
-              </td>
-              <td>{{ station.assignedEmployee || '-' }}</td>
-              <td>{{ station.assignmentTime || '-' }}</td>
-              <td>
-                <div class="table-actions">
-                  <button class="action-btn edit" @click.stop="openEditStationDialog">编辑</button>
-                  <button v-if="station.status === '可用'" class="action-btn edit" @click.stop="openAssignEmployeeDialog">分配</button>
-                  <button v-if="station.assignedEmployee" class="action-btn delete" @click.stop="unassignEmployee">解除</button>
-                  <button class="action-btn delete" @click.stop="deleteStation">删除</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="table-footer">
-        <div class="pagination-info">显示 1-{{ stations.length }} 条，共 {{ stations.length }} 条</div>
+
+      <div class="card-body">
+        <!-- 日期和班次选择 -->
+        <div class="selection-bar">
+          <div class="form-group">
+            <label>日期:</label>
+            <el-date-picker
+              v-model="selectedDate"
+              type="date"
+              placeholder="选择日期"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              :clearable="false"
+              @change="onDateChange"
+            />
+          </div>
+          <div class="form-group">
+            <label>班次:</label>
+            <el-select v-model="filterShift" placeholder="全部班次" clearable @change="onFilterChange">
+              <el-option v-for="shift in shiftOptions" :key="shift.value" :label="shift.label" :value="shift.value" />
+            </el-select>
+          </div>
+          <div class="form-group">
+            <label>厂区:</label>
+            <el-select v-model="filterPlantId" placeholder="全部厂区" @change="onFilterChange">
+              <el-option :value="0" label="全部厂区" />
+              <el-option v-for="plant in plants" :key="plant.id" :label="plant.name" :value="plant.id" />
+            </el-select>
+          </div>
+          <div class="form-group">
+            <label>部门:</label>
+            <el-select v-model="filterDepartmentId" placeholder="全部部门" @change="onFilterChange">
+              <el-option :value="0" label="全部部门" />
+              <el-option v-for="dept in filteredDepartments" :key="dept.id" :label="dept.name" :value="dept.id" />
+            </el-select>
+          </div>
+        </div>
+
+        <!-- 排班员工列表 -->
+        <div v-if="filteredEmployees.length > 0" class="employee-list-section">
+          <div class="section-title">
+            📋 排班员工列表 ({{ filteredEmployees.length }}人)
+          </div>
+          <div class="employee-table">
+            <el-table ref="employeeTableRef" :data="filteredEmployees" border style="width: 100%" @selection-change="handleSelectionChange">
+              <el-table-column type="selection" width="50" />
+              <el-table-column prop="realName" label="姓名" width="100" />
+              <el-table-column prop="sapEmployeeId" label="SAP工号" width="100" />
+              <el-table-column prop="plantName" label="厂区" width="120" />
+              <el-table-column prop="departmentName" label="部门" width="150" />
+              <el-table-column prop="shift" label="班次" width="80" />
+              <el-table-column prop="durationHours" label="工作时长" width="90">
+                <template #default="{ row }">
+                  {{ row.durationHours ? Number(row.durationHours).toFixed(1) + 'H' : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="分配的工位" min-width="250">
+                <template #default="{ row }">
+                  <div class="assigned-workstations">
+                    <el-tag
+                      v-for="ws in getAssignedWorkstations(row.employeeId)"
+                      :key="ws.workstationId"
+                      closable
+                      @close="unassignEmployee(row.employeeId, ws.workstationId)"
+                      type="success"
+                      class="ws-tag"
+                    >
+                      {{ ws.workstationName }}
+                    </el-tag>
+                    <span v-if="getAssignedWorkstations(row.employeeId).length === 0" class="no-assign">未分配</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="无产出时长" width="100">
+                <template #default="{ row }">
+                  {{ calculateNoProductionHours(row.employeeId) > 0 ? calculateNoProductionHours(row.employeeId).toFixed(1) + 'H' : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" size="small" @click="openAssignDialog(row)">
+                    {{ getAssignedWorkstations(row.employeeId).length > 0 ? '改派' : '分配' }}
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </div>
+
+        <div v-else-if="selectedDate" class="empty-state">
+          <p>该日期暂无排班员工</p>
+        </div>
+
+        <div v-else class="empty-state">
+          <p>请选择日期</p>
+        </div>
       </div>
     </div>
 
-    <!-- Add/Edit Station Dialog -->
-    <div v-if="isStationDialogOpen" class="dialog-overlay">
-      <div class="dialog-content">
-        <div class="dialog-header">
-          <h3>{{ isEditMode ? '编辑工位' : '新增工位' }}</h3>
-          <button class="dialog-close" @click="closeStationDialog">×</button>
+    <!-- 分配工位弹窗 -->
+    <el-dialog v-model="assignDialogVisible" title="分配工位" width="700px">
+      <div class="assign-dialog-content">
+        <div class="assign-employee-info">
+          <span class="label">员工:</span>
+          <span class="value">{{ currentEmployee?.realName }} ({{ currentEmployee?.sapEmployeeId || currentEmployee?.employeeId }})</span>
         </div>
-        <div class="dialog-body">
-          <form @submit.prevent="saveStation">
-            <div class="form-group">
-              <label for="stationName">工位名称:</label>
-              <input type="text" id="stationName" v-model="currentStation.name" required />
-            </div>
-            <div class="form-group">
-              <label for="area">所属区域:</label>
-              <input type="text" id="area" v-model="currentStation.area" required />
-            </div>
-            <div class="form-group">
-              <label for="status">状态:</label>
-              <select id="status" v-model="currentStation.status">
-                <option value="可用">可用</option>
-                <option value="占用">占用</option>
-                <option value="维护">维护</option>
-              </select>
-            </div>
-          </form>
+        <div class="assign-employee-info">
+          <span class="label">班次:</span>
+          <span class="value">{{ currentEmployee?.shift }}班</span>
         </div>
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="closeStationDialog">取消</button>
-          <button type="button" class="btn btn-primary" @click="saveStation">保存</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Assign Employee Dialog -->
-    <div v-if="isAssignEmployeeDialogOpen" class="dialog-overlay">
-      <div class="dialog-content">
-        <div class="dialog-header">
-          <h3>分配员工到工位: {{ selectedStation?.name }}</h3>
-          <button class="dialog-close" @click="closeAssignEmployeeDialog">×</button>
-        </div>
-        <div class="dialog-body">
-          <form @submit.prevent="assignEmployee">
-            <div class="form-group">
-              <label for="assignEmployee">选择员工:</label>
-              <select id="assignEmployee" v-model="selectedEmployeeForAssignmentId" required>
-                <option value="">请选择员工</option>
-                <option v-for="emp in availableEmployees" :key="emp.id" :value="emp.id">{{ emp.name }}</option>
-              </select>
+        <div class="workstation-select-section">
+          <div class="section-label">选择工位:</div>
+          <el-checkbox-group v-model="selectedWorkstationIds">
+            <!-- 普通工位 -->
+            <div class="workstation-grid">
+              <el-checkbox
+                v-for="ws in regularWorkstations"
+                :key="ws.workstationId"
+                :value="ws.workstationId"
+                :disabled="ws.workstationStatus !== 'active'"
+                class="workstation-checkbox-compact"
+              >
+                {{ ws.workstationName }}
+                <span class="ws-status" :class="ws.workstationStatus">
+                  ({{ ws.workstationStatus === 'active' ? '可用' : '停用' }})
+                </span>
+              </el-checkbox>
             </div>
-          </form>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="closeAssignEmployeeDialog">取消</button>
-          <button type="button" class="btn btn-primary" @click="assignEmployee">分配</button>
+            <!-- 前台/特殊工时工位 -->
+            <div v-for="ws in timeRequiredWorkstations" :key="ws.workstationId" class="time-required-ws">
+              <el-checkbox
+                :value="ws.workstationId"
+                :disabled="ws.workstationStatus !== 'active'"
+                class="workstation-checkbox"
+              >
+                {{ ws.workstationName }}
+              </el-checkbox>
+              <div class="time-picker-row">
+                <span class="time-label">开始:</span>
+                <el-time-picker
+                  v-model="singleStartTime"
+                  format="HH:mm"
+                  value-format="HH:mm:ss"
+                  placeholder="选择"
+                  style="width: 100px"
+                  size="small"
+                />
+                <span class="time-label">结束:</span>
+                <el-time-picker
+                  v-model="singleEndTime"
+                  format="HH:mm"
+                  value-format="HH:mm:ss"
+                  placeholder="选择"
+                  style="width: 100px"
+                  size="small"
+                />
+                <template v-if="ws.workstationName && ws.workstationName.trim().includes('特殊工时')">
+                  <span class="time-label">原因:</span>
+                  <el-input
+                    v-model="singleReason"
+                    placeholder="请填写原因"
+                    style="width: 120px"
+                    size="small"
+                  />
+                </template>
+              </div>
+            </div>
+          </el-checkbox-group>
         </div>
       </div>
-    </div>
+      <template #footer>
+        <el-button @click="assignDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmAssign">确定分配</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量分配弹窗 -->
+    <el-dialog v-model="batchAssignDialogVisible" title="批量分配工位" width="800px">
+      <div class="assign-dialog-content">
+        <div class="employee-select-section">
+          <div class="section-label">选择员工 ({{ selectedEmployeesForBatch.length }}人):</div>
+          <el-checkbox-group v-model="selectedEmployeeIdsForBatch">
+            <div class="employee-options">
+              <el-checkbox
+                v-for="emp in filteredEmployees"
+                :key="emp.employeeId"
+                :value="emp.employeeId"
+                class="employee-checkbox"
+              >
+                {{ emp.realName }}
+                <span class="emp-sap">({{ emp.sapEmployeeId || '-' }})</span>
+                <span class="emp-shift">{{ emp.shift }}班</span>
+                <span v-if="getAssignedWorkstations(emp.employeeId).length > 0" class="emp-assigned">
+                  已分配
+                </span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+        </div>
+
+        <div class="workstation-select-section">
+          <div class="section-label">分配到工位:</div>
+
+          <!-- 普通工位 - 网格布局 -->
+          <el-checkbox-group v-model="batchSelectedWorkstationIds">
+            <div class="workstation-grid">
+              <el-checkbox
+                v-for="ws in regularWorkstations"
+                :key="ws.workstationId"
+                :value="ws.workstationId"
+                :disabled="ws.workstationStatus !== 'active'"
+                class="workstation-checkbox-compact"
+              >
+                {{ ws.workstationName }}
+                <span class="ws-count" v-if="ws.employees.length > 0">
+                  ({{ ws.employees.length }})
+                </span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+
+          <!-- 前台/特殊工时工位 - 带时间选择 -->
+          <div v-for="ws in timeRequiredWorkstations" :key="ws.workstationId" class="time-required-ws">
+            <el-checkbox
+              v-model="batchSelectedWorkstationIds"
+              :value="ws.workstationId"
+              :disabled="ws.workstationStatus !== 'active'"
+            >
+              {{ ws.workstationName }}
+              <span class="ws-count" v-if="ws.employees.length > 0">
+                ({{ ws.employees.length }})
+              </span>
+            </el-checkbox>
+            <div class="time-picker-row">
+              <span class="time-label">开始:</span>
+              <el-time-picker
+                v-model="batchStartTime"
+                format="HH:mm"
+                value-format="HH:mm:ss"
+                placeholder="选择"
+                style="width: 100px"
+                size="small"
+              />
+              <span class="time-label">结束:</span>
+              <el-time-picker
+                v-model="batchEndTime"
+                format="HH:mm"
+                value-format="HH:mm:ss"
+                placeholder="选择"
+                style="width: 100px"
+                size="small"
+              />
+              <!-- 特殊工时需要填写原因 -->
+              <template v-if="ws.workstationName && ws.workstationName.trim().includes('特殊工时')">
+                <span class="time-label">原因:</span>
+                <el-input
+                  v-model="batchReason"
+                  type="textarea"
+                  :rows="1"
+                  placeholder="请填写原因"
+                  style="width: 150px"
+                  size="small"
+                  resize="none"
+                />
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="batchAssignDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmBatchAssign">确定分配</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import dayjs from 'dayjs';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ref, computed, onMounted } from 'vue';
+import { ElMessage } from 'element-plus';
+import dayjs from '@/plugins/dayjs';
+import request from '@/utils/request';
+import { addSpecialWorkingHours, deleteSpecialWorkingHoursByCondition } from '@/api/specialWorkingHours';
+import eventBus from '@/utils/eventBus';
 
-interface Station {
-  id: number;
-  name: string;
-  area: string;
-  status: '可用' | '占用' | '维护';
-  assignedEmployee?: string;
-  assignedEmployeeId?: number;
-  assignmentTime?: string;
-}
-
-interface Employee {
+interface Plant {
   id: number;
   name: string;
 }
 
-const availableEmployees: Employee[] = [
-  { id: 1, name: '张三' },
-  { id: 2, name: '李四' },
-  { id: 3, name: '王五' },
+interface Department {
+  id: number;
+  name: string;
+  plantId?: number;
+}
+
+interface ScheduledEmployee {
+  employeeId: number;
+  realName: string;
+  sapEmployeeId?: string;
+  shift: string;
+  plantId?: number;
+  plantName?: string;
+  departmentId?: number;
+  departmentName?: string;
+  employeeType?: string;
+  durationHours?: number;
+}
+
+interface AssignedEmployee {
+  arrangementId: number;
+  employeeId: number;
+  employeeName: string;
+  sapEmployeeId?: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  reason?: string | null;
+}
+
+interface WorkstationWithEmployees {
+  workstationId: number;
+  workstationName: string;
+  workstationStatus: string;
+  employees: AssignedEmployee[];
+}
+
+// 选择条件
+const selectedDate = ref<string>(dayjs().format('YYYY-MM-DD'));
+const filterShift = ref<string>('');
+const filterPlantId = ref(0);
+const filterDepartmentId = ref(0);
+
+// 数据
+const plants = ref<Plant[]>([]);
+const departments = ref<Department[]>([]);
+const filteredDepartments = ref<Department[]>([]);
+const scheduledEmployees = ref<ScheduledEmployee[]>([]);
+const workstations = ref<WorkstationWithEmployees[]>([]);
+
+// 分配弹窗
+const assignDialogVisible = ref(false);
+const currentEmployee = ref<ScheduledEmployee | null>(null);
+const selectedWorkstationIds = ref<number[]>([]);
+
+// 表格中选中的员工
+const tableSelectedEmployees = ref<ScheduledEmployee[]>([]);
+const employeeTableRef = ref();
+
+// 批量分配弹窗
+const batchAssignDialogVisible = ref(false);
+const selectedEmployeeIdsForBatch = ref<number[]>([]);
+const batchSelectedWorkstationIds = ref<number[]>([]);
+const batchStartTime = ref<string>('');
+const batchEndTime = ref<string>('');
+
+// 单个分配弹窗
+const singleStartTime = ref<string>('');
+const singleEndTime = ref<string>('');
+
+// 特殊工时原因
+const singleReason = ref<string>('');
+const batchReason = ref<string>('');
+
+// 判断是否为需要时间的工位（前台或特殊工时）
+const isTimeRequiredWorkstation = (workstationName: string): boolean => {
+  const name = workstationName?.trim() || '';
+  return name.includes('前台') || name.includes('特殊工时');
+};
+
+// 根据选中的员工ID获取员工对象
+const selectedEmployeesForBatch = computed(() => {
+  return filteredEmployees.value.filter(e => selectedEmployeeIdsForBatch.value.includes(e.employeeId));
+});
+
+// 普通工位（不需要时间）
+const regularWorkstations = computed(() => {
+  return workstations.value.filter(w => !isTimeRequiredWorkstation(w.workstationName));
+});
+
+// 需要时间的工位（前台、特殊工时）
+const timeRequiredWorkstations = computed(() => {
+  return workstations.value.filter(w => isTimeRequiredWorkstation(w.workstationName));
+});
+
+// 状态
+const loading = ref(false);
+
+// 班次选项
+const shiftOptions = [
+  { value: 'A', label: 'A班' },
+  { value: 'B', label: 'B班' },
+  { value: 'C', label: 'C班' },
+  { value: 'N', label: 'N班' },
+  { value: 'A+', label: 'A+班' },
+  { value: 'B+', label: 'B+班' },
+  { value: 'C+', label: 'C+班' },
+  { value: 'N+', label: 'N+班' },
+  { value: 'A2', label: 'A2班' },
 ];
 
-const stations = ref<Station[]>([
-  { id: 1, name: 'A01', area: '生产线1', status: '占用', assignedEmployee: '张三', assignedEmployeeId: 1, assignmentTime: '2024-06-28' },
-  { id: 2, name: 'A02', area: '生产线1', status: '可用' },
-  { id: 3, name: 'B01', area: '测试区', status: '维护' },
-]);
+// 计算无产出时长（前台/特殊工时工位的开始时间到结束时间）
+const calculateNoProductionHours = (employeeId: number): number => {
+  let totalHours = 0;
 
-const selectedStation = ref<Station | null>(null);
-const isStationDialogOpen = ref(false);
-const isEditMode = ref(false);
-const currentStation = ref<Station>({ id: 0, name: '', area: '', status: '可用' });
+  // 获取该员工分配到的所有前台或特殊工时工位
+  const timeRequiredWsList = workstations.value.filter(w => isTimeRequiredWorkstation(w.workstationName));
 
-const isAssignEmployeeDialogOpen = ref(false);
-const selectedEmployeeForAssignmentId = ref<number | null>(null);
+  for (const timeRequiredWs of timeRequiredWsList) {
+    const wsAssignment = timeRequiredWs.employees.find(e => e.employeeId === employeeId);
+    if (wsAssignment && wsAssignment.startTime && wsAssignment.endTime) {
+      // 计算开始和结束时间差（小时）
+      const startParts = wsAssignment.startTime.split(':');
+      const endParts = wsAssignment.endTime.split(':');
+      const startHour = startParts[0] ? parseFloat(startParts[0]) : 0;
+      const startMin = startParts[1] ? parseFloat(startParts[1]) : 0;
+      const endHour = endParts[0] ? parseFloat(endParts[0]) : 0;
+      const endMin = endParts[1] ? parseFloat(endParts[1]) : 0;
+      const startHours = startHour + startMin / 60;
+      const endHours = endHour + endMin / 60;
 
-const selectStation = (station: Station) => {
-  selectedStation.value = station;
-};
-
-const openAddStationDialog = () => {
-  isEditMode.value = false;
-  currentStation.value = { id: 0, name: '', area: '', status: '可用' };
-  isStationDialogOpen.value = true;
-};
-
-const openEditStationDialog = () => {
-  if (selectedStation.value) {
-    isEditMode.value = true;
-    currentStation.value = { ...selectedStation.value };
-    isStationDialogOpen.value = true;
-  }
-};
-
-const saveStation = () => {
-  if (isEditMode.value) {
-    const index = stations.value.findIndex(s => s.id === currentStation.value.id);
-    if (index !== -1) {
-      stations.value[index] = { ...currentStation.value };
-    }
-  } else {
-    currentStation.value.id = stations.value.length ? Math.max(...stations.value.map(s => s.id)) + 1 : 1;
-    stations.value.push({ ...currentStation.value });
-  }
-  closeStationDialog();
-};
-
-const deleteStation = () => {
-  if (selectedStation.value) {
-    ElMessageBox.confirm(
-      `确定要删除工位 "${selectedStation.value.name}" 吗？`,
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
-      .then(() => {
-        stations.value = stations.value.filter(s => s.id !== selectedStation.value!.id);
-        selectedStation.value = null;
-        ElMessage.success('工位删除成功！');
-      })
-      .catch(() => {
-        ElMessage.info('已取消删除');
-      });
-  }
-};
-
-const closeStationDialog = () => {
-  isStationDialogOpen.value = false;
-  currentStation.value = { id: 0, name: '', area: '', status: '可用' };
-};
-
-const openAssignEmployeeDialog = () => {
-  if (selectedStation.value) {
-    selectedEmployeeForAssignmentId.value = selectedStation.value.assignedEmployeeId || null;
-    isAssignEmployeeDialogOpen.value = true;
-  }
-};
-
-const assignEmployee = () => {
-  if (selectedStation.value && selectedEmployeeForAssignmentId.value) {
-    const employee = availableEmployees.find(emp => emp.id === selectedEmployeeForAssignmentId.value);
-    if (employee) {
-      selectedStation.value.assignedEmployee = employee.name;
-      selectedStation.value.assignedEmployeeId = employee.id;
-      selectedStation.value.assignmentTime = dayjs().format('YYYY-MM-DD HH:mm');
-      selectedStation.value.status = '占用';
+      // 无产出时长 = 结束时间 - 开始时间
+      const hours = Math.max(0, endHours - startHours);
+      totalHours += hours;
     }
   }
-  closeAssignEmployeeDialog();
+
+  return totalHours;
 };
 
-const unassignEmployee = () => {
-  if (selectedStation.value) {
-    ElMessageBox.confirm(
-      `确定要解除 "${selectedStation.value.assignedEmployee}" 在工位 "${selectedStation.value.name}" 的分配吗？`,
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
+// 根据班次筛选员工
+const filteredEmployees = computed(() => {
+  if (!filterShift.value) return scheduledEmployees.value;
+  return scheduledEmployees.value.filter(e => e.shift === filterShift.value);
+});
+
+// 获取厂区列表
+const fetchPlants = async () => {
+  try {
+    const data = await request.get('/plants');
+    plants.value = data?.plants || [];
+  } catch (error) {
+    console.error('获取厂区列表失败:', error);
+  }
+};
+
+// 获取部门列表
+const fetchDepartments = async () => {
+  try {
+    const data = await request.get('/departments');
+    departments.value = data?.departments || [];
+    filteredDepartments.value = departments.value;
+  } catch (error) {
+    console.error('获取部门列表失败:', error);
+  }
+};
+
+// 获取排班表中的员工
+const fetchScheduledEmployees = async () => {
+  try {
+    if (!selectedDate.value) {
+      scheduledEmployees.value = [];
+      return;
+    }
+
+    const res = await request.get('/schedule/by-date', {
+      params: { scheduleDate: selectedDate.value }
+    });
+
+    let scheduleData = res;
+    if (res && typeof res === 'object' && 'data' in res) {
+      scheduleData = (res as any).data;
+    }
+    const scheduleList = Array.isArray(scheduleData?.list) ? scheduleData.list :
+                         Array.isArray(scheduleData) ? scheduleData : [];
+
+    // 过滤掉请假/调休/离职/年假状态的员工，排除Jabil员工类型
+    scheduledEmployees.value = scheduleList
+      .filter((s: any) => !['请假', '调休', '离职', '年假'].includes(s.shift))
+      .filter((s: any) => s.employee_type !== 'Jabil')
+      .map((s: any) => ({
+        employeeId: s.employee_id,
+        realName: s.real_name || `员工${s.employee_id}`,
+        sapEmployeeId: s.sap_employee_id || '-',
+        shift: s.shift,
+        plantId: s.plant_id,
+        plantName: s.plant_name || '',
+        departmentId: s.department_id,
+        departmentName: s.department_name || '',
+        employeeType: s.employee_type,
+        durationHours: s.duration_hours || 0,
+      }));
+
+    console.log('排班员工列表:', scheduledEmployees.value);
+  } catch (error) {
+    console.error('获取排班数据失败:', error);
+    scheduledEmployees.value = [];
+  }
+};
+
+// 获取工位及其当日安排
+const fetchWorkstationsWithArrangements = async () => {
+  if (!selectedDate.value) {
+    return;
+  }
+
+  loading.value = true;
+  try {
+    const params: Record<string, any> = {
+      arrangementDate: selectedDate.value,
+    };
+    if (filterPlantId.value !== 0) params.plantId = filterPlantId.value;
+    if (filterDepartmentId.value !== 0) params.departmentId = filterDepartmentId.value;
+
+    const res = await request.get('/workstations/arrangements/by-date-shift', { params });
+    let wsData = res;
+    if (res && typeof res === 'object' && 'data' in res) {
+      wsData = (res as any).data;
+    }
+    workstations.value = Array.isArray(wsData) ? wsData : [];
+  } catch (error) {
+    ElMessage.error('获取工位安排失败');
+  } finally {
+    loading.value = false;
+  }
+};
+
+// 获取员工已分配的工位
+const getAssignedWorkstations = (employeeId: number) => {
+  const assigned: WorkstationWithEmployees[] = [];
+  workstations.value.forEach(ws => {
+    if (ws.employees.some(e => e.employeeId === employeeId)) {
+      assigned.push(ws);
+    }
+  });
+  return assigned;
+};
+
+// 获取厂区名称
+const getPlantName = (plantId?: number) => {
+  if (!plantId) return '-';
+  const plant = plants.value.find(p => p.id === plantId);
+  return plant?.name || '-';
+};
+
+// 获取部门名称
+const getDepartmentName = (departmentId?: number) => {
+  if (!departmentId) return '-';
+  const dept = departments.value.find(d => d.id === departmentId);
+  return dept?.name || '-';
+};
+
+// 打开分配弹窗
+const openAssignDialog = (employee: ScheduledEmployee) => {
+  currentEmployee.value = employee;
+  // 回显已分配的工位
+  selectedWorkstationIds.value = getAssignedWorkstations(employee.employeeId).map(ws => ws.workstationId);
+  // 清空时间选择器
+  singleStartTime.value = '';
+  singleEndTime.value = '';
+  singleReason.value = '';
+  assignDialogVisible.value = true;
+};
+
+// 确认分配
+const confirmAssign = async () => {
+  if (!currentEmployee.value) return;
+
+  const employeeId = currentEmployee.value.employeeId;
+  const newWsIds = new Set(selectedWorkstationIds.value);
+
+  // 获取当前分配状态
+  const currentWsIds = new Set(
+    workstations.value
+      .filter(ws => ws.employees.some(e => e.employeeId === employeeId))
+      .map(ws => ws.workstationId)
+  );
+
+  // 计算需要添加和移除的工位
+  const toAdd = [...newWsIds].filter(id => !currentWsIds.has(id));
+  const toRemove = [...currentWsIds].filter(id => !newWsIds.has(id));
+
+  try {
+    // 移除分配
+    for (const wsId of toRemove) {
+      const ws = workstations.value.find(w => w.workstationId === wsId);
+      if (ws) {
+        const removedEmp = ws.employees.find(e => e.employeeId === employeeId);
+        const isSpecialHours = ws.workstationName && ws.workstationName.trim().includes('特殊工时');
+
+        ws.employees = ws.employees.filter(e => e.employeeId !== employeeId);
+        await request.delete('/workstations/arrangements', {
+          data: {
+            workstationId: wsId,
+            arrangementDate: selectedDate.value,
+            employeeId: employeeId,
+          }
+        });
+
+        // 如果是特殊工时工位，同步删除特殊工时记录
+        if (isSpecialHours && removedEmp && removedEmp.reason) {
+          try {
+            await deleteSpecialWorkingHoursByCondition(
+              removedEmp.employeeName,
+              selectedDate.value,
+              removedEmp.reason
+            );
+          } catch (deleteError) {
+            console.error('删除特殊工时记录失败:', deleteError);
+          }
+        }
       }
-    )
-      .then(() => {
-        selectedStation.value!.assignedEmployee = undefined;
-        selectedStation.value!.assignedEmployeeId = undefined;
-        selectedStation.value!.assignmentTime = undefined;
-        selectedStation.value!.status = '可用';
-        selectedStation.value = null;
-        ElMessage.success('员工分配已解除！');
-      })
-      .catch(() => {
-        ElMessage.info('已取消解除分配');
-      });
+    }
+
+    // 添加分配
+    for (const wsId of toAdd) {
+      const ws = workstations.value.find(w => w.workstationId === wsId);
+      if (ws && !ws.employees.some(e => e.employeeId === employeeId)) {
+        // 如果是需要时间的工位（前台或特殊工时），需要传递开始和结束时间
+        const isTimeRequired = isTimeRequiredWorkstation(ws.workstationName);
+        if (isTimeRequired && (!singleStartTime.value || !singleEndTime.value)) {
+          ElMessage.warning('选择该工位时必须填写开始和结束时间');
+          return;
+        }
+        // 特殊工时必须填写原因
+        const isSpecialHours = ws.workstationName && ws.workstationName.trim().includes('特殊工时');
+        if (isSpecialHours && !singleReason.value.trim()) {
+          ElMessage.warning('选择特殊工时工位时必须填写原因');
+          return;
+        }
+        const startTime = isTimeRequired ? singleStartTime.value : undefined;
+        const endTime = isTimeRequired ? singleEndTime.value : undefined;
+        const reason = isSpecialHours ? singleReason.value : undefined;
+
+        ws.employees.push({
+          arrangementId: 0,
+          employeeId: employeeId,
+          employeeName: currentEmployee.value!.realName,
+          sapEmployeeId: currentEmployee.value!.sapEmployeeId,
+          startTime: startTime || null,
+          endTime: endTime || null,
+          reason: reason || null,
+        });
+        await request.post('/workstations/arrangements', {
+          workstationId: wsId,
+          arrangementDate: selectedDate.value,
+          shiftName: '',
+          employeeIds: [employeeId],
+          startTime: startTime,
+          endTime: endTime,
+          reason: reason,
+        });
+
+        // 如果是特殊工时工位，同时添加到特殊工时表
+        if (isSpecialHours && startTime && endTime) {
+          await addSpecialWorkingHours({
+            date: selectedDate.value,
+            event: reason,
+            employeeNames: [currentEmployee.value!.realName],
+            startTime: startTime.substring(0, 5), // 格式化为 HH:mm
+            endTime: endTime.substring(0, 5),
+          });
+        }
+      }
+    }
+
+    assignDialogVisible.value = false;
+    singleStartTime.value = '';
+    singleEndTime.value = '';
+    singleReason.value = '';
+    ElMessage.success('分配成功');
+    eventBus.emit('special-working-hours-changed');
+    eventBus.emit('workstation-arrangement-changed');
+  } catch (error) {
+    ElMessage.error('分配失败');
+    // 重新加载数据
+    fetchWorkstationsWithArrangements();
   }
 };
 
-const closeAssignEmployeeDialog = () => {
-  isAssignEmployeeDialogOpen.value = false;
-  selectedEmployeeForAssignmentId.value = null;
+// 打开批量分配弹窗（使用表格选中的员工）
+const openBatchAssignDialog = () => {
+  console.log('打开批量分配弹窗', {
+    tableSelectedCount: tableSelectedEmployees.value.length,
+    filteredCount: filteredEmployees.value.length
+  });
+  if (tableSelectedEmployees.value.length === 0) {
+    ElMessage.warning('请先在表格中选择员工');
+    return;
+  }
+  selectedEmployeeIdsForBatch.value = tableSelectedEmployees.value.map(e => e.employeeId);
+  batchSelectedWorkstationIds.value = [];
+  batchStartTime.value = ''; // 清空起始时间
+  batchEndTime.value = ''; // 清空结束时间
+  batchReason.value = ''; // 清空原因
+  batchAssignDialogVisible.value = true;
 };
 
-const getStatusClass = (status: string) => {
-  switch (status) {
-    case '可用':
-      return 'status-green';
-    case '占用':
-      return 'status-blue';
-    case '维护':
-      return 'status-gray';
-    default:
-      return '';
+// 确认批量分配
+const confirmBatchAssign = async () => {
+  console.log('确认批量分配', {
+    selectedEmployeeCount: selectedEmployeeIdsForBatch.value.length,
+    selectedWorkstationCount: batchSelectedWorkstationIds.value.length
+  });
+  if (selectedEmployeeIdsForBatch.value.length === 0 || batchSelectedWorkstationIds.value.length === 0) {
+    ElMessage.warning('请选择员工和工位');
+    return;
+  }
+
+  // 检查是否选择了需要时间的工位（前台或特殊工时），如果是则必须填写开始和结束时间
+  const timeRequiredWs = workstations.value.find(w => isTimeRequiredWorkstation(w.workstationName) && batchSelectedWorkstationIds.value.includes(w.workstationId));
+  if (timeRequiredWs && (!batchStartTime.value || !batchEndTime.value)) {
+    ElMessage.warning('选择该工位时必须填写开始和结束时间');
+    return;
+  }
+
+  // 检查是否选择了特殊工时工位，如果是则必须填写原因
+  const specialHoursWs = workstations.value.find(w => w.workstationName && w.workstationName.trim().includes('特殊工时') && batchSelectedWorkstationIds.value.includes(w.workstationId));
+  if (specialHoursWs && !batchReason.value.trim()) {
+    ElMessage.warning('选择特殊工时工位时必须填写原因');
+    return;
+  }
+
+  const selectedWsIds = new Set(batchSelectedWorkstationIds.value);
+  let successCount = 0;
+
+  try {
+    for (const wsId of selectedWsIds) {
+      const ws = workstations.value.find(w => w.workstationId === wsId);
+      if (ws) {
+        const employeeIds = selectedEmployeesForBatch.value.map(e => e.employeeId);
+        // 如果是需要时间的工位（前台或特殊工时），需要传递开始和结束时间
+        const isTimeRequired = isTimeRequiredWorkstation(ws.workstationName);
+        const isSpecialHours = ws.workstationName && ws.workstationName.trim().includes('特殊工时');
+        const startTime = isTimeRequired ? batchStartTime.value : undefined;
+        const endTime = isTimeRequired ? batchEndTime.value : undefined;
+        const reason = isSpecialHours ? batchReason.value : undefined;
+
+        await request.post('/workstations/arrangements', {
+          workstationId: wsId,
+          arrangementDate: selectedDate.value,
+          shiftName: '',
+          employeeIds: employeeIds,
+          startTime: startTime,
+          endTime: endTime,
+          reason: reason,
+        });
+
+        // 更新前端数据
+        selectedEmployeesForBatch.value.forEach(employee => {
+          if (!ws.employees.some(e => e.employeeId === employee.employeeId)) {
+            ws.employees.push({
+              arrangementId: 0,
+              employeeId: employee.employeeId,
+              employeeName: employee.realName,
+              sapEmployeeId: employee.sapEmployeeId,
+              startTime: startTime || null,
+              endTime: endTime || null,
+              reason: reason || null,
+            });
+          }
+        });
+        successCount++;
+
+        // 如果是特殊工时工位，同时添加到特殊工时表
+        if (isSpecialHours && startTime && endTime) {
+          const employeeNames = selectedEmployeesForBatch.value.map(e => e.realName);
+          await addSpecialWorkingHours({
+            date: selectedDate.value,
+            event: reason,
+            employeeNames: employeeNames,
+            startTime: startTime.substring(0, 5),
+            endTime: endTime.substring(0, 5),
+          });
+        }
+      }
+    }
+
+    batchAssignDialogVisible.value = false;
+    batchStartTime.value = '';
+    batchEndTime.value = '';
+    batchReason.value = '';
+    ElMessage.success(`已分配 ${selectedEmployeesForBatch.value.length} 名员工到 ${successCount} 个工位`);
+    eventBus.emit('special-working-hours-changed');
+    eventBus.emit('workstation-arrangement-changed');
+  } catch (error) {
+    ElMessage.error('分配失败');
+    fetchWorkstationsWithArrangements();
   }
 };
+
+// 移除员工的工位分配
+const unassignEmployee = async (employeeId: number, workstationId: number) => {
+  const ws = workstations.value.find(w => w.workstationId === workstationId);
+  if (!ws) return;
+
+  // 保存当前员工数据用于回滚
+  const removedEmployee = ws.employees.find(e => e.employeeId === employeeId);
+  const isSpecialHours = ws.workstationName && ws.workstationName.trim().includes('特殊工时');
+
+  try {
+    // 先从本地移除（乐观更新）
+    ws.employees = ws.employees.filter(e => e.employeeId !== employeeId);
+
+    await request.delete('/workstations/arrangements', {
+      data: {
+        workstationId: workstationId,
+        arrangementDate: selectedDate.value,
+        employeeId: employeeId,
+      }
+    });
+
+    // 如果是特殊工时工位，同步删除特殊工时记录
+    if (isSpecialHours && removedEmployee && removedEmployee.reason) {
+      try {
+        await deleteSpecialWorkingHoursByCondition(
+          removedEmployee.employeeName,
+          selectedDate.value,
+          removedEmployee.reason
+        );
+      } catch (deleteError) {
+        console.error('删除特殊工时记录失败:', deleteError);
+        // 不影响主流程，只记录错误
+      }
+    }
+
+    ElMessage.success('已取消分配');
+    eventBus.emit('special-working-hours-changed');
+    eventBus.emit('workstation-arrangement-changed');
+  } catch (error) {
+    // 失败时回滚本地数据
+    if (removedEmployee) {
+      ws.employees.push(removedEmployee);
+    }
+    ElMessage.error('取消分配失败');
+  }
+};
+
+// 重置
+const resetSelection = () => {
+  tableSelectedEmployees.value = [];
+  employeeTableRef.value?.clearSelection();
+  fetchWorkstationsWithArrangements();
+};
+
+// 表格选择变化
+const handleSelectionChange = (rows: ScheduledEmployee[]) => {
+  tableSelectedEmployees.value = rows;
+};
+
+// 日期变化
+const onDateChange = () => {
+  fetchScheduledEmployees();
+  fetchWorkstationsWithArrangements();
+};
+
+// 筛选变化
+const onFilterChange = () => {
+  fetchWorkstationsWithArrangements();
+};
+
+onMounted(() => {
+  fetchPlants();
+  fetchDepartments();
+  fetchScheduledEmployees();
+  fetchWorkstationsWithArrangements();
+
+  // 监听特殊工时变化，刷新数据
+  eventBus.on('special-working-hours-changed', () => {
+    fetchWorkstationsWithArrangements();
+  });
+});
 </script>
 
 <style scoped>
@@ -358,14 +972,17 @@ const getStatusClass = (status: string) => {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #0066CC 0%, #0052A3 100%);
+  background-color: #3B82F6;
   color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #0052A3 0%, #003D7A 100%);
-  box-shadow: 0 6px 16px rgba(0, 102, 204, 0.4);
+  background-color: #2563EB;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -379,220 +996,294 @@ const getStatusClass = (status: string) => {
   border-color: #9CA3AF;
 }
 
-.table-container {
-  overflow-x: auto;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.data-table thead {
-  background: #F9FAFB;
-}
-
-.data-table th {
-  padding: 16px 24px;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 600;
-  color: #6B7280;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #F3F4F6;
-}
-
-.data-table td {
-  padding: 16px 24px;
-  font-size: 14px;
-  color: #374151;
-  border-bottom: 1px solid #F3F4F6;
-}
-
-.data-table tbody tr {
-  transition: background-color 0.2s ease;
-  cursor: pointer;
-}
-
-.data-table tbody tr:hover {
-  background-color: #F9FAFB;
-}
-
-.data-table tbody tr.selected {
-  background-color: #EFF6FF;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.status-green {
-  background: #E8F5E9;
-  color: #10B981;
-}
-
-.status-blue {
-  background: #E3F2FD;
-  color: #0066CC;
-}
-
-.status-gray {
-  background: #F3F4F6;
-  color: #6B7280;
-}
-
-.table-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.action-btn {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.action-btn.edit {
-  background-color: #E3F2FD;
-  color: #0066CC;
-}
-
-.action-btn.edit:hover {
-  background-color: #BBDEFB;
-}
-
-.action-btn.delete {
-  background-color: #FEE2E2;
-  color: #EF4444;
-}
-
-.action-btn.delete:hover {
-  background-color: #FECACA;
-}
-
-.table-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  border-top: 1px solid #F3F4F6;
-}
-
-.pagination-info {
-  font-size: 14px;
-  color: #6B7280;
-}
-
-.dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.dialog-content {
-  background-color: #FFFFFF;
-  color: #111827;
-  padding: 0;
-  border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-  width: 500px;
-  max-width: 90%;
-}
-
-.dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #E5E7EB;
-}
-
-.dialog-header h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.dialog-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: #6B7280;
-  cursor: pointer;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.dialog-close:hover {
-  background-color: #F3F4F6;
-  color: #111827;
-}
-
-.dialog-body {
+.card-body {
   padding: 24px;
 }
 
-.form-group {
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 20px;
+  background-color: #F9FAFB;
+  border-radius: 12px;
+}
+
+.selection-bar .form-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.selection-bar .form-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.selection-bar .form-group :deep(.el-select) {
+  width: 180px;
+}
+
+.employee-list-section {
   margin-bottom: 20px;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 10px;
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
   color: #374151;
-  font-weight: 500;
-  font-size: 14px;
+  margin-bottom: 12px;
 }
 
-.form-group input[type="text"],
-.form-group select {
-  width: 100%;
-  padding: 10px 14px;
-  border: 1px solid #D1D5DB;
+.employee-table {
   border-radius: 8px;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
+  overflow: hidden;
 }
 
-.form-group input[type="text"]:focus,
-.form-group select:focus {
-  border-color: #0066CC;
-  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
-}
-
-.dialog-actions {
+.assigned-workstations {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px 24px;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
 }
 
-.dialog-actions .btn {
-  padding: 10px 24px;
+.ws-tag {
+  margin: 2px;
+}
+
+.no-assign {
+  color: #9CA3AF;
+  font-size: 13px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #9CA3AF;
+  font-size: 15px;
+}
+
+/* 分配弹窗样式 */
+.assign-dialog-content {
+  padding: 10px 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.assign-employee-info {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.assign-employee-info .label {
+  color: #6B7280;
+}
+
+.assign-employee-info .value {
+  color: #111827;
+  font-weight: 500;
+}
+
+.employee-select-section {
+  margin-bottom: 20px;
+}
+
+.employee-select-section .section-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.employee-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background-color: #F9FAFB;
+  border-radius: 8px;
+}
+
+.employee-checkbox {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  margin-right: 0;
+  font-size: 13px;
+}
+
+.employee-checkbox:hover {
+  background-color: #F3F4F6;
+}
+
+.emp-sap {
+  margin-left: 6px;
+  color: #6B7280;
+  font-size: 12px;
+}
+
+.emp-shift {
+  margin-left: 6px;
+  color: #3B82F6;
+  font-size: 12px;
+}
+
+.emp-assigned {
+  margin-left: 6px;
+  color: #10B981;
+  font-size: 12px;
+}
+
+.workstation-select-section {
+  margin-top: 20px;
+}
+
+.workstation-select-section .section-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.start-time-section {
+  margin-top: 16px;
+  padding: 12px;
+  background-color: #FEF3C7;
+  border-radius: 6px;
+  border: 1px solid #FCD34D;
+}
+
+/* 工位网格布局 */
+.workstation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.workstation-checkbox-compact {
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  margin-right: 0;
+  margin-bottom: 0;
+  transition: all 0.2s;
+}
+
+.workstation-checkbox-compact:hover {
+  background-color: #F3F4F6;
+  border-color: #3B82F6;
+}
+
+/* 前台/特殊工时工位样式 */
+.time-required-ws {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background-color: #FEF3C7;
+  border-radius: 8px;
+  border: 1px solid #FCD34D;
+}
+
+.time-required-ws .el-checkbox {
+  margin-bottom: 8px;
+}
+
+.time-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 24px;
+}
+
+.time-picker-row .time-label {
+  font-size: 12px;
+  color: #92400E;
+  white-space: nowrap;
+}
+
+.ws-count {
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+/* 旧样式保留兼容性 */
+.workstation-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.workstation-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.front-desk-time-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 24px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  padding: 4px 8px;
+  background-color: #FEF3C7;
+  border-radius: 4px;
+  border: 1px solid #FCD34D;
+  flex-wrap: wrap;
+}
+
+.front-desk-time-picker .time-label {
+  font-size: 12px;
+  color: #92400E;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+.front-desk-time-picker .reason-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.front-desk-time-picker .reason-input .time-label {
+  margin-top: 0;
+}
+
+.workstation-checkbox {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  margin-right: 0;
+}
+
+.workstation-checkbox:hover {
+  background-color: #F9FAFB;
+}
+
+.ws-count {
+  margin-left: 4px;
+  color: #9CA3AF;
+  font-size: 11px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
 }
 </style>

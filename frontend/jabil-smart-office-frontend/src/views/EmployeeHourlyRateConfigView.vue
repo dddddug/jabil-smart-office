@@ -88,9 +88,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
 import { ElMessage } from 'element-plus';
+import { formatShanghaiDateTime } from '../utils/dateUtils';
 
 // Interfaces
 interface HourlyRate {
@@ -128,8 +129,9 @@ const getStatus = (rate: HourlyRate) => {
 const loadHourlyRates = async () => {
   isLoading.value = true;
   try {
-    const response = await request.get<HourlyRate[]>('/config/employee-hourly-rates');
-    hourlyRates.value = response;
+    const res = await request.get<{ items: HourlyRate[] }>('/config/employee-hourly-rates');
+    // res is already unwrapped by interceptor - it's { items: HourlyRate[] }
+    hourlyRates.value = res?.items || res || [];
   } catch (error) {
     ElMessage.error('加载费率失败！');
   } finally {
@@ -160,8 +162,8 @@ const saveRate = async () => {
     const rateToSave = {
       level: currentRate.value.level,
       standardRate: currentRate.value.standardRate,
-      startTime: dayjs(currentRate.value.startTime).toISOString(),
-      endTime: currentRate.value.endTime ? dayjs(currentRate.value.endTime).toISOString() : null
+      startTime: dayjs(currentRate.value.startTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'),
+      endTime: currentRate.value.endTime ? dayjs(currentRate.value.endTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss') : null
     };
     await request.post('/config/employee-hourly-rates', rateToSave);
     await loadHourlyRates();

@@ -48,10 +48,10 @@
 
     <!-- 子页面Tab -->
     <div class="sub-tabs">
-      <div :class="{ 'tab-item': true, 'tab-overview': true, 'active': subTab === 'overview' }" @click="subTab = 'overview'">排班总览</div>
-      <div :class="{ 'tab-item': true, 'tab-break7': true, 'active': subTab === 'break7' }" @click="subTab = 'break7'">破7休1和周工时上限、公差补卡申请</div>
-      <div :class="{ 'tab-item': true, 'tab-attendance': true, 'active': subTab === 'attendance' }" @click="subTab = 'attendance'">考勤汇总</div>
-      <div :class="{ 'tab-item': true, 'tab-special': true, 'active': subTab === 'special' }" @click="subTab = 'special'">特殊工时</div>
+      <div :class="{ 'tab-item': true, 'tab-overview': true, 'active': subTab.id === 'overview' }" @click="subTab = subTabsOptions.find(t => t.id === 'overview')!">排班总览</div>
+      <div :class="{ 'tab-item': true, 'tab-break7': true, 'active': subTab.id === 'break7' }" @click="subTab = subTabsOptions.find(t => t.id === 'break7')!">破7休1和周工时上限、公差补卡申请</div>
+      <div :class="{ 'tab-item': true, 'tab-attendance': true, 'active': subTab.id === 'attendance' }" @click="subTab = subTabsOptions.find(t => t.id === 'attendance')!">考勤汇总</div>
+      <div :class="{ 'tab-item': true, 'tab-special': true, 'active': subTab.id === 'special' }" @click="subTab = subTabsOptions.find(t => t.id === 'special')!">特殊工时</div>
     </div>
 
     <!-- 右键菜单 -->
@@ -72,14 +72,14 @@
         <span class="menu-icon">📄</span>
         <span>粘贴 (Ctrl+V)</span>
       </div>
-      <div class="context-menu-item" @click.stop="handleClearSelection(closeContextMenu)">
+      <div class="context-menu-item" @click.stop="handleClearSelection(); closeContextMenu()">
         <span class="menu-icon">❌</span>
         <span>清空选择 (ESC)</span>
       </div>
     </div>
 
     <!-- 排班总览内容 -->
-    <template v-if="subTab === 'overview'">
+    <template v-if="subTab.id === 'overview'">
       <!-- 顶部指标栏：级别汇总 + 天数指标 -->
       <div class="summary-top-section">
         <!-- 按级别汇总工时（紧凑卡片形式） -->
@@ -151,7 +151,7 @@
               <button :disabled="!selectedDateForButtons" @click="toggleShiftFilter">班次{{ scheduleShiftFilter.length > 0 ? ' (' + scheduleShiftFilter.length + ')' : '' }}</button>
               <button @click="oneClickSchedule">⚡ 一键排班</button>
               <button @click="importSchedule">📤 导入排班</button>
-              <button @click="exportAttendance(currentPeriodStart.value, summaryData.value, overworkingEmployees.value, weeklyLimitEmployees.value, errandFixList.value)">📥 考勤导出</button>
+              <button @click="exportAttendance">📥 考勤导出</button>
             </div>
           </div>
           <div class="table-container">
@@ -213,7 +213,7 @@
               <button :disabled="!selectedDateForButtons" @click="toggleShiftFilter">班次{{ scheduleShiftFilter.length > 0 ? ' (' + scheduleShiftFilter.length + ')' : '' }}</button>
               <button @click="oneClickSchedule">⚡ 一键排班</button>
               <button @click="importSchedule">📤 导入排班</button>
-              <button @click="exportAttendance(currentPeriodStart.value, summaryData.value, overworkingEmployees.value, weeklyLimitEmployees.value, errandFixList.value)">📥 考勤导出</button>
+              <button @click="exportAttendance">📥 考勤导出</button>
             </div>
           </div>
           <div class="table-container">
@@ -348,7 +348,7 @@
     </template>
 
     <!-- 破7休1和周工时上限、公差补卡申请内容 -->
-    <template v-else-if="subTab === 'break7'">
+    <template v-else-if="subTab.id === 'break7'">
       <div class="schedule-content">
         <h3 class="summary-title">破7休1和周工时上限检查</h3>
         <p>已识别连续工作超过7天或周工时超过限制的员工。</p>
@@ -453,21 +453,21 @@
     </template>
 
     <!-- 特殊工时内容 -->
-    <template v-else-if="subTab === 'special'">
+    <template v-else-if="subTab.id === 'special'">
       <SpecialWorkingHoursPage />
     </template>
 
     <!-- 考勤汇总内容 -->
-    <template v-else-if="subTab === 'attendance'">
+    <template v-else-if="subTab.id === 'attendance'">
       <div class="attendance-section">
         <h3 class="section-title">考勤汇总</h3>
         
         <div class="sub-tabs-sub">
-          <div :class="{'tab-item-sub': true, 'active': attendanceSubTab.id === 'overtime'}" @click="attendanceSubTab = 'overtime'">临时加班</div>
-          <div :class="{'tab-item-sub': true, 'active': attendanceSubTab.id === 'leave'}" @click="attendanceSubTab = 'leave'">临时请假</div>
+          <div :class="{'tab-item-sub': true, 'active': attendanceSubTab.id === 'overtime'}" @click="attendanceSubTab = attendanceSubTabsOptions.find(t => t.id === 'overtime')!">临时加班</div>
+          <div :class="{'tab-item-sub': true, 'active': attendanceSubTab.id === 'leave'}" @click="attendanceSubTab = attendanceSubTabsOptions.find(t => t.id === 'leave')!">临时请假</div>
         </div>
 
-        <div v-if="attendanceSubTab === 'overtime'">
+        <div v-if="attendanceSubTab.id === 'overtime'">
           <h4 class="section-title">临时加班记录 ({{ temporaryOvertimes.length }}条)</h4>
           <div v-if="temporaryOvertimes.length > 0">
             <table class="schedule-table">
@@ -558,9 +558,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import dayjs from 'dayjs';
-import weekday from 'dayjs/plugin/weekday';
-import isoWeek from 'dayjs/plugin/isoWeek';
+import dayjs from '@/plugins/dayjs';
 import 'dayjs/locale/zh-cn';
 import ExcelJS from 'exceljs';
 import SpecialWorkingHoursPage from '../SpecialWorkingHoursPage.vue';
@@ -580,7 +578,10 @@ import {
   IgnoredOverworkItem,
   AttendanceSubTab,
   Plant,
-  Department
+  Department,
+  DepartmentSummaryItem,
+  EmployeeWithOverworkDetails,
+  EmployeeWithWeeklyLimitDetails
 } from '../../types/schedule';
 
 import { useSchedulePeriod } from '../../composables/useSchedulePeriod';
@@ -595,8 +596,6 @@ import ShiftEditDialog from '../../components/ShiftEditDialog.vue';
 import ImportScheduleDialog from '../../components/ImportScheduleDialog.vue';
 import BatchShiftDialog from '../../components/BatchShiftDialog.vue';
 
-dayjs.extend(weekday);
-dayjs.extend(isoWeek);
 dayjs.locale('zh-cn');
 
 const savedSubTab = localStorage.getItem('employeeScheduleSubTab');
@@ -623,8 +622,9 @@ const attendanceSubTabsOptions: AttendanceSubTab[] = [
   { id: 'leave', label: '临时请假' },
 ];
 
+const defaultSubTab = subTabsOptions[0] || { id: 'overview', label: '排班总览' };
 const subTab = ref<SubTab>(
-  subTabsOptions.find(tab => tab.id === savedSubTab) ?? subTabsOptions[0]
+  subTabsOptions.find(tab => tab.id === savedSubTab) ?? defaultSubTab
 );
 
 const schedulePositionFilter = ref<string[]>(
@@ -659,8 +659,9 @@ const errandFixForm = ref<ErrandFixForm>({
   reason: '',
 });
 
+const defaultAttendanceSubTab = attendanceSubTabsOptions[0] || { id: 'overtime', label: '临时加班' };
 const attendanceSubTab = ref<AttendanceSubTab>(
-  attendanceSubTabsOptions.find(tab => tab.id === savedAttendanceSubTab) ?? attendanceSubTabsOptions[0]
+  attendanceSubTabsOptions.find(tab => tab.id === savedAttendanceSubTab) ?? defaultAttendanceSubTab
 );
 
 const plants = ref<Plant[]>([]);
@@ -798,6 +799,7 @@ const {
   oneClickSchedule,
   openShiftEditDialog,
   openBatchShiftEdit,
+  handleRightClick,
 } = useScheduleOperations({
   paginatedEmployees: paginatedEmployees.value,
   weekDays: weekDays.value,
@@ -808,8 +810,14 @@ const {
 
 const {
   printData,
-  exportToExcel
+  exportToExcel,
+  exportAttendance: doExportAttendance
 } = useExportAndPrint();
+
+// Wrapper function to satisfy Vue's onClick type signature
+const exportAttendance = (_event: PointerEvent) => {
+  doExportAttendance(currentPeriodStart.value, summaryData.value, overworkingEmployees.value, weeklyLimitEmployees.value, errandFixList.value);
+};
 
 const getEmployeeHours = (
   employee: Employee,
@@ -886,6 +894,38 @@ const levelHoursSummary = computed(() => {
   return summary;
 });
 
+const summaryData = computed<DepartmentSummaryItem[]>(() => {
+  const deptMap = new Map<string, DepartmentSummaryItem>();
+
+  [...overworkingEmployees.value, ...weeklyLimitEmployees.value].forEach(emp => {
+    const dept = emp.departmentName || emp.department || '未知部门';
+    if (!deptMap.has(dept)) {
+      deptMap.set(dept, {
+        department: dept,
+        applicant: '',
+        overworkCount: 0,
+        overLimitCount: 0,
+        totalOverHours: 0,
+        period: currentPeriodStart.value,
+        reason: ''
+      });
+    }
+    const item = deptMap.get(dept)!;
+    if ('consecutiveDays' in emp) {
+      item.overworkCount++;
+    }
+    if ('overLimitHours' in emp) {
+      item.overLimitCount++;
+      item.totalOverHours += (emp as EmployeeWithWeeklyLimitDetails).overLimitHours;
+    }
+  });
+
+  return Array.from(deptMap.values());
+});
+
+const totalOverworkCount = computed(() => overworkingEmployees.value.length);
+const totalOverLimitCount = computed(() => weeklyLimitEmployees.value.length);
+
 const currentFilterDays = computed(() => {
   if (scheduleViewMode.value === 'week') {
     return weekDays.value.length;
@@ -914,8 +954,8 @@ const goToPage = (page: number) => {
 
 const loadPlants = async () => {
   try {
-    const response = await request.get<{ plants: Plant[] }>('/plants');
-    plants.value = response.plants;
+    const res = await request.get<{ plants: Plant[] }>('/plants');
+    plants.value = res?.plants || [];
   } catch (error) {
     console.error('加载厂区列表失败:', error);
   }
@@ -923,8 +963,8 @@ const loadPlants = async () => {
 
 const loadDepartments = async () => {
   try {
-    const response = await request.get<{ departments: Department[] }>('/departments');
-    departments.value = response.departments;
+    const res = await request.get<{ departments: Department[] }>('/departments');
+    departments.value = res?.departments || [];
   } catch (error) {
     console.error('加载部门列表失败:', error);
   }
@@ -932,8 +972,8 @@ const loadDepartments = async () => {
 
 const loadAvailableShifts = async () => {
   try {
-    const response = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
-    availableShifts.value = response.shifts;
+    const res = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
+    availableShifts.value = res?.shifts || [];
   } catch (error) {
     console.error('加载可用班次失败:', error);
   }
@@ -994,11 +1034,13 @@ fetchEmployees = async () => {
           
         }
 
-    const data = await request.get<{ employees: Employee[] }>(`/schedule/employees`, {
+    const response = await request.get<{ employees: Employee[] }>(`/schedule/employees`, {
       params: { startDate, endDate }
     });
 
-    if (data.employees) {
+    const data = (response as any)?.data || response;
+
+    if (data?.employees) {
       const viewStartDate = dayjs(startDate);
       const filteredEmployeesList = data.employees.filter((emp: any) => {
         // Filter out admin user
@@ -1028,8 +1070,8 @@ fetchEmployees = async () => {
           scheduleHours += getWorkHours(shift);
         });
 
-        let overtimeHours = 0;
-        let leaveHours = 0;
+        const overtimeHours = 0;
+        const leaveHours = 0;
 
         return {
           ...emp,

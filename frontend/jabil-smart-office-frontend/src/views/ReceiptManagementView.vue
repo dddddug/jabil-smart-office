@@ -157,6 +157,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { formatShanghaiDateTime } from '../utils/dateUtils';
 
 interface Receipt {
   id: number;
@@ -202,8 +203,9 @@ const loadReceipts = async () => {
     if (!response.ok) {
       throw new Error('网络响应异常');
     }
-    const data = await response.json();
-    receipts.value = data.receipts; // Assuming the API returns { receipts: [...] }
+    const res = await response.json();
+    const data = res?.data || res;
+    receipts.value = data?.receipts || [];
     ElMessage.success('单据数据加载成功');
   } catch (error) {
     ElMessage.error('加载单据数据失败，请检查后端服务。');
@@ -282,16 +284,17 @@ const saveReceipt = async () => {
       throw new Error('操作失败');
     }
 
-    const data = await response.json();
+    const res = await response.json();
+    const data = res?.data || res;
 
     if (isEditMode.value) {
       const index = receipts.value.findIndex(r => r.id === currentReceipt.value.id);
       if (index !== -1) {
-        receipts.value[index] = data.receipt; // Assuming API returns updated receipt
+        receipts.value[index] = data?.receipt;
       }
       ElMessage.success('单据更新成功');
     } else {
-      receipts.value.unshift(data.receipt); // Assuming API returns new receipt with ID
+      receipts.value.unshift(data?.receipt);
       ElMessage.success('单据新增成功');
     }
     closeReceiptDialog();
@@ -312,7 +315,7 @@ const confirmReceipt = async (receipt: Receipt) => {
     const response = await fetch(`/api/receipts/${receipt.id}/confirm`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receiver: '当前用户', receivedAt: new Date().toISOString() })
+      body: JSON.stringify({ receiver: '当前用户', receivedAt: formatShanghaiDateTime() })
     });
 
     if (!response.ok) {

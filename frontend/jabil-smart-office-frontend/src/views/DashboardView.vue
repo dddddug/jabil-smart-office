@@ -242,8 +242,8 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '业务中心', isHeader: true, label: '业务中心', expanded: false, icon: '📋' },
   { name: '员工排班', icon: '📅', routeName: 'employee-schedule', parent: '业务中心', expanded: false },
   { name: '工位安排', icon: '🏭', routeName: 'station-arrangement', parent: '业务中心', expanded: false },
-  { name: '单据接收', icon: '📦', routeName: 'receipt-management', parent: '业务中心', expanded: false },
-  { name: '便捷打印', icon: '🖨️', routeName: 'convenient-print', parent: '业务中心', expanded: false },
+  { name: 'K045 单据管理', icon: '📦', routeName: 'k045', parent: '业务中心', expanded: false },
+  { name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', parent: '业务中心', expanded: false },
   { name: '数据中心', isHeader: true, label: '数据中心', expanded: false, icon: '📊' },
   { name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', parent: '数据中心', expanded: false },
   { name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', parent: '数据中心', expanded: false },
@@ -252,6 +252,8 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '人事中心', isHeader: true, label: '人事中心', expanded: false, icon: '👥' },
   { name: '员工花名册', icon: '👥', routeName: 'employee-roster', parent: '人事中心', expanded: false },
   { name: '请假公差', icon: '📝', routeName: 'leave-management', parent: '人事中心', expanded: false },
+  { name: '便捷打印', isHeader: true, label: '便捷打印', expanded: false, icon: '🖨️' },
+  { name: 'PNC转仓打印', icon: '📋', routeName: 'convenient-print', parent: '便捷打印', expanded: false },
   { name: '组织管理', isHeader: true, label: '组织管理', expanded: false, icon: '🏢' },
   { name: '组织结构', icon: '🏢', routeName: 'organizational-structure', parent: '组织管理', expanded: false },
   { name: '厂区管理', icon: '🏭', routeName: 'plant-management', parent: '组织管理', expanded: false },
@@ -260,6 +262,7 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: 'Bin容量', icon: '📦', routeName: 'bin-volume-management', parent: '仓储管理', expanded: false },
   { name: '过期料延期', icon: '⏰', routeName: 'expired-material-extension', parent: '仓储管理', expanded: false },
   { name: '6S管理', icon: '✨', routeName: '6s-management', parent: '仓储管理', expanded: false },
+  { name: 'K**差异登记', icon: '📝', routeName: 'k2-diff-registration', parent: '仓储管理', expanded: false },
   { name: '系统管理', isHeader: true, label: '系统管理', expanded: false, icon: '⚙️' },
   { name: '系统公告', icon: '📢', routeName: 'announcement-management', parent: '系统管理', expanded: false },
   { name: '用户管理', icon: '👤', routeName: 'user-management', parent: '系统管理', expanded: false },
@@ -269,6 +272,11 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '部门计算规则', icon: '📐', routeName: 'dept-calc-rules-config', parent: '规则配置', expanded: false },
   { name: '班次时长规则', icon: '⏰', routeName: 'shift-duration-rules-config', parent: '规则配置', expanded: false },
   { name: '智能排班规则', icon: '📋', routeName: 'smart-schedule-rules-config', parent: '规则配置', expanded: false },
+  { name: 'K045 规则配置', icon: '📄', routeName: 'k045-config', parent: '规则配置', expanded: false },
+  { name: '管控物料 规则配置', icon: '📋', routeName: 'da-material-config', parent: '规则配置', expanded: false },
+  { name: 'PNC转仓打印配置', icon: '📄', routeName: 'pnc-transfer-config', parent: '规则配置', expanded: false },
+  { name: 'K**差异登记 规则配置', icon: '📝', routeName: 'k2-diff-config', parent: '规则配置', expanded: false },
+  { name: '工位配置', icon: '🏭', routeName: 'workstation-config', parent: '规则配置', expanded: false },
   { name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', parent: '规则配置', expanded: false },
   { name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', parent: '规则配置', expanded: false },
 ]);
@@ -389,9 +397,31 @@ onMounted(() => {
   }
   // 清除旧的 lastRoute 避免干扰
   localStorage.removeItem('lastRoute');
+
+  // 清理无效的标签页（移除不存在的路由）
+  const validTabs = tabs.value.filter(tab =>
+    tab.routeName && router.hasRoute(tab.routeName)
+  );
+
+  // 如果所有标签都被过滤掉了，只保留仪表盘
+  if (validTabs.length === 0) {
+    validTabs.push({ title: '仪表盘', icon: '📊', routeName: 'dashboard' });
+  }
+
+  // 更新标签页列表
+  tabs.value = validTabs;
+
+  // 确保 activeTab 不超出范围
+  if (activeTab.value >= tabs.value.length) {
+    activeTab.value = 0;
+  }
+
+  // 保存清理后的标签页
+  saveTabs();
+
   // 恢复标签页后跳转到对应的路由
   const targetTab = tabs.value[activeTab.value];
-  if (targetTab && targetTab.routeName) {
+  if (targetTab && targetTab.routeName && router.hasRoute(targetTab.routeName)) {
     router.replace({ name: targetTab.routeName });
   } else {
     router.replace({ name: 'dashboard' });

@@ -40,6 +40,15 @@ export function deleteSpecialWorkingHours(ids) {
   })
 }
 
+// 根据员工姓名、日期、事件名称删除特殊工时记录（用于工位安排移除时同步删除）
+export function deleteSpecialWorkingHoursByCondition(employeeName, date, event) {
+  return request({
+    url: API_PREFIX,
+    method: 'delete',
+    params: { employeeName, date, event }
+  })
+}
+
 export function exportSpecialWorkingHours(query) {
   return request({
     url: API_PREFIX + '/export',

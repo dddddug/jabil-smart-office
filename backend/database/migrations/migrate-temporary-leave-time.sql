@@ -1,5 +1,6 @@
+-- [已废弃 - 迁移功能已合并到 migrate-fix-tables.sql]
 -- 迁移临时请假表，将日期字段改为支持时间
-ALTER TABLE jso_hr_temporary_leave 
+ALTER TABLE jso_hr_temporary_leave
 ALTER COLUMN start_date TYPE TIMESTAMP,
 ALTER COLUMN end_date TYPE TIMESTAMP;
 

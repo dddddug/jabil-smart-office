@@ -135,9 +135,10 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
 import { ElMessage } from 'element-plus';
+import { formatShanghaiDateTime } from '../utils/dateUtils';
 
 // Interfaces
 interface Plant {
@@ -153,9 +154,9 @@ interface Department {
 
 interface DeptRule {
   id: number;
-  plant_id: number;
+  plantId: number;
   plantName: string;
-  department_id: number;
+  departmentId: number;
   departmentName: string;
   business_month: string;
   estimated_cost: number;
@@ -191,7 +192,7 @@ const filterDepartmentId = ref(0);
 // Computed
 const filteredDepartmentsForFilter = computed(() => {
   if (filterPlantId.value === 0) return departments.value;
-  return departments.value.filter(d => d.plant_id === filterPlantId.value);
+  return departments.value.filter(d => d.plantId === filterPlantId.value);
 });
 
 const departmentsForDialog = computed(() => {
@@ -204,8 +205,8 @@ const departmentsForDialog = computed(() => {
 
 const filteredRules = computed(() => {
   return rules.value.filter(rule => {
-    const plantMatch = filterPlantId.value === 0 || rule.plant_id === filterPlantId.value;
-    const deptMatch = filterDepartmentId.value === 0 || rule.department_id === filterDepartmentId.value;
+    const plantMatch = filterPlantId.value === 0 || rule.plantId === filterPlantId.value;
+    const deptMatch = filterDepartmentId.value === 0 || rule.departmentId === filterDepartmentId.value;
     return plantMatch && deptMatch;
   });
 });
@@ -219,9 +220,11 @@ const loadInitialData = async () => {
       request.get('/plants'),
       request.get('/departments')
     ]);
-    rules.value = rulesData;
-    plants.value = plantsData.plants;
-    departments.value = deptsData.departments;
+    const plantsRes = plantsData?.data || plantsData;
+    const deptsRes = deptsData?.data || deptsData;
+    rules.value = rulesData?.data || rulesData;
+    plants.value = plantsRes?.plants || [];
+    departments.value = deptsRes?.departments || [];
   } catch (error) {
     ElMessage.error('加载初始数据失败！');
   } finally {
@@ -253,8 +256,9 @@ const closeDialog = () => isDialogOpen.value = false;
 const onPlantChangeInDialog = () => {
   currentRule.value.departmentId = undefined; // Reset department when plant changes
   // If there are filtered departments, select the first one
-  if (departmentsForDialog.value.length > 0) {
-    currentRule.value.departmentId = departmentsForDialog.value[0].id;
+  const firstDept = departmentsForDialog.value[0];
+  if (firstDept) {
+    currentRule.value.departmentId = firstDept.id;
   }
 };
 
@@ -268,8 +272,8 @@ const saveRule = async () => {
       estimatedCost: currentRule.value.estimatedCost,
       exchangeRate: currentRule.value.exchangeRate,
       rateCoefficient: currentRule.value.rateCoefficient,
-      startTime: dayjs(currentRule.value.startTime).toISOString(),
-      endTime: currentRule.value.endTime ? dayjs(currentRule.value.endTime).toISOString() : null
+      startTime: dayjs(currentRule.value.startTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'),
+      endTime: currentRule.value.endTime ? dayjs(currentRule.value.endTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss') : null
     };
     await request.post('/config/dept-calc-rules', ruleToSave);
     await loadInitialData();

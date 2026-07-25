@@ -511,9 +511,9 @@ const filteredEmployees = computed(() => {
       roleMatch = Number(emp.departmentId) === Number(currentUser?.departmentId);
     }
     
-    const nameMatch = !searchQuery.value.name || 
-      (emp.name?.toLowerCase().includes(searchQuery.value.name.toLowerCase()) || 
-      emp.employeeId?.toLowerCase().includes(searchQuery.value.name.toLowerCase()));
+    const nameMatch = !searchQuery.value.name ||
+      ((emp.name || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()) ||
+      (emp.employeeId || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()));
     const plantMatch = !searchQuery.value.plantId || Number(emp.plantId) === Number(searchQuery.value.plantId);
     const deptMatch = !searchQuery.value.departmentId || Number(emp.departmentId) === Number(searchQuery.value.departmentId);
     
@@ -663,9 +663,9 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info' = 
 const loadEmployees = async () => {
   isLoading.value = true;
   try {
-    const data = await request.get(`/users`) as { items: any[] };
-      // 将用户数据转换为员工数据格式
-      const userList = data.items || [];
+    const res = await request.get(`/users`) as { items: any[] };
+    // res is already unwrapped by interceptor - it's { items: any[] }
+    const userList = res?.items || [];
     employees.value = userList
       .filter((user: any) => user.username !== 'admin') // 过滤掉admin用户
       .map((user: any) => ({ // Create a variable to log it
@@ -697,8 +697,9 @@ const loadEmployees = async () => {
 
 const loadPlants = async () => {
   try {
-    const data = await request.get(`/plants`) as { plants: any[] };
-    plants.value = Array.isArray(data.plants) ? data.plants : [];
+    // 拦截器已自动解包 data，res 直接是数据对象
+    const data: any = await request.get(`/plants`);
+    plants.value = Array.isArray(data?.plants) ? data.plants : [];
   } catch (error) {
     console.error('Error loading plants:', error);
   }
@@ -706,8 +707,9 @@ const loadPlants = async () => {
 
 const loadDepartments = async () => {
   try {
-    const data = await request.get(`/departments`) as { departments: any[] };
-    departments.value = Array.isArray(data.departments) ? data.departments : [];
+    // 拦截器已自动解包 data，res 直接是数据对象
+    const data = await request.get('/departments') as { departments: any[] };
+    departments.value = Array.isArray(data?.departments) ? data.departments : [];
   } catch (error) {
     console.error('Error loading departments:', error);
   }
@@ -770,18 +772,24 @@ const openEditEmployeeDialog = (employee: Employee) => {
   }
   
   // 处理性别，处理多种可能的格式
-  if (formattedEmployee.gender) {
-    const gender = formattedEmployee.gender.trim().toUpperCase();
+  // 确保 gender 是字符串类型
+  const genderValue = formattedEmployee.gender;
+  const genderStr = (typeof genderValue === 'string' ? genderValue : JSON.stringify(genderValue) || '').trim();
+  if (genderStr) {
+    const gender = genderStr.toUpperCase();
     if (gender === 'MALE' || gender === '男' || gender === 'M') {
       formattedEmployee.gender = 'MALE';
     } else if (gender === 'FEMALE' || gender === '女' || gender === 'F') {
       formattedEmployee.gender = 'FEMALE';
     }
   }
-  
+
   // 处理状态，确保是大写格式
-  if (formattedEmployee.status) {
-    const status = formattedEmployee.status.toUpperCase();
+  // 确保 status 是字符串类型
+  const statusValue = formattedEmployee.status;
+  const statusStr = (typeof statusValue === 'string' ? statusValue : JSON.stringify(statusValue) || '').trim();
+  if (statusStr) {
+    const status = statusStr.toUpperCase();
     if (status === 'ACTIVE' || status === 'RESIGNED') {
       formattedEmployee.status = status;
     } else if (status === 'INACTIVE') {
@@ -898,6 +906,7 @@ const downloadTemplate = () => {
       '岗位': 'Leader',
       '级别': 'Group Leader',
       '电话': '13265993181',
+      '邮箱': 'ZHOUT10@jabil.com',
       '入职日期': '2014/7/11',
       '离职日期': '',
       'IC卡号': '0004623524',
@@ -914,6 +923,7 @@ const downloadTemplate = () => {
       '岗位': 'Supervisor',
       '级别': 'Warehouse Supervisor',
       '电话': '15915763653',
+      '邮箱': 'LINX5@jabil.com',
       '入职日期': '2014/7/11',
       '离职日期': '',
       'IC卡号': '0004033976',
@@ -960,7 +970,7 @@ const handleFile = (file: File) => {
   previewData.value = [];
   importResults.value = null;
 
-  const fileExtension = file.name.toLowerCase().split('.').pop();
+  const fileExtension = (file.name || '').toLowerCase().split('.').pop();
   
   if (['xlsx', 'xls', 'xlsm'].includes(fileExtension || '')) {
     parseExcel(file);
@@ -1027,6 +1037,7 @@ const parseExcel = (file: File) => {
           else if (header === '岗位') user.position = cellValue;
           else if (header === '级别') user.level = cellValue;
           else if (header === '电话') user.phone = cellValue;
+          else if (header === '邮箱') user.email = cellValue;
           else if (header === '入职日期') user.hireDate = convertExcelDate(cellValue);
           else if (header === '离职日期') user.leaveDate = convertExcelDate(cellValue);
           else if (header === 'IC卡号') user.icCardNumber = cellValue;
@@ -1100,6 +1111,7 @@ const parseCSV = (file: File) => {
           else if (header === '岗位') user.position = value;
           else if (header === '级别') user.level = value;
           else if (header === '电话') user.phone = value;
+          else if (header === '邮箱') user.email = value;
           else if (header === '入职日期') user.hireDate = convertDate(value);
           else if (header === '离职日期') user.leaveDate = convertDate(value);
           else if (header === 'IC卡号') user.icCardNumber = value;

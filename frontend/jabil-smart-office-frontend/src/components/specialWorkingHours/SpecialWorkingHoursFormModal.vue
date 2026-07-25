@@ -56,7 +56,7 @@
             :value="user.employeeName"
           ></el-option>
         </el-select>
-        <el-button type="text" @click="toggleSelectAllUsers">
+        <el-button link @click="toggleSelectAllUsers">
           {{ isAllUsersSelected ? '取消全选' : '全选' }}
         </el-button>
       </el-form-item>
@@ -84,17 +84,19 @@
       </el-form-item>
     </el-form>
 
-    <span slot="footer" class="dialog-footer">
+    <template v-slot:footer>
+<span  class="dialog-footer">
       <el-button @click="handleClose">取 消</el-button>
       <el-button type="primary" @click="handleSubmit">确 定</el-button>
     </span>
+</template>
   </el-dialog>
 </template>
 
 <script>
 import { EVENT_OPTIONS } from '@/utils/constants'
 import { getUserList, getDepartmentList } from '@/api/userManagement'
-import dayjs from 'dayjs'
+import dayjs from '@/plugins/dayjs'
 
 export default {
   name: 'SpecialWorkingHoursFormModal',
@@ -209,20 +211,22 @@ export default {
     async loadUserList() {
       try {
         const data = await getUserList();
-        this.userList = data.users.map(user => ({ employeeName: user.realName, oldEmployeeId: user.oldEmployeeId, id: user.id, departmentId: user.departmentId }));
+        const userArray = data?.users || data?.items || [];
+        this.userList = userArray.map(user => ({ employeeName: user.realName, oldEmployeeId: user.oldEmployeeId, id: user.id, departmentId: user.departmentId }));
       } catch (error) {
-        this.$message.error('获取用户列表失败：' + error.message);
+        this.$message.error('获取用户列表失败：' + (error?.message || '未知错误'));
       }
     },
     async loadDepartmentList() {
       try {
         const data = await getDepartmentList();
-        this.departmentList = data.departments.map(dept => ({
+        const deptArray = data?.departments || data?.items || [];
+        this.departmentList = deptArray.map(dept => ({
           id: dept.id,
-          departmentName: dept.name // 假设后端返回的部门名称字段是 'name'
+          departmentName: dept.name || dept.departmentName
         }));
       } catch (error) {
-        this.$message.error('获取部门列表失败：' + error.message);
+        this.$message.error('获取部门列表失败：' + (error?.message || '未知错误'));
       }
     },
     handleDepartmentChange() {

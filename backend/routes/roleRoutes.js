@@ -2,11 +2,12 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const TABLE_NAME = 'jso_system_role_management';
 
 // 获取所有角色
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM ${TABLE_NAME} ORDER BY id`);
     const roles = result.rows.map(row => ({
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
 });
 
 // 创建角色
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name, description, status } = req.body;
     const result = await pool.query(
@@ -48,7 +49,7 @@ router.post('/', async (req, res) => {
 });
 
 // 更新角色
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, status } = req.body;
@@ -76,7 +77,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // 删除角色
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM ${TABLE_NAME} WHERE id = $1 RETURNING *`, [id]);
@@ -91,7 +92,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // 批量同步角色（覆盖更新）
-router.put('/', async (req, res) => {
+router.put('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

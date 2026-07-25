@@ -2,7 +2,7 @@
   <div class="login-page">
     <!-- Header -->
     <header class="login-header">
-      SYSTEM ONLINE | Jabil 广州 | 智能办公中心 | 2026年6月8日星期日 15:39:09
+      SYSTEM ONLINE | Jabil 广州 | 智能办公中心 | {{ currentDateTime }}
     </header>
 
     <!-- Main Content -->
@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, shallowRef, computed, onMounted } from 'vue'
+import { reactive, ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
 import type { FormInstance } from 'element-plus'
 import { useRoute } from 'vue-router'
 
@@ -91,6 +91,23 @@ import RegisterForm from './RegisterForm.vue'
 import ResetPasswordForm from './ResetPasswordForm.vue'
 
 const currentView = shallowRef('login') // 'login', 'register', 'resetPassword'
+
+// 实时日期时间
+const currentDateTime = ref('')
+let timer: ReturnType<typeof setInterval> | null = null
+
+const updateDateTime = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const seconds = String(now.getSeconds()).padStart(2, '0')
+  const weekDays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+  const weekDay = weekDays[now.getDay()]
+  currentDateTime.value = `${year}年${month}月${day}日${weekDay} ${hours}:${minutes}:${seconds}`
+}
 
 const currentViewComponent = computed(() => {
   switch (currentView.value) {
@@ -113,9 +130,18 @@ const goToView = (viewName: string) => {
 const route = useRoute() // Initialize useRoute
 
 onMounted(() => {
+  updateDateTime()
+  timer = setInterval(updateDateTime, 1000)
+
   const viewParam = route.query.view as string
   if (viewParam && ['login', 'register', 'resetPassword'].includes(viewParam)) {
     currentView.value = viewParam
+  }
+})
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
   }
 })
 </script>

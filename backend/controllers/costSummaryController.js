@@ -15,11 +15,32 @@ export const getCostSummaryDropdownOptions = async (req, res) => {
 // 获取 Cost 汇总数据
 export const getCostSummaryData = async (req, res) => {
   try {
-    const { fiscalMonth, departmentIds, positions, plantId, page = 1, pageSize = 10 } = req.query;
+    const { fiscalMonth, fiscalYear, fiscalWeek, fiscalDate, departmentIds, positions, plantId, page = 1, pageSize = 10 } = req.query;
     const userId = req.user.id;
-    
+
+    // 验证 fiscalWeek 格式
+    if (fiscalWeek && !/^\d{4}-W\d{1,2}$/.test(fiscalWeek)) {
+      return res.status(400).json({ code: 400, message: '财周格式错误，应为 YYYY-WXX 格式，如 2026-W29' });
+    }
+
+    // 验证财周范围
+    if (fiscalWeek) {
+      const weekNum = parseInt(fiscalWeek.split('-W')[1]);
+      if (weekNum < 1 || weekNum > 53) {
+        return res.status(400).json({ code: 400, message: '财周必须在 1-53 之间' });
+      }
+    }
+
+    // 验证 fiscalDate 格式
+    if (fiscalDate && !/^\d{4}-\d{2}-\d{2}$/.test(fiscalDate)) {
+      return res.status(400).json({ code: 400, message: '日期格式错误，应为 YYYY-MM-DD 格式，如 2026-07-15' });
+    }
+
     const data = await costSummaryService.getCostSummaryData({
       fiscalMonth,
+      fiscalYear,
+      fiscalWeek,
+      fiscalDate,
       departmentIds: departmentIds ? (Array.isArray(departmentIds) ? departmentIds : [departmentIds]) : undefined,
       positions: positions ? (Array.isArray(positions) ? positions : [positions]) : undefined,
       plantId: plantId ? parseInt(plantId) : undefined,

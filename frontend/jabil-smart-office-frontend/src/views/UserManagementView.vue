@@ -51,8 +51,8 @@
               <td>{{ user.departmentName }}</td>
               <td>{{ user.loginCount || 0 }}</td>
               <td>
-                <span :class="['status-badge', (user.status && user.status.toLowerCase() === 'active') ? 'active' : 'inactive']">
-                  {{ (user.status && user.status.toLowerCase() === 'active') ? '启用' : '禁用' }}
+                <span :class="['status-badge', ((user.status || '').toLowerCase() === 'active') ? 'active' : 'inactive']">
+                  {{ ((user.status || '').toLowerCase() === 'active') ? '启用' : '禁用' }}
                 </span>
               </td>
               <td>{{ user.createdAt ? dayjs(user.createdAt).format('YYYY-MM-DD HH:mm') : '-' }}</td>
@@ -316,7 +316,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
 import * as XLSX from 'xlsx';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request'; // 导入 axios 实例
 
 
@@ -342,6 +342,7 @@ interface User {
   position?: string;
   level?: string;
   phone?: string;
+  email?: string;
   hireDate?: string;
   leaveDate?: string;
   icCardNumber?: string;
@@ -384,6 +385,7 @@ interface ImportUser {
   position?: string;
   level?: string;
   phone?: string;
+  email?: string;
   hireDate?: string;
   leaveDate?: string;
   icCardNumber?: string;
@@ -505,8 +507,9 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info' = 
 const loadUsers = async () => {
   isLoading.value = true;
   try {
+    // 拦截器已自动解包 data，res 直接是数据对象
     const data = await request.get('/users');
-    users.value = data.items || data.users || [];
+    users.value = data?.items || data?.users || [];
   } catch (error) {
     console.error('获取用户失败:', error);
     showNotification('获取用户失败，请检查后端服务', 'error');
@@ -517,18 +520,15 @@ const loadUsers = async () => {
 };
 
 const loadDefaultUsers = () => {
-  users.value = [
-    { id: 1, username: 'admin', roleId: 1, roleName: '超级管理员', plantId: 1, plantName: '广州厂区', departmentId: 1, departmentName: '生产部', status: 'active', loginCount: 0, createdAt: '2023-01-01' },
-    { id: 2, username: 'plant_manager', roleId: 2, roleName: '厂区管理员', plantId: 1, plantName: '广州厂区', departmentId: 2, departmentName: '研发部', status: 'active', loginCount: 0, createdAt: '2023-03-15' },
-    { id: 3, username: 'dept_manager', roleId: 3, roleName: '部门管理员', plantId: 2, plantName: '上海厂区', departmentId: 5, departmentName: '行政部', status: 'active', loginCount: 0, createdAt: '2023-05-20' },
-    { id: 4, username: 'employee', roleId: 4, roleName: '普通员工', plantId: 1, plantName: '广州厂区', departmentId: 1, departmentName: '生产部', status: 'active', loginCount: 0, createdAt: '2023-07-01' },
-  ];
+  // 如果API失败，使用空数组
+  users.value = [];
 };
 
 const loadRoles = async () => {
   try {
+    // 拦截器已自动解包 data，res 直接是数据对象
     const data = await request.get('/roles');
-    availableRoles.value = data.roles;
+    availableRoles.value = data?.roles || [];
   } catch (error) {
     console.error('获取角色失败:', error);
     availableRoles.value = [
@@ -542,29 +542,25 @@ const loadRoles = async () => {
 
 const loadPlants = async () => {
   try {
+    // 拦截器已自动解包 data，res 直接是数据对象
     const data = await request.get('/plants');
-    availablePlants.value = data.plants;
+    availablePlants.value = data?.plants || [];
   } catch (error) {
     console.error('获取厂区失败:', error);
-    availablePlants.value = [
-      { id: 1, name: '广州厂区' },
-      { id: 2, name: '上海厂区' },
-    ];
+    // 如果API失败，使用空数组
+    availablePlants.value = [];
   }
 };
 
 const loadDepartments = async () => {
   try {
+    // 拦截器已自动解包 data，res 直接是数据对象
     const data = await request.get('/departments');
-    allDepartments.value = data.departments;
+    allDepartments.value = data?.departments || [];
   } catch (error) {
     console.error('获取部门失败:', error);
-    allDepartments.value = [
-      { id: 1, name: '生产部', plantId: 1 },
-      { id: 2, name: '研发部', plantId: 1 },
-      { id: 5, name: '行政部', plantId: 2 },
-      { id: 6, name: '销售部', plantId: 2 },
-    ];
+    // 如果API失败，使用空数组
+    allDepartments.value = [];
   }
 };
 
@@ -767,6 +763,7 @@ const downloadTemplate = () => {
       '岗位': 'Leader',
       '级别': 'Group Leader',
       '电话': '13265993181',
+      '邮箱': 'ZHOUT10@jabil.com',
       '入职日期': '2014/7/11',
       '离职日期': '',
       'IC卡号': '0004623524',
@@ -783,6 +780,7 @@ const downloadTemplate = () => {
       '岗位': 'Supervisor',
       '级别': 'Warehouse Supervisor',
       '电话': '15915763653',
+      '邮箱': 'LINX5@jabil.com',
       '入职日期': '2014/7/11',
       '离职日期': '',
       'IC卡号': '0004033976',
@@ -841,7 +839,7 @@ const processFile = (file: File) => {
   previewData.value = [];
   importResults.value = null;
 
-  const fileExtension = file.name.toLowerCase().split('.').pop();
+  const fileExtension = (file.name || '').toLowerCase().split('.').pop();
   
   if (['xlsx', 'xls', 'xlsm'].includes(fileExtension || '')) {
     parseExcel(file);
@@ -915,6 +913,7 @@ const parseExcel = (file: File) => {
           else if (header === '岗位') user.position = cellValue;
           else if (header === '级别') user.level = cellValue;
           else if (header === '电话') user.phone = cellValue;
+          else if (header === '邮箱') user.email = cellValue;
           else if (header === '入职日期') user.hireDate = convertExcelDate(cellValue);
           else if (header === '离职日期') user.leaveDate = convertExcelDate(cellValue);
           else if (header === 'IC卡号') user.icCardNumber = cellValue;
@@ -939,7 +938,7 @@ const convertExcelDate = (dateValue: string): string => {
     return '';
   }
   
-  let dateStr = String(dateValue).trim();
+  const dateStr = String(dateValue).trim();
 
   // If it's an Excel date serial number
   if (/^\d+(\.\d+)?$/.test(dateStr)) {
@@ -1024,6 +1023,7 @@ const parseCSV = (file: File) => {
           else if (header === '岗位') user.position = value;
           else if (header === '级别') user.level = value;
           else if (header === '电话') user.phone = value;
+          else if (header === '邮箱') user.email = value;
           else if (header === '入职日期') user.hireDate = convertDate(value);
           else if (header === '离职日期') user.leaveDate = convertDate(value);
           else if (header === 'IC卡号') user.icCardNumber = value;

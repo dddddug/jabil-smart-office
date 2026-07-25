@@ -1,10 +1,8 @@
 import express from 'express';
 import cors from 'cors';
-import dayjs from 'dayjs';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
-import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import dotenv from 'dotenv';
@@ -51,6 +49,13 @@ import resignationTransferRoutes from './routes/resignationTransferRoutes.js'; /
 import costSummaryRoutes from './routes/costSummaryRoutes.js'; // 新增 Cost 汇总路由
 import positionRoutes from './routes/positionRoutes.js'; // 新增岗位路由
 import dashboardRoutes from './routes/dashboardRoutes.js'; // 仪表盘路由
+import workstationRoutes from './routes/workstationRoutes.js'; // 工位管理路由
+import k045Routes from './routes/k045Routes.js'; // K045 单据管理路由
+import daMaterialRoutes from './routes/daMaterialRoutes.js'; // DA物料 单据管理路由
+import daMaterialConfigRoutes from './routes/daMaterialConfigRoutes.js'; // DA物料 配置路由
+import pncTransferRoutes from './routes/pncTransferRoutes.js'; // PNC转仓打印路由
+import k2DiffConfigRoutes from './routes/k2DiffConfigRoutes.js'; // K**差异登记 配置路由
+import k2DiffRoutes from './routes/k2DiffRoutes.js'; // K**差异登记 路由
 
 // 导入模块化的定时任务
 import { initScheduledTasks, checkAndDeactivateUsers, processTransferDates } from './scripts/scheduledTasks.js';
@@ -87,10 +92,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // 请求日志中间件
 app.use(requestLogger);
 
-// 登录限流：15分钟内最多5次
+// 登录限流：15分钟内最多20次
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -137,6 +142,13 @@ app.use('/api/resignation-transfer', resignationTransferRoutes); // 新增
 app.use('/api/cost-summary', costSummaryRoutes); // 新增 Cost 汇总路由
 app.use('/api/positions', positionRoutes); // 新增岗位路由
 app.use('/api/dashboard', dashboardRoutes); // 仪表盘路由
+app.use('/api/workstations', workstationRoutes); // 工位管理路由
+app.use('/api/k045', k045Routes); // K045 单据管理路由
+app.use('/api/da-material', daMaterialRoutes); // DA物料 单据管理路由
+app.use('/api/da-material-config', daMaterialConfigRoutes); // DA物料 配置路由
+app.use('/api/pnc-transfer', pncTransferRoutes); // PNC转仓打印路由
+app.use('/api/k2-diff-config', k2DiffConfigRoutes); // K**差异登记 配置路由
+app.use('/api/k2-diff', k2DiffRoutes); // K**差异登记 路由
 
 
 // 确保 uploads 目录存在

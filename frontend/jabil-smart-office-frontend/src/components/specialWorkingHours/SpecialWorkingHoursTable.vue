@@ -34,7 +34,7 @@
 </template>
 
 <script>
-import dayjs from 'dayjs'; // Import dayjs
+import dayjs from '@/plugins/dayjs';
 
 export default {
   name: 'SpecialWorkingHoursTable',

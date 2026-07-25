@@ -19,6 +19,8 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
+  // 时区配置：统一使用 Asia/Shanghai
+  timezone: 'Asia/Shanghai',
   // 连接池优化配置
   max: parseInt(process.env.DB_POOL_MAX) || 20,                    // 最大连接数
   idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT) || 30000,  // 空闲超时 30秒

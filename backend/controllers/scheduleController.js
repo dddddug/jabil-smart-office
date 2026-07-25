@@ -438,6 +438,43 @@ export const getShifts = async (req, res, next) => {
   }
 };
 
+/**
+ * 按日期获取所有员工的排班数据（用于工位安排过滤）
+ */
+export const getScheduleByDate = async (req, res, next) => {
+  try {
+    const { scheduleDate } = req.query;
+
+    if (!scheduleDate) {
+      throw BadRequestError('请提供查询日期 (scheduleDate)');
+    }
+
+    // 查询指定日期的所有排班记录，JOIN 用户表获取姓名和SAP工号
+    // 日期存储为UTC时间，需要用 at time zone 转换到北京时间比较
+    const result = await pool.query(`
+      SELECT s.employee_id, s.shift, s.special_status,
+             u.real_name, u.employee_id as sap_employee_id, u.plant_id, u.department_id, u.employee_type,
+             p.name as plant_name, d.name as department_name,
+             COALESCE(sh.duration_hours, 0) as duration_hours
+      FROM ${SCHEDULE_TABLE} s
+      JOIN ${USER_TABLE} u ON s.employee_id = u.id
+      LEFT JOIN ${PLANT_TABLE} p ON u.plant_id = p.id
+      LEFT JOIN ${DEPT_TABLE} d ON u.department_id = d.id
+      LEFT JOIN ${SHIFT_DURATION_RULES_TABLE} sh
+        ON sh.plant_id = u.plant_id
+        AND sh.department_id = u.department_id
+        AND sh.shift_name = s.shift
+        AND sh.status = 'active'
+      WHERE (s.schedule_date at time zone 'Asia/Shanghai') >= $1::date
+        AND (s.schedule_date at time zone 'Asia/Shanghai') < ($1::date + interval '1 day')
+    `, [scheduleDate]);
+
+    success(res, { list: result.rows }, '获取排班数据成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
 export default {
   getEmployeesWithSchedule,
   saveSchedule,
@@ -446,4 +483,5 @@ export default {
   batchUploadSchedule,
   downloadTemplate,
   getShifts,
+  getScheduleByDate,
 };

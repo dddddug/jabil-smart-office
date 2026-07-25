@@ -2,6 +2,7 @@ import express from 'express';
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
 import { buildPagination, buildWhereClause } from '../utils/sqlUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 const router = express.Router();
 
 const ANNOUNCEMENT_TABLE = 'jso_system_announcements';
@@ -11,7 +12,7 @@ const USER_TABLE = 'jso_system_user_management';
 // ========== 管理员路由（放在 /:id 之前，避免被拦截） ==========
 
 // 获取管理员公告列表
-router.get('/admin', async (req, res) => {
+router.get('/admin', authenticateToken, async (req, res) => {
   try {
     const { userId, status, page = 1, pageSize = 10 } = req.query;
 
@@ -71,7 +72,7 @@ router.get('/admin', async (req, res) => {
 });
 
 // 创建公告
-router.post('/admin', async (req, res) => {
+router.post('/admin', authenticateToken, async (req, res) => {
   try {
     const { title, content, type, status, plantId, targetDepartments, userId, createdBy } = req.body;
 
@@ -90,7 +91,7 @@ router.post('/admin', async (req, res) => {
 });
 
 // 更新公告
-router.put('/admin/:id', async (req, res) => {
+router.put('/admin/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, type, status, plantId, targetDepartments, userId } = req.body;
@@ -144,7 +145,7 @@ router.put('/admin/:id', async (req, res) => {
 });
 
 // 发布公告
-router.put('/admin/:id/publish', async (req, res) => {
+router.put('/admin/:id/publish', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -164,7 +165,7 @@ router.put('/admin/:id/publish', async (req, res) => {
 });
 
 // 删除公告
-router.delete('/admin/:id', async (req, res) => {
+router.delete('/admin/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -187,7 +188,7 @@ router.delete('/admin/:id', async (req, res) => {
 // ========== 用户路由 ==========
 
 // 获取系统公告列表（面向所有用户）
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { userId, plantId, departmentId, page = 1, pageSize = 10 } = req.query;
     const { limit, offset, page: currentPage } = buildPagination(page, pageSize);
@@ -277,7 +278,7 @@ router.get('/', async (req, res) => {
 });
 
 // 获取系统公告详情
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId } = req.query;
@@ -323,7 +324,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // 标记公告为已读
-router.put('/:id/read', async (req, res) => {
+router.put('/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { userId } = req.body;

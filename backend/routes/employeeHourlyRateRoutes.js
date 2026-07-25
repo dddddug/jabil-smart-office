@@ -2,11 +2,12 @@ import express from 'express';
 const router = express.Router();
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const HOURLY_RATES_TABLE = 'jso_config_employee_hourly_rates';
 
 // 获取所有时薪配置，包括历史记录
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`SELECT * FROM ${HOURLY_RATES_TABLE} ORDER BY level, start_time DESC`);
     
@@ -34,7 +35,7 @@ router.get('/', async (req, res) => {
 });
 
 // 新增一个时薪标准
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const { level, standardRate, startTime, endTime } = req.body;
@@ -86,7 +87,7 @@ router.post('/', async (req, res) => {
 
 
 // 停用一个时薪标准（即设置其结束时间为当前）
-router.put('/:id/deactivate', async (req, res) => {
+router.put('/:id/deactivate', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     

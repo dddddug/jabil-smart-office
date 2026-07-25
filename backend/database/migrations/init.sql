@@ -86,11 +86,11 @@ CREATE TABLE IF NOT EXISTS jso_org_department_management (
     UNIQUE(plant_id, name)
 );
 
--- 插入初始部门数据
-INSERT INTO jso_org_department_management (id, plant_id, name, description) VALUES
-(1, 1, 'IT', '信息技术部')
-ON CONFLICT (id) DO NOTHING;
-SELECT setval('jso_org_department_management_id_seq', (SELECT MAX(id) FROM jso_org_department_management));
+-- 插入初始部门数据（暂无默认部门，实际部门由业务需求创建）
+-- INSERT INTO jso_org_department_management (id, plant_id, name, description) VALUES
+-- (1, 1, 'IT', '信息技术部')
+-- ON CONFLICT (id) DO NOTHING;
+-- SELECT setval('jso_org_department_management_id_seq', (SELECT MAX(id) FROM jso_org_department_management));
 
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_jso_org_department_management_plant_id ON jso_org_department_management(plant_id);
@@ -319,14 +319,6 @@ CREATE TRIGGER update_jso_hr_formal_leave_updated_at
     BEFORE UPDATE ON jso_hr_formal_leave
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
-
--- 插入初始数据
-INSERT INTO jso_system_role_management (name, description, status) VALUES
-('超级管理员', '拥有系统所有权限', 'active'),
-('厂区管理员', '管理指定厂区的用户和配置', 'active'),
-('部门管理员', '管理指定部门的用户和配置', 'active'),
-('普通员工', '普通员工权限', 'active')
-ON CONFLICT (name) DO NOTHING;
 
 
 

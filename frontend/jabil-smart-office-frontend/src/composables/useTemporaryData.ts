@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
-import { Employee, TemporaryOvertimeItem, TemporaryLeaveItem, ErrandFixItem } from '../../types/schedule';
+import { Employee, TemporaryOvertimeItem, TemporaryLeaveItem, ErrandFixItem } from '../types/schedule';
 
 interface UseTemporaryDataParams {
   employees: any; // Ref<Employee[]>
@@ -13,20 +14,20 @@ export function useTemporaryData(params: UseTemporaryDataParams) {
 
   const fetchTemporaryData = async (startDate: string, endDate: string) => {
     try {
-      const overtimeResponse = await request.get<{ temporaryOvertimes: TemporaryOvertimeItem[] }>('/temporary-overtimes', {
+      const overtimeRes = await request.get<{ temporaryOvertimes: TemporaryOvertimeItem[] }>('/temporary-overtimes', {
         params: { startDate, endDate }
       });
-      temporaryOvertimes.value = overtimeResponse.temporaryOvertimes;
+      temporaryOvertimes.value = overtimeRes?.temporaryOvertimes || [];
 
-      const leaveResponse = await request.get<{ temporaryLeaves: TemporaryLeaveItem[] }>('/temporary-leaves', {
+      const leaveRes = await request.get<{ temporaryLeaves: TemporaryLeaveItem[] }>('/temporary-leaves', {
         params: { startDate, endDate }
       });
-      temporaryLeaves.value = leaveResponse.temporaryLeaves;
+      temporaryLeaves.value = leaveRes?.temporaryLeaves || [];
 
-      const errandFixResponse = await request.get<{ errandFixList: ErrandFixItem[] }>('/errand-fixes', {
+      const errandFixRes = await request.get<{ errandFixList: ErrandFixItem[] }>('/errand-fixes', {
         params: { startDate, endDate }
       });
-      errandFixList.value = errandFixResponse.errandFixList;
+      errandFixList.value = errandFixRes?.errandFixList || [];
 
     } catch (error) {
       console.error('获取临时数据失败:', error);
@@ -39,7 +40,7 @@ export function useTemporaryData(params: UseTemporaryDataParams) {
     const start = dayjs(startDate);
     const end = dayjs(endDate);
 
-    temporaryOvertimes.value.forEach(ot => {
+    temporaryOvertimes.value.forEach((ot: TemporaryOvertimeItem) => {
       const otDate = dayjs(ot.overtimeDate);
       if (ot.employeeId === employeeId && otDate.isBetween(start, end, 'day', '[]')) {
         totalHours += ot.totalHours;
@@ -53,10 +54,10 @@ export function useTemporaryData(params: UseTemporaryDataParams) {
     const start = dayjs(startDate);
     const end = dayjs(endDate);
 
-    temporaryLeaves.value.forEach(leave => {
-      const leaveDate = dayjs(leave.leaveDate);
+    temporaryLeaves.value.forEach((leave: TemporaryLeaveItem) => {
+      const leaveDate = dayjs(leave.leaveDate || leave.startDate || '');
       if (leave.employeeId === employeeId && leaveDate.isBetween(start, end, 'day', '[]')) {
-        totalHours += leave.totalHours;
+        totalHours += leave.totalHours || 0;
       }
     });
     return totalHours;

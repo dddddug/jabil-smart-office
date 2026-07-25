@@ -257,8 +257,9 @@ const loadTodaySchedule = async () => {
 // 加载待审批列表
 const loadPendingApprovals = async () => {
   try {
+    // 拦截器已自动解包 data，res 直接是数据对象
     const data = await getPendingApprovals({ limit: 5 });
-    pendingApprovals.value = data.items || [];
+    pendingApprovals.value = data?.items || [];
   } catch (error) {
     console.error('加载待审批列表失败:', error);
   }

@@ -115,6 +115,7 @@ export const login = async (req, res, next) => {
         position: user.position,
         level: user.level,
         phone: user.phone,
+        email: user.email,
         hireDate: user.hire_date,
         leaveDate: user.leave_date,
         icCardNumber: user.ic_card_number,
@@ -231,6 +232,7 @@ export const getAllUsers = async (req, res, next) => {
       position: row.position,
       level: row.level,
       phone: row.phone,
+      email: row.email,
       hireDate: row.hire_date,
       leaveDate: row.leave_date,
       icCardNumber: row.ic_card_number,
@@ -497,6 +499,10 @@ export const batchImportUsers = async (req, res, next) => {
             updateFields.push(`employee_type = $${paramIndex++}`);
             updateParams.push(user.employeeType);
           }
+          if (hasValueChanged(user.email, existing.email) && user.email !== undefined) {
+            updateFields.push(`email = $${paramIndex++}`);
+            updateParams.push(user.email);
+          }
 
           if (updateFields.length > 0) {
             updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
@@ -522,8 +528,8 @@ export const batchImportUsers = async (req, res, next) => {
           const hashedPassword = await bcrypt.hash('123456', 10);
 
           await client.query(
-            `INSERT INTO ${USER_TABLE} (username, password, real_name, employee_id, old_employee_id, role_id, plant_id, department_id, status, gender, position, level, phone, hire_date, leave_date, ic_card_number, employee_type)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            `INSERT INTO ${USER_TABLE} (username, password, real_name, employee_id, old_employee_id, role_id, plant_id, department_id, status, gender, position, level, phone, email, hire_date, leave_date, ic_card_number, employee_type)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
             [
               user.username,
               hashedPassword,
@@ -538,6 +544,7 @@ export const batchImportUsers = async (req, res, next) => {
               user.position,
               user.level,
               user.phone,
+              user.email,
               processedHireDate,
               processedLeaveDate,
               user.icCardNumber,
@@ -582,7 +589,7 @@ export const batchImportUsers = async (req, res, next) => {
 export const updateUser = async (req, res, next) => {
   try {
     const { id } = req.params;
-    let { username, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, status, gender, position, level, phone, hireDate, leaveDate, icCardNumber, employeeType } = req.body;
+    let { username, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, status, gender, position, level, phone, hireDate, leaveDate, icCardNumber, employeeType, email } = req.body;
 
     // Normalize integer fields to null if they are empty strings or undefined
     roleId = (roleId === '' || roleId === undefined) ? null : roleId;
@@ -690,6 +697,10 @@ export const updateUser = async (req, res, next) => {
     if (hasValueChanged(employeeType, existing.employee_type) && employeeType !== undefined) {
       updateFields.push(`employee_type = $${paramIndex++}`);
       updateParams.push(employeeType);
+    }
+    if (hasValueChanged(email, existing.email) && email !== undefined) {
+      updateFields.push(`email = $${paramIndex++}`);
+      updateParams.push(email);
     }
 
     let updatedUser;

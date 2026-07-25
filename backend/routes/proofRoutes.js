@@ -4,6 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { ensureUploadsDir, createDiskUpload, uploadsDir } from '../utils/fileUtils.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,7 +33,7 @@ const proofUpload = createDiskUpload({
 });
 
 // 上传证明文件
-router.post('/upload', proofUpload.single('file'), (req, res) => {
+router.post('/upload', authenticateToken, proofUpload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: '请上传文件' });
@@ -51,7 +52,7 @@ router.post('/upload', proofUpload.single('file'), (req, res) => {
 });
 
 // 下载证明文件
-router.get('/download/:filename', (req, res) => {
+router.get('/download/:filename', authenticateToken, (req, res) => {
   try {
     const filename = req.params.filename;
     const filePath = path.join(uploadsDir, filename);

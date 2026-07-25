@@ -1,7 +1,7 @@
 import { ref, computed, watch } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
-import { Employee, SelectedCell, ScheduleItem } from '../../types/schedule';
+import { Employee, SelectedCell, ScheduleItem } from '../types/schedule';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 interface UseScheduleOperationsParams {
@@ -64,10 +64,14 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
     const newSelectedCells: SelectedCell[] = [];
     for (let i = minEmpIndex; i <= maxEmpIndex; i++) {
       for (let j = minDayIndex; j <= maxDayIndex; j++) {
-        newSelectedCells.push({
-          employeeId: allEmployees[i].id,
-          date: allDays[j].date,
-        });
+        const emp = allEmployees[i];
+        const day = allDays[j];
+        if (emp && day) {
+          newSelectedCells.push({
+            employeeId: emp.id,
+            date: day.date,
+          });
+        }
       }
     }
     selectedCells.value = newSelectedCells;
@@ -120,8 +124,8 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
   const pasteSelection = async (employees: Employee[], fetchEmployees: () => Promise<void>) => {
     if (copiedCells.value.length === 0 || selectedCells.value.length === 0) return;
 
-    const firstSelected = selectedCells.value[0];
-    const firstCopied = copiedCells.value[0];
+    const firstSelected = selectedCells.value[0]!;
+    const firstCopied = copiedCells.value[0]!;
 
     // Calculate offset
     const empOffset = firstSelected.employeeId - firstCopied.employeeId;
@@ -129,7 +133,7 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
 
     const changes: { employeeId: number; date: string; shift: string; specialStatus: string }[] = [];
 
-    copiedCells.value.forEach((copiedCell) => {
+    copiedCells.value.forEach((copiedCell: SelectedCell) => {
       const targetEmployeeId = copiedCell.employeeId + empOffset;
       const targetDate = dayjs(copiedCell.date).add(dateOffset, 'day').format('YYYY-MM-DD');
 
@@ -140,8 +144,8 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
         changes.push({
           employeeId: targetEmployeeId,
           date: targetDate,
-          shift: copiedCell.shift,
-          specialStatus: copiedCell.specialStatus,
+          shift: copiedCell.shift || '',
+          specialStatus: copiedCell.specialStatus || '',
         });
       }
     });
@@ -175,7 +179,7 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
       }
     )
       .then(async () => {
-        const changes = selectedCells.value.map(cell => ({
+        const changes = selectedCells.value.map((cell: SelectedCell) => ({
           employeeId: cell.employeeId,
           date: cell.date,
           shift: '', // Clear the shift
@@ -209,6 +213,13 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
     isContextMenuOpen.value = false;
   };
 
+  const handleRightClick = (event: MouseEvent, employeeId: number, date: string) => {
+    event.preventDefault();
+    selectedDateForButtons.value = date;
+    contextMenuPosition.value = { x: event.clientX, y: event.clientY };
+    isContextMenuOpen.value = true;
+  };
+
   const oneClickSchedule = () => {
     // Placeholder implementation, actual logic would go here
   };
@@ -240,5 +251,6 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
     oneClickSchedule,
     openShiftEditDialog,
     openBatchShiftEdit,
+    handleRightClick,
   };
 }

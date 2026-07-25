@@ -2,7 +2,7 @@
   <div class="first-time-setup-container">
     <div class="setup-card">
       <div class="header-actions">
-        <el-button type="link" @click="handleLogout" class="logout-btn">
+        <el-button link @click="handleLogout" class="logout-btn">
           退出登录
         </el-button>
       </div>

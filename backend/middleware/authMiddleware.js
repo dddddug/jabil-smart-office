@@ -22,14 +22,22 @@ export const authenticateToken = (req, res, next) => {
     // 验证 Token
     jwt.verify(token, jwtSecret, async (err, user) => {
         if (err) {
-                console.error('Token 验证失败:', err.message);
+            console.error('Token 验证失败:', err.message);
+            return res.status(401).json({ code: 401, message: '认证失败: Token 无效' });
         }
 
         // 检查 Token 是否在黑名单中
+        if (!user || !user.jti) {
+            // 如果没有 jti 字段，跳过黑名单检查
+            req.user = user;
+            next();
+            return;
+        }
+
         try {
             const blacklisted = await pool.query(
                 `SELECT 1 FROM ${JSO_JWT_BLACKLIST_TABLE} WHERE jti = $1`,
-                [user.jti] // Assuming jti is part of your JWT payload
+                [user.jti]
             );
             if (blacklisted.rows.length > 0) {
                 console.error('Token 已列入黑名单');
@@ -37,7 +45,7 @@ export const authenticateToken = (req, res, next) => {
             }
         } catch (dbError) {
             console.error('❌ 检查黑名单失败:', dbError);
-            return res.status(500).json({ code: 500, message: '服务器内部错误' });
+            // 黑名单检查失败时，继续允许访问（不阻止用户）
         }
 
         req.user = user; // 将用户信息附加到请求对象上

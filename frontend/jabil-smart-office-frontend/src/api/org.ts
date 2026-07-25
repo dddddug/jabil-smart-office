@@ -1,25 +1,28 @@
-import request from '@/utils/request'; // Assuming you have a request utility
+import request from '@/utils/request';
 
 // 获取所有部门
 export function getDepartments() {
-  return request({
-    url: '/departments',
-    method: 'get',
-  }).then(res => res.data?.departments || []);
+  return request.get('/departments').then((res: any) => {
+    // 拦截器已自动解包 data，直接使用 res
+    const data = res || {};
+    return data.departments || [];
+  });
 }
 
 // 获取所有厂区
 export function getPlants() {
-  return request({
-    url: '/plants',
-    method: 'get',
-  }).then(res => res.data?.plants || []);
+  return request.get('/plants').then((res: any) => {
+    // 拦截器已自动解包 data，直接使用 res
+    const data = res || {};
+    return data.plants || [];
+  });
 }
 
 // 获取所有岗位
 export function getPositions() {
-  return request({
-    url: '/positions',
-    method: 'get',
-  }).then(res => res.data || []);
+  return request.get('/positions').then((res: any) => {
+    // 拦截器已自动解包 data，直接使用 res
+    const data = res || {};
+    return data.items || [];
+  });
 }

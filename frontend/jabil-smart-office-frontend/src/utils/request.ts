@@ -41,13 +41,13 @@ const requestCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
 // 生成请求唯一标识（排除 _t 参数，因为它只是用于防止缓存）
-const generateRequestKey = (config: AxiosRequestConfig): string => {
-  const { method, url, params, data } = config;
+// 这个函数应该只用于生成缓存键，不考虑 _t 参数
+const generateRequestKey = (url: string, params?: any, data?: any): string => {
   // 排除 _t 参数，因为它每次请求都会变
   const filteredParams = params ? Object.fromEntries(
     Object.entries(params).filter(([key]) => key !== '_t')
   ) : {};
-  return `${method}:${url}:${JSON.stringify(filteredParams)}:${JSON.stringify(data || {})}`;
+  return `${url}:${JSON.stringify(filteredParams)}:${JSON.stringify(data || {})}`;
 };
 
 // 清理过期缓存
@@ -87,26 +87,18 @@ const service: CustomAxiosInstance = axios.create({
 // request interceptor
 service.interceptors.request.use(
   config => {
+    // 添加 token
+    const token = getToken();
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+
     // 对 GET 请求进行去重和缓存检查
     if (config.method === 'get') {
-      const requestKey = generateRequestKey(config);
+      // 关键：先生成缓存键（此时还没有 _t 参数）
+      const requestKey = generateRequestKey(config.url!, config.params, config.data);
 
-      // 检查缓存 - 直接返回缓存数据，不发送请求
-      const cached = requestCache.get(requestKey);
-      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-        // 将缓存数据注入到响应中，使用特殊的 config 标记
-        config.adapter = () => Promise.resolve({
-          data: cached.data,
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          config: { ...config, __CACHED__: true, __CACHED_DATA__: cached.data },
-          request: {}
-        });
-        return config;
-      }
-
-      // 取消之前的相同请求
+      // 取消之前的相同请求（去重）
       if (pendingRequests.has(requestKey)) {
         pendingRequests.get(requestKey)?.abort();
         pendingRequests.delete(requestKey);
@@ -116,16 +108,8 @@ service.interceptors.request.use(
       const controller = new AbortController();
       config.signal = controller.signal;
       pendingRequests.set(requestKey, controller);
-    }
 
-    // 添加 token
-    const token = getToken();
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    // 添加时间戳防止缓存
-    if (config.method === 'get') {
+      // 添加时间戳防止缓存
       config.params = { ...config.params, _t: Date.now() };
     }
 
@@ -139,49 +123,46 @@ service.interceptors.request.use(
 // response interceptor
 service.interceptors.response.use(
   response => {
-    // 如果是缓存命中，直接返回缓存数据（需要和处理后的数据格式一致）
-    if (response.config && (response.config as any).__CACHED__) {
-      const cachedData = (response.config as any).__CACHED_DATA__;
-      // 如果缓存数据是标准响应格式，提取 data 字段
-      if (cachedData && typeof cachedData.code !== 'undefined') {
-        return cachedData.data;
-      }
-      return cachedData;
-    }
-
-    // 清理 pending 请求
-    const requestKey = generateRequestKey(response.config);
+    // 清理 pending 请求 - 使用相同的缓存键生成方式（但要用没有 _t 的原始 params）
+    const originalParams = { ...response.config.params };
+    delete originalParams._t; // 移除 _t 以匹配请求时的缓存键
+    const requestKey = generateRequestKey(response.config.url!, originalParams, response.config.data);
     pendingRequests.delete(requestKey);
 
-    // 如果是文件下载，直接返回整个响应
+    // 如果是文件下载，返回 blob 数据
     if (response.config.responseType === 'blob') {
-      return response
+      return response.data
     }
 
     // Check if the response is a standard API response with code, message, data structure
     if (response.data && typeof response.data.code !== 'undefined') {
       const { code, message, data } = response.data;
+      console.log('[Response Interceptor] Response code:', code, 'Message:', message);
       if (code !== 200 && code !== 201) {
         return Promise.reject({ code, message: message || 'Error' });
       } else {
-        // 缓存 GET 请求的响应数据
+        // 缓存 GET 请求的响应数据（存储完整响应结构）
         if (response.config.method === 'get') {
           requestCache.set(requestKey, {
-            data,
+            data: response.data,
             timestamp: Date.now()
           });
+          console.log('[Response Interceptor] Caching response for:', requestKey);
         }
 
-        return data; // Return the actual data payload
+        // 返回 data 部分
+        return data;
       }
     } else {
       return response.data;
     }
   },
   error => {
-    // 清理 pending 请求
+    // 清理 pending 请求 - 使用相同的缓存键生成方式（但要用没有 _t 的原始 params）
     if (error.config) {
-      const requestKey = generateRequestKey(error.config);
+      const originalParams = { ...error.config.params };
+      delete originalParams._t; // 移除 _t 以匹配请求时的缓存键
+      const requestKey = generateRequestKey(error.config.url!, originalParams, error.config.data);
       pendingRequests.delete(requestKey);
     }
 

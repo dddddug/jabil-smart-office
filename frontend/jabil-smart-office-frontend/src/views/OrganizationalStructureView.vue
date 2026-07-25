@@ -192,6 +192,7 @@ interface Employee {
 interface Plant {
   id: number;
   name: string;
+  description?: string;
 }
 
 interface Department {
@@ -312,10 +313,16 @@ const loadPlants = async () => {
       return;
     }
     ElMessage.error('加载厂区失败:' + error);
+    // 如果API失败，使用本地默认数据（必须与数据库 jso_org_plant_management 表一致）
+    // 当前数据库数据: id 1=MPL PhaseV, 2=ENE A, 3=ENE B, 4=ENE C, 5=DYF, 6=IC, 7=MPL
     plants.value = [
-      { id: 1, name: '广州厂区' },
-      { id: 2, name: '上海厂区' },
-      { id: 3, name: '深圳厂区' },
+      { id: 1, name: 'MPL PhaseV', description: 'Jabil主厂五期' },
+      { id: 2, name: 'ENE A', description: 'Jabil分厂A栋' },
+      { id: 3, name: 'ENE B', description: 'Jabil分厂B栋' },
+      { id: 4, name: 'ENE C', description: 'Jabil分厂C栋' },
+      { id: 5, name: 'DYF', description: 'Jabil东源分厂' },
+      { id: 6, name: 'IC', description: 'IA&Buyer' },
+      { id: 7, name: 'MPL', description: 'Jabil主厂' },
     ];
   }
 };
@@ -333,13 +340,8 @@ const loadDepartments = async () => {
       return;
     }
     ElMessage.error('加载部门失败:' + error);
-    departments.value = [
-      { id: 1, name: '生产部', plantId: 1 },
-      { id: 2, name: '研发部', plantId: 1 },
-      { id: 3, name: '质量部', plantId: 1 },
-      { id: 4, name: '行政部', plantId: 2 },
-      { id: 5, name: '销售部', plantId: 2 },
-    ];
+    // 如果API失败，使用空数组（必须与数据库 jso_org_department_management 表一致）
+    departments.value = [];
   }
 };
 
@@ -371,11 +373,8 @@ const loadEmployees = async () => {
     }
   } catch (error) {
     ElMessage.error('加载员工失败:' + error);
-    employees.value = [
-      { id: 1, employeeId: 'E001', name: '张三', gender: 'MALE', plantId: 1, plantName: '广州厂区', departmentId: 1, departmentName: '生产部', position: '组长', level: 'L1', status: 'ACTIVE', phone: '13800138001', email: 'zhangsan@jabil.com', hireDate: '2023-01-15' },
-      { id: 2, employeeId: 'E002', name: '李四', gender: 'FEMALE', plantId: 1, plantName: '广州厂区', departmentId: 2, departmentName: '研发部', position: '工程师', level: 'L2', status: 'ACTIVE', phone: '13800138002', email: 'lisi@jabil.com', hireDate: '2023-03-20' },
-      { id: 3, employeeId: 'E003', name: '王五', gender: 'MALE', plantId: 2, plantName: '上海厂区', departmentId: 4, departmentName: '行政部', position: '专员', level: 'L1', status: 'ACTIVE', phone: '13800138003', email: 'wangwu@jabil.com', hireDate: '2023-06-10' },
-    ];
+    // 如果API失败，使用空数组
+    employees.value = [];
   } finally {
     isLoading.value = false;
   }

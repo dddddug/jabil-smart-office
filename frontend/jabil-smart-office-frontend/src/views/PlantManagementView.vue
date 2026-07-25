@@ -126,7 +126,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 import request from '@/utils/request'; // 导入 axios 实例
 
@@ -183,19 +183,20 @@ const loadPlants = async () => {
   isLoading.value = true;
   try {
     const data = await request.get<PlantsResponse>('/plants');
-    plants.value = data.plants || [];
+    plants.value = data?.plants || [];
     showNotification('数据刷新成功', 'success');
   } catch (error) {
     showNotification('加载数据失败，请检查后端服务', 'error');
-    // 如果API失败，使用本地默认数据
+    // 如果API失败，使用本地默认数据（必须与数据库 jso_org_plant_management 表一致）
+    // 当前数据库数据: id 1=MPL PhaseV, 2=ENE A, 3=ENE B, 4=ENE C, 5=DYF, 6=IC, 7=MPL
     plants.value = [
-      { id: 1, name: 'MPL', description: 'Jabil主厂', managerId: null, managerName: null, createdAt: '2023-01-01' },
-      { id: 2, name: 'MPL Phase V', description: 'Jabil主厂五期', managerId: null, managerName: null, createdAt: '2023-03-15' },
-      { id: 3, name: 'ENE A', description: 'Jabil分厂A栋', managerId: null, managerName: null, createdAt: '2023-06-20' },
-      { id: 4, name: 'ENE B', description: 'Jabil分厂B栋', managerId: null, managerName: null, createdAt: '2026-06-29' },
-      { id: 5, name: 'ENE C', description: 'Jabil分厂C栋', managerId: null, managerName: null, createdAt: '2026-06-29' },
-      { id: 6, name: 'DYF', description: 'Jabil东源分厂', managerId: null, managerName: null, createdAt: '2026-06-29' },
-      { id: 7, name: 'IC', description: 'IA&Buyer', managerId: null, managerName: null, createdAt: '2026-06-29' },
+      { id: 1, name: 'MPL PhaseV', description: 'Jabil主厂五期', managerId: null, managerName: null, createdAt: '2023-01-01' },
+      { id: 2, name: 'EN E A', description: 'Jabil分厂A栋', managerId: null, managerName: null, createdAt: '2023-03-15' },
+      { id: 3, name: 'ENE B', description: 'Jabil分厂B栋', managerId: null, managerName: null, createdAt: '2026-06-29' },
+      { id: 4, name: 'ENE C', description: 'Jabil分厂C栋', managerId: null, managerName: null, createdAt: '2026-06-29' },
+      { id: 5, name: 'DYF', description: 'Jabil东源分厂', managerId: null, managerName: null, createdAt: '2026-06-29' },
+      { id: 6, name: 'IC', description: 'IA&Buyer', managerId: null, managerName: null, createdAt: '2026-06-29' },
+      { id: 7, name: 'MPL', description: 'Jabil主厂', managerId: null, managerName: null, createdAt: '2026-06-29' },
     ];
   } finally {
     isLoading.value = false;
@@ -206,7 +207,7 @@ const loadPlants = async () => {
 const loadUsers = async () => {
   try {
     const data = await request.get<UsersResponse>('/users');
-    availableUsers.value = data.items || [];
+    availableUsers.value = data?.items || [];
   } catch (error) {
     showNotification('加载用户失败', 'error');
   }
@@ -334,6 +335,7 @@ const savePlant = async () => {
   if (isEditMode.value) {
     // 更新厂区
     try {
+      // 拦截器已自动解包 data，res 直接是响应体
       const data = await request.put(`/plants/${currentPlant.value.id}`, {
         name: currentPlant.value.name,
         description: currentPlant.value.description,
@@ -341,7 +343,7 @@ const savePlant = async () => {
       });
       const index = plants.value.findIndex(p => p.id === currentPlant.value.id);
       if (index !== -1) {
-        plants.value[index] = data.plant;
+        plants.value[index] = data?.plant;
       }
       showNotification('厂区更新成功', 'success');
       closeDialog();
@@ -353,12 +355,13 @@ const savePlant = async () => {
   } else {
       // 创建厂区
       try {
+        // 拦截器已自动解包 data，res 直接是响应体
         const data = await request.post(`/plants`, {
           name: currentPlant.value.name,
           description: currentPlant.value.description,
           managerId: managerIdToSend,
         });
-        plants.value.push(data.plant);
+        plants.value.push(data?.plant);
         showNotification('厂区创建成功', 'success');
         closeDialog();
     } catch (error) {

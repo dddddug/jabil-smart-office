@@ -1,5 +1,6 @@
 import express from 'express';
 const router = express.Router();
+import pool from '../config/db.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/rbacMiddleware.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
@@ -16,6 +17,16 @@ import userController from '../controllers/userController.js';
 // 获取当前登录用户信息
 router.get('/me', authenticateToken, asyncHandler(userController.getCurrentUser));
 
+// 健康检查端点（无需认证）
+router.get('/health', asyncHandler(async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ status: 'error', message: 'Database connection failed' });
+  }
+}));
+
 // 用户登录
 router.post('/login', loginValidation, validationMiddleware, asyncHandler(userController.login));
 
@@ -23,10 +34,10 @@ router.post('/login', loginValidation, validationMiddleware, asyncHandler(userCo
 router.post('/logout', authenticateToken, asyncHandler(userController.logout));
 
 // 获取所有用户列表
-router.get('/', asyncHandler(userController.getAllUsers));
+router.get('/', authenticateToken, asyncHandler(userController.getAllUsers));
 
 // 获取审批人列表
-router.get('/approvers', asyncHandler(userController.getApprovers));
+router.get('/approvers', authenticateToken, asyncHandler(userController.getApprovers));
 
 // 创建用户
 router.post('/', createUserValidation, validationMiddleware, asyncHandler(userController.createUser));

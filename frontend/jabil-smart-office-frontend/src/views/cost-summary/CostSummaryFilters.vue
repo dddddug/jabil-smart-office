@@ -1,15 +1,14 @@
 <template>
   <div class="cost-summary-filters p-2 rounded-2xl shadow-xl" style="background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
-    <el-form :inline="true" :model="form" class="filter-form flex flex-nowrap gap-x-1 items-center justify-end">
+    <el-form :inline="true" :model="form" class="filter-form flex flex-nowrap gap-x-1 items-center">
       <el-form-item class="mb-0">
         <div class="flex items-center">
           <span class="text-xs text-gray-600 mr-0.5" style="width: 90px; height: 32px; margin-top: 0; margin-bottom: 0;">时间</span>
           <el-select v-model="timeDimension" placeholder="维度" @change="handleTimeDimensionChange" class="w-24" style="margin-left: -10px; margin-right: -10px;">
+            <el-option label="日度" value="daily"></el-option>
+            <el-option label="周度" value="weekly"></el-option>
             <el-option label="月度" value="monthly"></el-option>
             <el-option label="年度" value="yearly"></el-option>
-            <el-option label="周度" value="weekly"></el-option>
-            <el-option label="近7天" value="last7days"></el-option>
-            <el-option label="近14天" value="last14days"></el-option>
           </el-select>
         </div>
       </el-form-item>
@@ -34,15 +33,29 @@
           class="w-24"
         />
         <el-date-picker
-          v-else-if="timeDimension === 'weekly'"
-          v-model="form.fiscalWeek"
-          type="week"
+          v-else-if="timeDimension === 'daily'"
+          v-model="form.fiscalDate"
+          type="date"
           placeholder="选择"
-          format="[Week] ww YYYY"
-          value-format="YYYY-WW"
+          value-format="YYYY-MM-DD"
           @change="emitFilterChange"
           class="w-24"
         />
+        <el-select
+          v-else-if="timeDimension === 'weekly'"
+          v-model="form.fiscalWeek"
+          placeholder="选择"
+          @change="emitFilterChange"
+          class="w-32"
+          style="width: 220px; margin-left: -10px; margin-right: -10px;"
+        >
+          <el-option
+            v-for="week in weekOptions"
+            :key="week.value"
+            :label="week.label"
+            :value="week.value"
+          />
+        </el-select>
         <el-date-picker
           v-else-if="timeDimension === 'customRange'"
           v-model="form.customDateRange"
@@ -123,9 +136,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue';
-import dayjs from 'dayjs';
-import isoWeek from 'dayjs/plugin/isoWeek';
-dayjs.extend(isoWeek);
+import dayjs from '@/plugins/dayjs';
 import { ElMessage } from 'element-plus';
 import { getCostSummaryDropdowns } from '@/api/costSummary';
 import { getUserInfo } from '@/api/user'; // Assuming API for user info
@@ -133,19 +144,28 @@ import { getToken } from '@/utils/request'; // 导入 getToken
 
 const emit = defineEmits(['filter-change', 'export-data', 'time-dimension-change']);
 
-const timeDimension = ref('monthly'); // Default time dimension
+const timeDimension = ref('daily'); // Default time dimension
+
+// 获取默认财周（格式: YYYY-WXX）
+const getDefaultFiscalWeek = () => {
+  const lastWeek = dayjs().subtract(1, 'week');
+  const year = lastWeek.isoWeekYear();
+  const week = lastWeek.isoWeek();
+  return `${year}-W${week.toString().padStart(2, '0')}`;
+};
 
 const form = reactive({
+  fiscalDate: dayjs().subtract(1, 'day').format('YYYY-MM-DD'),
   fiscalMonth: dayjs().subtract(1, 'month').format('YYYY-MM'),
   fiscalYear: dayjs().format('YYYY'),
-  fiscalWeek: dayjs().subtract(1, 'week').format('YYYY-WW'),
+  fiscalWeek: getDefaultFiscalWeek(),
   customDateRange: [
     dayjs().subtract(7, 'days').format('YYYY-MM-DD'),
     dayjs().format('YYYY-MM-DD'),
   ],
-  departmentId: null,
-  position: null,
-  plantId: null,
+  departmentId: null as number | null,
+  position: null as string | null,
+  plantId: null as number | null,
 });
 
 const departmentOptions = ref<any[]>([]);
@@ -155,6 +175,24 @@ const currentUserRole = ref<string>('');
 const currentUserPlantId = ref<number | null>(null);
 const currentUserDepartmentId = ref<number | null>(null);
 
+// 生成周选项列表（过去52周）
+const weekOptions = computed(() => {
+  const options = [];
+  const today = dayjs();
+  for (let i = 0; i < 52; i++) {
+    const date = today.subtract(i, 'week');
+    const year = date.isoWeekYear();
+    const week = date.isoWeek();
+    // 计算该周的周一和周日
+    const monday = date.startOf('week').add(1, 'day'); // ISO week starts from Monday
+    const sunday = monday.add(6, 'day');
+    const value = `${year}-W${week.toString().padStart(2, '0')}`;
+    const label = `${value} (${monday.format('MM-DD')} ~ ${sunday.format('MM-DD')})`;
+    options.push({ value, label });
+  }
+  return options;
+});
+
 const showPlantFilter = computed(() => {
   return currentUserRole.value === 'super_admin' || currentUserRole.value === 'ic_manager';
 });
@@ -163,7 +201,8 @@ const fetchFilterOptions = async () => {
   try {
     // Only fetch user info if a token is present
     if (getToken()) {
-      const userInfoData = await getUserInfo();
+      const userInfoRes = await getUserInfo();
+      const userInfoData = userInfoRes.data || userInfoRes;
       currentUserRole.value = userInfoData.roleName;
       currentUserPlantId.value = userInfoData.plantId;
       currentUserDepartmentId.value = userInfoData.departmentId;
@@ -181,8 +220,9 @@ const fetchFilterOptions = async () => {
     }
 
     // 使用 Cost Summary 专用的下拉框 API
-    // 注意：request interceptor 已经自动提取了 response.data，所以这里直接拿到数据
-    const { plants, departments, positions } = await getCostSummaryDropdowns();
+    const dropdownsRes = await getCostSummaryDropdowns();
+    const dropdownsData = dropdownsRes?.data || dropdownsRes;
+    const { plants, departments, positions } = dropdownsData || {};
 
     // 厂区选项
     if (currentUserRole.value === 'plant_admin' && currentUserPlantId.value) {
@@ -213,6 +253,9 @@ const fetchFilterOptions = async () => {
 
 const handleTimeDimensionChange = (newDimension: string) => {
   switch (newDimension) {
+    case 'daily':
+      form.fiscalDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+      break;
     case 'monthly':
       form.fiscalMonth = dayjs().subtract(1, 'month').format('YYYY-MM');
       break;
@@ -220,13 +263,7 @@ const handleTimeDimensionChange = (newDimension: string) => {
       form.fiscalYear = dayjs().format('YYYY');
       break;
     case 'weekly':
-      form.fiscalWeek = dayjs().subtract(1, 'week').format('YYYY-WW');
-      break;
-    case 'last7days':
-      form.customDateRange = [dayjs().subtract(7, 'days').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')];
-      break;
-    case 'last14days':
-      form.customDateRange = [dayjs().subtract(14, 'days').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')];
+      form.fiscalWeek = getDefaultFiscalWeek();
       break;
     default:
       break;
@@ -238,6 +275,9 @@ const handleTimeDimensionChange = (newDimension: string) => {
 const emitFilterChange = () => {
   const filters: any = { departmentId: form.departmentId, position: form.position, plantId: form.plantId };
   switch (timeDimension.value) {
+    case 'daily':
+      filters.fiscalDate = form.fiscalDate;
+      break;
     case 'monthly':
       filters.fiscalMonth = form.fiscalMonth;
       break;
@@ -246,11 +286,6 @@ const emitFilterChange = () => {
       break;
     case 'weekly':
       filters.fiscalWeek = form.fiscalWeek;
-      break;
-    case 'last7days':
-    case 'last14days':
-      filters.startDate = form.customDateRange[0];
-      filters.endDate = form.customDateRange[1];
       break;
     default:
       break;
@@ -261,6 +296,9 @@ const emitFilterChange = () => {
 const emitExportData = () => {
   const filters: any = { departmentId: form.departmentId, position: form.position, plantId: form.plantId };
   switch (timeDimension.value) {
+    case 'daily':
+      filters.fiscalDate = form.fiscalDate;
+      break;
     case 'monthly':
       filters.fiscalMonth = form.fiscalMonth;
       break;
@@ -270,11 +308,6 @@ const emitExportData = () => {
     case 'weekly':
       filters.fiscalWeek = form.fiscalWeek;
       break;
-    case 'last7days':
-    case 'last14days':
-      filters.startDate = form.customDateRange[0];
-      filters.endDate = form.customDateRange[1];
-      break;
     default:
       break;
   }
@@ -282,14 +315,11 @@ const emitExportData = () => {
 };
 
 const resetFilters = () => {
-  timeDimension.value = 'monthly';
+  timeDimension.value = 'daily';
+  form.fiscalDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
   form.fiscalMonth = dayjs().subtract(1, 'month').format('YYYY-MM');
   form.fiscalYear = dayjs().format('YYYY');
-  form.fiscalWeek = dayjs().subtract(1, 'week').format('YYYY-WW');
-  form.customDateRange = [
-    dayjs().subtract(7, 'days').format('YYYY-MM-DD'),
-    dayjs().format('YYYY-MM-DD'),
-  ];
+  form.fiscalWeek = dayjs().subtract(1, 'week').format('YYYY-[W]WW');
   form.departmentId = null;
   form.position = null;
   if (currentUserRole.value === 'plant_admin') {
@@ -303,7 +333,11 @@ const resetFilters = () => {
 };
 
 onMounted(async () => {
-  await fetchFilterOptions();
-  emitFilterChange(); // Emit initial filters
+  try {
+    await fetchFilterOptions();
+  } catch (e) {
+    console.error('获取筛选条件失败:', e);
+  }
+  emitFilterChange();
 });
 </script>

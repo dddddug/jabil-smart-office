@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import dayjs from 'dayjs';
+import dayjs from '@/plugins/dayjs';
 import request from '@/utils/request';
 import {
   Employee,
@@ -8,7 +8,7 @@ import {
   EmployeeWithOverworkDetails,
   EmployeeWithWeeklyLimitDetails,
   DepartmentSummaryItem,
-} from '../../types/schedule';
+} from '../types/schedule';
 
 interface UseBreak7CheckParams {
   currentPeriodStart: any; // dayjs.Dayjs | string
@@ -40,7 +40,7 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
 
   const toggleIgnoreOverwork = (emp: EmployeeWithOverworkDetails) => {
     const index = ignoredOverworkItems.value.findIndex(
-      (item) => item.employeeId === emp.id && item.periodStart === emp.overworkPeriodStart
+      (item: IgnoredOverworkItem) => item.employeeId === emp.id && item.periodStart === emp.overworkPeriodStart
     );
     if (index > -1) {
       ignoredOverworkItems.value.splice(index, 1);
@@ -62,7 +62,7 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
 
   const checkOverworking = (
     employeesToCheck: Employee[],
-    viewMode: ScheduleViewMode,
+    viewMode: string,
     periodStart: string,
     periodEnd: string
   ) => {
@@ -96,7 +96,7 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
           if (consecutiveDays >= 7) {
             const overworkPeriodEnd = lastWorkDate ? lastWorkDate.format('YYYY-MM-DD') : dateStr;
             const isIgnored = ignoredOverworkItems.value.some(
-              (item) => item.employeeId === employee.id && item.periodStart === overworkStart
+              (item: IgnoredOverworkItem) => item.employeeId === employee.id && item.periodStart === overworkStart
             );
             overworkingEmployees.value.push({
               ...employee,
@@ -118,7 +118,7 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
       if (consecutiveDays >= 7) {
         const overworkPeriodEnd = lastWorkDate ? lastWorkDate.format('YYYY-MM-DD') : periodEndDate.format('YYYY-MM-DD');
         const isIgnored = ignoredOverworkItems.value.some(
-          (item) => item.employeeId === employee.id && item.periodStart === overworkStart
+          (item: IgnoredOverworkItem) => item.employeeId === employee.id && item.periodStart === overworkStart
         );
         overworkingEmployees.value.push({
           ...employee,
@@ -144,7 +144,7 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
 
   const checkWeeklyHours = (
     employeesToCheck: Employee[],
-    viewMode: ScheduleViewMode,
+    viewMode: string,
     periodStart: string,
     periodEnd: string
   ) => {

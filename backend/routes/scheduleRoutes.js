@@ -3,6 +3,7 @@ const router = express.Router();
 import { createExcelMemoryUpload } from '../utils/fileUtils.js';
 import { parseExcel } from '../utils/excelUtils.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
+import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 import scheduleController from '../controllers/scheduleController.js';
 
 const memoryUpload = createExcelMemoryUpload();
@@ -35,24 +36,27 @@ const initScheduleTable = async () => {
 initScheduleTable();
 
 // 获取员工排班和工时统计
-router.get('/employees', asyncHandler(scheduleController.getEmployeesWithSchedule));
+router.get('/employees', authenticateToken, asyncHandler(scheduleController.getEmployeesWithSchedule));
 
 // 保存员工排班
-router.post('/save', asyncHandler(scheduleController.saveSchedule));
+router.post('/save', authenticateToken, asyncHandler(scheduleController.saveSchedule));
 
 // 删除员工排班
-router.delete('/:employeeId/:scheduleDate', asyncHandler(scheduleController.deleteSchedule));
+router.delete('/:employeeId/:scheduleDate', authenticateToken, asyncHandler(scheduleController.deleteSchedule));
 
 // 测试路由：直接查询jso_hr_employee_schedule表
-router.get('/test-db', asyncHandler(scheduleController.testDatabase));
+router.get('/test-db', authenticateToken, asyncHandler(scheduleController.testDatabase));
 
 // 批量上传员工排班
-router.post('/batch-upload', memoryUpload.single('file'), asyncHandler(scheduleController.batchUploadSchedule));
+router.post('/batch-upload', authenticateToken, memoryUpload.single('file'), asyncHandler(scheduleController.batchUploadSchedule));
 
 // 下载排班模板
-router.get('/download-template', asyncHandler(scheduleController.downloadTemplate));
+router.get('/download-template', authenticateToken, asyncHandler(scheduleController.downloadTemplate));
 
 // 获取所有可用班次
-router.get('/shifts', asyncHandler(scheduleController.getShifts));
+router.get('/shifts', authenticateToken, asyncHandler(scheduleController.getShifts));
+
+// 按日期获取所有员工的排班数据（用于工位安排过滤）
+router.get('/by-date', authenticateToken, asyncHandler(scheduleController.getScheduleByDate));
 
 export default router;

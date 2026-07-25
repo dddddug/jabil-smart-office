@@ -124,6 +124,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { formatShanghaiDate, getDaysAgoShanghai } from '../utils/dateUtils';
 
 interface TrackingRecord {
   id: number;
@@ -191,11 +192,10 @@ const exportData = () => {
 };
 
 onMounted(() => {
-  // 初始化日期
-  const today = new Date();
-  endDate.value = today.toISOString().split('T')[0] || '';
-  const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  startDate.value = monthAgo.toISOString().split('T')[0] || '';
+  // 初始化日期（使用上海时区）
+  endDate.value = formatShanghaiDate();
+  const monthAgo = getDaysAgoShanghai(30);
+  startDate.value = formatShanghaiDate(monthAgo);
 });
 </script>
 

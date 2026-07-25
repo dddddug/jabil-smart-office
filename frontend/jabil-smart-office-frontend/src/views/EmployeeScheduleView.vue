@@ -416,7 +416,7 @@
               <td style="width: 80px;" class="text-danger">{{ dept.overLimitCount }}</td>
               <td style="width: 80px;" class="text-danger">{{ dept.totalOverHours }}H</td>
               <td style="width: 80px;">{{ dept.period }}</td>
-              <td style="width: 200px; text-align: left;"><input type="text" v-model="dept.reason" class="inline-input" placeholder="填写原因说明" /></td>
+              <td style="width: 200px; text-align: left;"><input type="text" :value="dept.reason" @input="setSummaryReason(dept.department, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因说明" /></td>
             </tr>
             <tr v-if="summaryData.length === 0">
               <td colspan="7" style="text-align: center; color: #6B7280; padding: 40px;">
@@ -465,7 +465,7 @@
               <td style="width: 100px;">{{ emp.startDate }}</td>
               <td style="width: 100px;">{{ emp.endDate }}</td>
               <td style="width: 100px;" class="text-warning">{{ emp.consecutiveDays }}天</td>
-              <td style="width: 200px;"><input type="text" v-model="emp.reason" class="inline-input" placeholder="填写原因" /></td>
+              <td style="width: 200px;"><input type="text" :value="emp.reason" @input="setOverworkReason(emp.id, emp.startDate, emp.endDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
               <td style="width: 80px;">
                 <button class="btn btn-sm" :class="emp.isIgnored ? 'btn-success' : 'btn-danger'" @click="toggleIgnoreOverwork(emp)">
                   {{ emp.isIgnored ? '取消忽略' : '忽略' }}
@@ -548,7 +548,7 @@
               <td style="width: 90px;" class="text-danger">{{ emp.totalHours }}H</td>
               <td style="width: 70px;">{{ emp.weekNumber }}</td>
               <td style="width: 90px;" class="text-danger">{{ emp.overLimitHours }}H</td>
-              <td style="width: 200px;"><input type="text" v-model="emp.reason" class="inline-input" placeholder="填写原因" /></td>
+              <td style="width: 200px;"><input type="text" :value="emp.reason" @input="setWeeklyLimitReason(emp.id, emp.weekDate, emp.weekEndDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
             </tr>
             <tr v-if="weeklyLimitEmployees.length === 0">
               <td colspan="11" style="text-align: center; color: #6B7280; padding: 40px;">
@@ -982,9 +982,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue';
-import dayjs from 'dayjs';
-import weekday from 'dayjs/plugin/weekday';
-import isoWeek from 'dayjs/plugin/isoWeek';
+import dayjs from '@/plugins/dayjs';
 import 'dayjs/locale/zh-cn';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -992,6 +990,7 @@ import SpecialWorkingHoursPage from './SpecialWorkingHoursPage.vue';
 import request from '@/utils/request';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { fetchImageAsBase64 } from '@/utils/fileUtils';
+import { formatShanghaiDateTime } from '../utils/dateUtils';
 
 
 interface ErrandFixItem {
@@ -1027,8 +1026,6 @@ interface Day {
 
 
 
-dayjs.extend(weekday);
-dayjs.extend(isoWeek);
 dayjs.locale('zh-cn');
 
 const openLink = (url: string) => {
@@ -1177,6 +1174,144 @@ interface IgnoredOverworkItem {
   endDate: string;
 }
 
+// ========== 原因字段持久化接口 ==========
+interface OverworkReasonItem {
+  employeeId: number;
+  startDate: string;
+  endDate: string;
+  reason: string;
+}
+
+interface WeeklyLimitReasonItem {
+  employeeId: number;
+  weekDate: string;
+  weekEndDate: string;
+  reason: string;
+}
+
+interface SummaryReasonItem {
+  department: string;
+  reason: string;
+}
+
+// 破7休1原因持久化
+const overworkReasons = ref<OverworkReasonItem[]>([]);
+
+const loadOverworkReasons = () => {
+  try {
+    const saved = localStorage.getItem('employeeScheduleOverworkReasons');
+    overworkReasons.value = saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    overworkReasons.value = [];
+  }
+};
+
+const saveOverworkReasons = () => {
+  localStorage.setItem('employeeScheduleOverworkReasons', JSON.stringify(overworkReasons.value));
+};
+
+const getOverworkReason = (employeeId: number, startDate: string, endDate: string): string => {
+  const item = overworkReasons.value.find(r =>
+    r.employeeId === employeeId &&
+    r.startDate === startDate &&
+    r.endDate === endDate
+  );
+  return item?.reason || '';
+};
+
+const setOverworkReason = (employeeId: number, startDate: string, endDate: string, reason: string) => {
+  const index = overworkReasons.value.findIndex(r =>
+    r.employeeId === employeeId &&
+    r.startDate === startDate &&
+    r.endDate === endDate
+  );
+  if (index !== -1) {
+    overworkReasons.value[index].reason = reason;
+  } else {
+    overworkReasons.value.push({ employeeId, startDate, endDate, reason });
+  }
+  saveOverworkReasons();
+};
+
+// 周工时超限原因持久化
+const weeklyLimitReasons = ref<WeeklyLimitReasonItem[]>([]);
+
+const loadWeeklyLimitReasons = () => {
+  try {
+    const saved = localStorage.getItem('employeeScheduleWeeklyLimitReasons');
+    weeklyLimitReasons.value = saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    weeklyLimitReasons.value = [];
+  }
+};
+
+const saveWeeklyLimitReasons = () => {
+  localStorage.setItem('employeeScheduleWeeklyLimitReasons', JSON.stringify(weeklyLimitReasons.value));
+};
+
+const getWeeklyLimitReason = (employeeId: number, weekDate: string, weekEndDate: string): string => {
+  const item = weeklyLimitReasons.value.find(r =>
+    r.employeeId === employeeId &&
+    r.weekDate === weekDate &&
+    r.weekEndDate === weekEndDate
+  );
+  return item?.reason || '';
+};
+
+const setWeeklyLimitReason = (employeeId: number, weekDate: string, weekEndDate: string, reason: string) => {
+  const index = weeklyLimitReasons.value.findIndex(r =>
+    r.employeeId === employeeId &&
+    r.weekDate === weekDate &&
+    r.weekEndDate === weekEndDate
+  );
+  if (index !== -1) {
+    weeklyLimitReasons.value[index].reason = reason;
+  } else {
+    weeklyLimitReasons.value.push({ employeeId, weekDate, weekEndDate, reason });
+  }
+  saveWeeklyLimitReasons();
+};
+
+// 汇总表原因持久化
+const summaryReasons = ref<SummaryReasonItem[]>([]);
+
+const loadSummaryReasons = () => {
+  try {
+    const saved = localStorage.getItem('employeeScheduleSummaryReasons');
+    summaryReasons.value = saved ? JSON.parse(saved) : [];
+  } catch (e) {
+    summaryReasons.value = [];
+  }
+};
+
+const saveSummaryReasons = () => {
+  localStorage.setItem('employeeScheduleSummaryReasons', JSON.stringify(summaryReasons.value));
+};
+
+const getSummaryReason = (department: string): string => {
+  const item = summaryReasons.value.find(r => r.department === department);
+  return item?.reason || '';
+};
+
+const setSummaryReason = (department: string, reason: string) => {
+  const index = summaryReasons.value.findIndex(r => r.department === department);
+  if (index !== -1) {
+    summaryReasons.value[index].reason = reason;
+  } else {
+    summaryReasons.value.push({ department, reason });
+  }
+  saveSummaryReasons();
+};
+
+// ========== 初始化加载 ==========
+// 页面加载时从 localStorage 恢复状态
+onMounted(() => {
+  loadIgnoredItems();
+  loadOverworkReasons();
+  loadWeeklyLimitReasons();
+  loadSummaryReasons();
+});
+
 const ignoredOverworkItems = ref<IgnoredOverworkItem[]>([]);
 
 const loadIgnoredItems = () => {
@@ -1316,12 +1451,12 @@ const shiftDurationMap = ref<Map<string, number>>(new Map());
 // 获取所有可用班次
 const loadAvailableShifts = async () => {
   try {
-    const response = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
-    availableShifts.value = response.shifts;
+    const data = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
+    availableShifts.value = data?.shifts || [];
 
     // 构建班次时长映射表
     const durationMap = new Map<string, number>();
-    response.shifts.forEach(shift => {
+    (data?.shifts || []).forEach((shift: Shift) => {
       if (shift.durationHours !== undefined) {
         durationMap.set(shift.value, shift.durationHours);
       }
@@ -1680,6 +1815,58 @@ const calculateLeave = () => {
     }
   });
 
+  // 1.5 从 formalLeaves 中获取年假/请假数据
+  if (formalLeaves.value && Array.isArray(formalLeaves.value)) {
+    formalLeaves.value.forEach(item => {
+      if (!item || typeof item !== 'object') {
+        return;
+      }
+
+      // 只处理已批准的请假
+      if (item.status !== 'approved') {
+        return;
+      }
+
+      // 找到对应的员工
+      const emp = employees.value.find(e => e.id === item.employeeId);
+      if (!emp) {
+        return;
+      }
+
+      // 过滤掉 employeeType 等于 'jabil' 的员工
+      if (emp.employeeType && String(emp.employeeType).toLowerCase().includes('jabil')) {
+        return;
+      }
+
+      // 检查日期是否在范围内
+      const itemStart = item.startDate ? dayjs(item.startDate) : null;
+      const itemEnd = item.endDate ? dayjs(item.endDate) : null;
+
+      if (!itemStart || !itemEnd) {
+        return;
+      }
+
+      if (itemEnd.isBefore(start) || itemStart.isAfter(end)) {
+        return;
+      }
+
+      // 确定请假类型显示
+      let leaveTypeDisplay = '事假';
+      if (item.leaveType === 'ANNUAL_LEAVE' || item.leaveType === '年假') {
+        leaveTypeDisplay = '年假';
+      }
+
+      leaveList.value.push({
+        sap: emp.oldEmployeeId || emp.sap,
+        name: emp.name,
+        startTime: itemStart.format('YYYY-M-D 07:00'),
+        endTime: itemEnd.format('YYYY-M-D 15:00'),
+        leaveType: leaveTypeDisplay,
+        remark: ''
+      });
+    });
+  }
+
   // 2. 从排班表中获取调休班次（周一到周五，且不是法定节假日）
   let currentDate = start.clone();
   while (currentDate.isBefore(end) || currentDate.isSame(end)) {
@@ -1714,6 +1901,127 @@ const calculateLeave = () => {
   }
 };
 
+// 将已批准的请假/年假数据合并到员工排班日程中（用于排班表格显示）
+const mergeApprovedLeavesToSchedule = () => {
+  // 只处理 formalLeaves（年假、固定请假），不合并临时请假和临时加班
+  if (formalLeaves.value && Array.isArray(formalLeaves.value)) {
+    formalLeaves.value.forEach(item => {
+      // 只处理已批准的请假
+      if (item.status !== 'approved') {
+        return;
+      }
+
+      // 找到对应的员工
+      const emp = employees.value.find(e => e.id === item.employeeId);
+      if (!emp) {
+        return;
+      }
+
+      // 确定特殊状态显示
+      let specialStatus = '请假';
+      if (item.leaveType === 'ANNUAL_LEAVE' || item.leaveType === '年假') {
+        specialStatus = '年假';
+      }
+
+      // 处理日期范围
+      const itemStart = item.startDate ? dayjs(item.startDate) : null;
+      const itemEnd = item.endDate ? dayjs(item.endDate) : null;
+
+      if (!itemStart || !itemEnd) {
+        return;
+      }
+
+      // 遍历请假日期范围内的每一天
+      let currentDate = itemStart.clone();
+      while (currentDate.isBefore(itemEnd) || currentDate.isSame(itemEnd)) {
+        const dateStr = currentDate.format('YYYY-MM-DD');
+
+        // 如果该日期还没有排班数据，初始化为空对象
+        if (!emp.schedule[dateStr]) {
+          emp.schedule[dateStr] = { shift: '' };
+        }
+
+        // 设置特殊状态（年假/请假优先显示）
+        if (!emp.schedule[dateStr].specialStatus) {
+          emp.schedule[dateStr].specialStatus = specialStatus;
+        }
+
+        currentDate = currentDate.add(1, 'day');
+      }
+    });
+  }
+
+  // 处理离职/转岗数据
+  if (resignationTransfers.value && Array.isArray(resignationTransfers.value)) {
+    resignationTransfers.value.forEach(item => {
+      // 找到对应的员工
+      const emp = employees.value.find(e => e.id === item.employeeId);
+      if (!emp) {
+        return;
+      }
+
+      // 处理离职
+      if (item.type === '离职') {
+        if (item.status !== 'approved') {
+          return;
+        }
+        // 离职日期起显示'离职'
+        const resignDate = item.transferDate ? dayjs(item.transferDate) : null;
+        if (!resignDate) {
+          return;
+        }
+
+        // 从离职日期起，所有日期都标记为离职
+        const rangeEnd = dayjs().add(1, 'year'); // 足够远的结束日期
+        let currentDate = resignDate.clone();
+        while (currentDate.isBefore(rangeEnd)) {
+          const dateStr = currentDate.format('YYYY-MM-DD');
+
+          if (!emp.schedule[dateStr]) {
+            emp.schedule[dateStr] = { shift: '' };
+          }
+
+          if (!emp.schedule[dateStr].specialStatus) {
+            emp.schedule[dateStr].specialStatus = '离职';
+          }
+
+          currentDate = currentDate.add(1, 'day');
+        }
+      }
+
+      // 处理转岗
+      if (item.type === '转岗') {
+        // 转岗需要转出和转入都批准才显示'转岗'
+        if (item.transferOutApprovalStatus !== 'approved') {
+          return;
+        }
+        // 转岗日期起显示'转岗'
+        const transferDate = item.transferDate ? dayjs(item.transferDate) : null;
+        if (!transferDate) {
+          return;
+        }
+
+        // 从转岗日期起，所有日期都标记为转岗
+        const rangeEnd = dayjs().add(1, 'year'); // 足够远的结束日期
+        let currentDate = transferDate.clone();
+        while (currentDate.isBefore(rangeEnd)) {
+          const dateStr = currentDate.format('YYYY-MM-DD');
+
+          if (!emp.schedule[dateStr]) {
+            emp.schedule[dateStr] = { shift: '' };
+          }
+
+          if (!emp.schedule[dateStr].specialStatus) {
+            emp.schedule[dateStr].specialStatus = '转岗';
+          }
+
+          currentDate = currentDate.add(1, 'day');
+        }
+      }
+    });
+  }
+};
+
 // 刷新考勤汇总数据
 const refreshAttendanceData = () => {
   calculateOvertime();
@@ -1723,7 +2031,7 @@ const refreshAttendanceData = () => {
 // 汇总数据
 const summaryData = computed(() => {
   const deptMap = new Map<string, any>();
-  
+
   // 统计破7休1，忽略被标记的项
   overworkingEmployees.value.forEach(emp => {
     if (emp.isIgnored) {
@@ -1739,13 +2047,13 @@ const summaryData = computed(() => {
         overLimitCount: 0,
         totalOverHours: 0,
         period: `${getWeekNumber(currentPeriodStart.value)}`,
-        reason: ''
+        reason: getSummaryReason(key) // 从持久化存储恢复原因
       });
     }
     const dept = deptMap.get(key);
     dept.overworkCount++;
   });
-  
+
   // 统计周工时超限
   weeklyLimitEmployees.value.forEach(emp => {
     const key = emp.departmentName || emp.department;
@@ -1758,14 +2066,14 @@ const summaryData = computed(() => {
         overLimitCount: 0,
         totalOverHours: 0,
         period: `${getWeekNumber(currentPeriodStart.value)}`,
-        reason: ''
+        reason: getSummaryReason(key) // 从持久化存储恢复原因
       });
     }
     const dept = deptMap.get(key);
     dept.overLimitCount++;
     dept.totalOverHours += emp.overLimitHours;
   });
-  
+
   return Array.from(deptMap.values());
 });
 
@@ -1857,7 +2165,7 @@ const errandFixList = computed(() => {
 const weekDays = computed(() => {
   const days = [];
   // 从周一开始
-  let start = dayjs(currentPeriodStart.value).day(1);
+  const start = dayjs(currentPeriodStart.value).day(1);
   for (let i = 0; i < 7; i++) {
     const day = start.add(i, 'day');
     days.push({
@@ -1976,20 +2284,39 @@ const currentFilterDays = computed(() => {
 const employees = ref<Employee[]>([]);
 const temporaryOvertimes = ref<TemporaryOvertimeItem[]>([]);
 const temporaryLeaves = ref<TemporaryLeaveItem[]>([]);
+const formalLeaves = ref<any[]>([]);
+const resignationTransfers = ref<any[]>([]);
 const plants = ref<Plant[]>([]);
 const departments = ref<Department[]>([]);
 
 // 获取所有厂区
 const loadPlants = async () => {
   try {
-    const data = await request.get<{ plants: Plant[] }>('/plants');
-    plants.value = data?.plants || [];
+    const response = await request.get('/plants');
+    console.log('[DEBUG] loadPlants 返回数据:', JSON.stringify(response).substring(0, 200));
+    console.log('[DEBUG] response type:', typeof response);
+
+    // 防御：处理不同的响应格式
+    let plantsData: Plant[] = [];
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        plantsData = response;
+      } else if ('plants' in response) {
+        plantsData = (response as any).plants || [];
+      } else if ('data' in response && Array.isArray((response as any).data)) {
+        plantsData = (response as any).data;
+      }
+    }
+
+    plants.value = plantsData;
+    console.log('[DEBUG] plants.value 设置完成，数量:', plants.value.length);
   } catch (error: any) {
     // 检查是否是取消的请求（路由切换时会发生）
     if (error?.code === 'CANCELLED' || error?.isCancelled) {
       return;
     }
     console.error('加载厂区失败:', error);
+    console.error('错误详情:', error?.stack || new Error().stack);
     ElMessage.error('加载厂区失败！');
   }
 };
@@ -1997,14 +2324,44 @@ const loadPlants = async () => {
 // 获取所有部门
 const loadDepartments = async () => {
   try {
-    const data = await request.get<{ departments: Department[] }>('/departments');
-    departments.value = data?.departments || [];
+    // 防御：确保 departments.value 存在
+    if (!departments.value || !('value' in departments.value)) {
+      console.error('[ERROR] departments ref 未正确初始化');
+      return;
+    }
+
+    const response = await request.get('/departments');
+    console.log('[DEBUG] loadDepartments 返回数据:', JSON.stringify(response).substring(0, 200));
+    console.log('[DEBUG] response type:', typeof response);
+    console.log('[DEBUG] response keys:', response && typeof response === 'object' ? Object.keys(response) : 'N/A');
+
+    // 防御：处理不同的响应格式
+    let departmentsData: Department[] = [];
+    if (response && typeof response === 'object') {
+      if (Array.isArray(response)) {
+        departmentsData = response;
+      } else if ('departments' in response) {
+        departmentsData = (response as any).departments || [];
+      } else if ('data' in response && Array.isArray((response as any).data)) {
+        departmentsData = (response as any).data;
+      } else {
+        console.warn('[WARN] loadDepartments: 响应格式未知', response);
+      }
+    } else {
+      console.warn('[WARN] loadDepartments: 响应为空或无效', response);
+    }
+
+    departments.value = departmentsData;
+    console.log('[DEBUG] departments.value 设置完成，数量:', departments.value.length);
   } catch (error: any) {
     // 检查是否是取消的请求（路由切换时会发生）
     if (error?.code === 'CANCELLED' || error?.isCancelled) {
       return;
     }
     console.error('加载部门失败:', error);
+    console.error('错误详情:', error);
+    console.error('错误消息:', error?.message);
+    console.error('错误堆栈:', error?.stack);
     ElMessage.error('加载部门失败！');
   }
 };
@@ -2038,26 +2395,51 @@ const loadEmployeesAndSchedules = async () => {
       return;
     }
 
+    // 处理响应数据（request 拦截器已自动解包 data）
+    const data = response;
+
     // 防御：处理不同的响应格式
-    if (Array.isArray(response)) {
+    if (Array.isArray(data)) {
       // 如果直接返回数组（某些缓存场景）
-      employees.value = response;
-    } else if (response.employees) {
+      employees.value = data;
+    } else if (data.employees) {
       // 标准格式 { employees: [...] }
-      employees.value = response.employees;
+      employees.value = data.employees;
     } else {
       // 未知格式
-      console.error('未知的响应格式:', response);
+      console.error('未知的响应格式:', data);
       employees.value = [];
     }
 
     // 防御：获取临时数据（使用 try-catch 避免失败影响主流程）
     try {
-      await fetchTemporaryData(startDate, endDate);
+      // 计算扩展的日期范围（包含当前显示月份的所有日期，确保请假/年假/离职/转岗数据能显示）
+      const { startDate, endDate } = currentCalculatedDateRange.value;
+      const rangeStart = dayjs(startDate);
+      const rangeEnd = dayjs(endDate);
+      // 扩展到整个月份
+      const expandedStart = rangeStart.date(1).format('YYYY-MM-DD');
+      const expandedEnd = rangeEnd.endOf('month').format('YYYY-MM-DD');
+      console.log('[DEBUG] 原始日期范围:', startDate, '-', endDate);
+      console.log('[DEBUG] 扩展日期范围:', expandedStart, '-', expandedEnd);
+      await fetchTemporaryData(expandedStart, expandedEnd);
     } catch (tempError) {
       console.error('获取临时数据失败（继续执行）:', tempError);
       temporaryOvertimes.value = [];
       temporaryLeaves.value = [];
+      formalLeaves.value = [];
+      resignationTransfers.value = [];
+    }
+
+    // 将已批准的请假/年假数据合并到员工排班日程中（用于排班表格显示）
+    try {
+      console.log('[DEBUG] 开始合并请假数据到排班');
+      console.log('[DEBUG] formalLeaves:', JSON.stringify(formalLeaves.value));
+      console.log('[DEBUG] employees:', employees.value.length);
+      mergeApprovedLeavesToSchedule();
+      console.log('[DEBUG] 合并完成，林克忠的排班:', JSON.stringify(employees.value.find(e => e.name === '林克忠')?.schedule));
+    } catch (mergeError) {
+      console.error('合并请假数据到排班失败（继续执行）:', mergeError);
     }
 
     // 防御：计算加班和请假（使用 try-catch 避免失败影响主流程）
@@ -2102,23 +2484,47 @@ const loadEmployeesAndSchedules = async () => {
 
 const fetchTemporaryData = async (startDate: string, endDate: string) => {
   try {
-    const overtimeResponse = await request.get<any>('/temporary-overtime', {
+    const overtimeRes = await request.get<any>('/temporary-overtime', {
       params: {
         startDate,
         endDate,
         pageSize: 1000
       }
     });
-    temporaryOvertimes.value = overtimeResponse.items || [];
+    // 拦截器已提取 data，直接使用
+    temporaryOvertimes.value = Array.isArray(overtimeRes) ? overtimeRes : (overtimeRes?.items || []);
 
-    const leaveResponse = await request.get<any>('/temporary-leave', {
+    const leaveRes = await request.get<any>('/temporary-leave', {
       params: {
         startDate,
         endDate,
         pageSize: 1000
       }
     });
-    temporaryLeaves.value = leaveResponse.items || [];
+    temporaryLeaves.value = Array.isArray(leaveRes) ? leaveRes : (leaveRes?.items || []);
+
+    // 获取年假/请假数据（formal-leave）
+    const formalLeaveRes = await request.get<any>('/formal-leave', {
+      params: {
+        startDate,
+        endDate,
+        pageSize: 1000
+      }
+    });
+    // 拦截器已提取 data，formalLeaveRes 直接就是 items 数组
+    formalLeaves.value = Array.isArray(formalLeaveRes) ? formalLeaveRes : (formalLeaveRes?.items || []);
+    console.log('[DEBUG] formal-leave API 返回:', JSON.stringify(formalLeaves.value));
+
+    // 获取离职/转岗数据
+    const resignationRes = await request.get<any>('/resignation-transfer', {
+      params: {
+        startDate,
+        endDate,
+        pageSize: 1000
+      }
+    });
+    resignationTransfers.value = Array.isArray(resignationRes) ? resignationRes : (resignationRes?.items || []);
+    console.log('[DEBUG] resignation-transfer API 返回:', JSON.stringify(resignationTransfers.value));
 
   } catch (error: any) {
     // 检查是否是取消的请求（路由切换时会发生）
@@ -2129,6 +2535,8 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
     console.error('获取临时加班或请假数据失败:', error);
     temporaryOvertimes.value = [];
     temporaryLeaves.value = [];
+    formalLeaves.value = [];
+    resignationTransfers.value = [];
   }
 };
 
@@ -2210,11 +2618,13 @@ const fetchEmployees = async () => {
       ElMessage.warning('获取临时数据失败，继续加载排班数据！');
     }
     
-    const data = await request.get<{ employees: Employee[] }>('/schedule/employees', {
+    const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
       params: { startDate, endDate }
     });
-    
-    if (data.employees) {
+
+    const data = response;
+
+    if (data?.employees) {
     const viewStartDate = dayjs(startDate);
     const filteredEmployees = data.employees.filter((emp: any) => {
       if (!emp.leaveDate) {
@@ -3197,11 +3607,11 @@ const downloadScheduleTemplate = async () => {
       endDate = customRangeEnd.value;
     }
     
-    const response = await request.get<Blob>('/schedule/download-template', {
+    const blob = await request.get('/schedule/download-template', {
       params: { startDate, endDate },
-      responseType: 'blob' // Indicate that the response type is a blob
-    });
-    const url = window.URL.createObjectURL(response);
+      responseType: 'blob'
+    }) as Blob;
+    const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = '排班导入模板.xlsx';
@@ -3224,7 +3634,7 @@ const exportAttendance = () => {
   
   // 根据视图模式确定日期范围
   let startDate, endDate;
-  let dateRangeList: {date: string, code: string, dayOfWeek: number}[] = [];
+  const dateRangeList: {date: string, code: string, dayOfWeek: number}[] = [];
   
   if (scheduleViewMode.value === 'week') {
     // 周视图：确定当前月周期
@@ -3351,7 +3761,7 @@ const exportAttendance = () => {
   filteredEmployees.value.forEach(emp => {
     // 检查 employee_type 字段
     const employeeType = (emp as any).employee_type;
-    if (employeeType && employeeType.toLowerCase() === 'jabil') {
+    if (employeeType && String(employeeType).toLowerCase() === 'jabil') {
       return; // 跳过
     }
     
@@ -3675,10 +4085,28 @@ const handleClearSchedule = async () => {
       const newSchedule = { ...emp.schedule };
       delete newSchedule[cell.date];
       emp.schedule = newSchedule;
-      
+
       // 调用后端删除排班 - 使用正确的 DELETE 方法
       try {
         await request.delete(`/schedule/${cell.employeeId}/${cell.date}`);
+
+        // 同步删除该日期的请假/年假记录
+        try {
+          await request.delete('/formal-leave/by-employee-date', {
+            params: { employeeId: cell.employeeId, date: cell.date }
+          });
+        } catch (e) {
+          // 忽略删除请假/年假记录的错误（可能没有记录）
+        }
+
+        // 同步删除该日期的离职/转岗记录
+        try {
+          await request.delete('/formal-leave/resignation/by-employee-date', {
+            params: { employeeId: cell.employeeId, date: cell.date }
+          });
+        } catch (e) {
+          // 忽略删除离职/转岗记录的错误（可能没有记录）
+        }
       } catch (error) {
         ElMessage.error(`删除排班失败: ${cell.date}`);
       }
@@ -3906,8 +4334,8 @@ const checkOverworking = () => {
   
   // 检查日期范围扩展到前后各10天，确保能找到跨视图边界的连续工作
   // 注意：dayjs.subtract/add 会修改原对象，所以要先 clone！
-  let checkStart = viewStart.clone().subtract(14, 'day'); // 向前检查两周
-  let checkEnd = viewEnd.clone().add(14, 'day'); // 向后检查两周
+  const checkStart = viewStart.clone().subtract(14, 'day'); // 向前检查两周
+  const checkEnd = viewEnd.clone().add(14, 'day'); // 向后检查两周
   
   console.log('🔍 视图日期范围:', viewStart.format('YYYY-MM-DD'), '至', viewEnd.format('YYYY-MM-DD'));
   console.log('🔍 实际检查日期范围:', checkStart.format('YYYY-MM-DD'), '至', checkEnd.format('YYYY-MM-DD'));
@@ -3922,7 +4350,7 @@ const checkOverworking = () => {
     let consecutiveDays = 0;
     let startDate = null;
     let lastWorkDate = null;
-    let overworkRecordFound = false;
+    const overworkRecordFound = false;
     // 用于保存最终的记录，确保取的是与视图重叠的那一段
     let finalConsecutiveDays = 0;
     let finalStartDate = null;
@@ -3960,8 +4388,8 @@ const checkOverworking = () => {
         
         // 如果连续工作≥7天，检查这个时间段是否与视图范围有重叠
         if (consecutiveDays >= 7) {
-          let checkOverlapStart = dayjs(startDate);
-          let checkOverlapEnd = dayjs(lastWorkDate);
+          const checkOverlapStart = dayjs(startDate);
+          const checkOverlapEnd = dayjs(lastWorkDate);
           let hasOverlapWithView = false;
           
           // 正确的重叠判断：start <= viewEnd AND end >= viewStart
@@ -4004,7 +4432,7 @@ const checkOverworking = () => {
     }
     
     // 遍历完后，如果有符合条件的记录，才添加
-    if (finalStartDate && finalEndDate && !(emp.employee_type && emp.employee_type.toLowerCase() === 'jabil')) {
+    if (finalStartDate && finalEndDate && !((emp.employee_type || '').toString().toLowerCase() === 'jabil')) {
       // 再次确保记录的日期范围与当前视图有重叠才显示
       const recordStart = dayjs(finalStartDate);
       const recordEnd = dayjs(finalEndDate);
@@ -4025,13 +4453,13 @@ const checkOverworking = () => {
           startDate: finalStartDate,
           endDate: finalEndDate,
           sap: emp.oldEmployeeId || emp.sap, // 使用旧工号
-          reason: '',
+          reason: getOverworkReason(emp.id, finalStartDate, finalEndDate), // 从持久化存储恢复原因
           isIgnored: isIgnored // 添加忽略标记
         });
       } else {
         console.log(`🔍 [${index}] 跳过 ${empName}: 记录 (${finalStartDate} 至 ${finalEndDate}) 与当前视图 (${viewStart.format('YYYY-MM-DD')} 至 ${viewEnd.format('YYYY-MM-DD')}) 无重叠`);
       }
-    } else if (!(emp.employee_type && emp.employee_type.toLowerCase() === 'jabil')) {
+    } else if (!((emp.employee_type || '').toString().toLowerCase() === 'jabil')) {
       normalEmployees.value.push(emp);
     }
   });
@@ -4152,7 +4580,7 @@ const checkWeeklyHours = () => {
     
     console.log(`📊 [${index}] ${empName}: 排班=${scheduleHours}h, 加班=${overtimeHours}h, 总计=${totalHours}h, 超限=${overLimitHours > 0 ? overLimitHours : 0}h`);
     
-    if (overLimitHours > 0 && !(emp.employee_type && emp.employee_type.toLowerCase() === 'jabil')) {
+    if (overLimitHours > 0 && !((emp.employee_type || '').toString().toLowerCase() === 'jabil')) {
       // 只显示周一的日期
       const mondayDate = start.day(1).format('YYYY-MM-DD');
       const weekEndDate = start.day(7).format('YYYY-MM-DD');
@@ -4168,7 +4596,7 @@ const checkWeeklyHours = () => {
         weekEndDate: weekEndDate,
         weekNumber: weekNumber,
         sap: emp.oldEmployeeId || emp.sap, // 使用旧工号
-        reason: ''
+        reason: getWeeklyLimitReason(emp.id, mondayDate, weekEndDate) // 从持久化存储恢复原因
       });
     }
   });
@@ -4421,7 +4849,7 @@ const exportToExcel = async () => {
     // 如果有证据，处理常见图片格式并嵌入
     if (item.evidence) {
       const evidenceCell = row.getCell(10); // 第10列是证据列
-      const lowerEvidence = item.evidence.toLowerCase();
+      const lowerEvidence = String(item.evidence || '').toLowerCase();
       // 接受常见图片格式
       let extension: 'png' | 'jpeg' | null = null;
       if (lowerEvidence.endsWith('.png')) {
@@ -4919,7 +5347,7 @@ const openInOutlook = async () => {
         startDate: emp.startDate,
         endDate: emp.endDate,
         weekNumber: weekNum,
-        reportedAt: new Date().toISOString()
+        reportedAt: formatShanghaiDateTime()
       });
     });
     // 保存周工时超限记录
@@ -4930,7 +5358,7 @@ const openInOutlook = async () => {
         startDate: emp.weekDate,
         endDate: emp.weekEndDate,
         weekNumber: weekNum,
-        reportedAt: new Date().toISOString()
+        reportedAt: formatShanghaiDateTime()
       });
     });
     console.log('✅ 上报记录已保存');

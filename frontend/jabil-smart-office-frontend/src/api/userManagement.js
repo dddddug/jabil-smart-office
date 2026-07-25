@@ -1,10 +1,8 @@
 import request from '@/utils/request'
 
-const API_PREFIX = '/api'
-
 export function getUserList(query) {
   return request({
-    url: API_PREFIX + '/users',
+    url: '/users',
     method: 'get',
     params: query
   })
@@ -12,7 +10,7 @@ export function getUserList(query) {
 
 export function getDepartmentList(query) {
   return request({
-    url: API_PREFIX + '/departments',
+    url: '/departments',
     method: 'get',
     params: query
   })

@@ -5,13 +5,14 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "cross-env TZ=Asia/Shanghai node server.js",
+    "dev": "cross-env TZ=Asia/Shanghai node server.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dayjs": "^1.11.10",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",

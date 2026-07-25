@@ -66,7 +66,7 @@
     <!-- 批量导入弹窗 -->
     <SpecialWorkingHoursImportModal
       v-model:visible="importModalVisible"
-      @import-success="getList"
+      @import-success="handleImportSuccess"
     />
   </div>
 </template>
@@ -85,7 +85,8 @@ import {
   exportSpecialWorkingHours,
 } from '@/api/specialWorkingHours';
 import { downloadFile } from '@/utils/excelUtils';
-import dayjs from 'dayjs';
+import eventBus from '@/utils/eventBus';
+import dayjs from '@/plugins/dayjs';
 
 interface Props {
   startDate?: string;
@@ -171,8 +172,8 @@ const getList = async () => {
   };
   try {
     const res = await getSpecialWorkingHoursList(params);
-    tableData.value = res.list;
-    total.value = res.total;
+    tableData.value = res.data?.list || [];
+    total.value = res.data?.total || 0;
   } catch (error: any) {
     ElMessage.error('获取列表失败：' + error.message);
   }
@@ -217,6 +218,8 @@ const handleDelete = async (id: number) => {
       if (res.success) {
         ElMessage.success('删除成功');
         getList();
+        // 通知工位安排页面刷新
+        eventBus.emit('special-working-hours-changed');
       } else {
         ElMessage.error(res.error || '删除失败');
       }
@@ -246,6 +249,8 @@ const handleBatchDelete = async () => {
         ElMessage.success(`成功删除 ${res.deletedCount} 条记录`);
         getList();
         selectedIds.value = [];
+        // 通知工位安排页面刷新
+        eventBus.emit('special-working-hours-changed');
       } else {
         ElMessage.error(res.error || '批量删除失败');
       }
@@ -271,16 +276,21 @@ const handleExportExcel = async () => {
 const handleSubmitForm = async (formData: SpecialWorkingHoursItem) => {
   try {
     const res = await addSpecialWorkingHours(formData);
-    if (res.message) {
-      ElMessage.success(res.message);
-      formModalVisible.value = false;
-      getList();
-    } else {
-      ElMessage.error('操作失败');
-    }
+    ElMessage.success('操作成功');
+    formModalVisible.value = false;
+    getList();
+    // 通知工位安排页面刷新
+    eventBus.emit('special-working-hours-changed');
   } catch (error: any) {
     ElMessage.error('操作失败：' + (error.message || error.error || error));
   }
+};
+
+// 导入成功后的处理
+const handleImportSuccess = () => {
+  getList();
+  // 通知工位安排页面刷新
+  eventBus.emit('special-working-hours-changed');
 };
 
 // Watchers
@@ -299,6 +309,11 @@ watch(() => props.endDate, (newVal, oldVal) => {
 // Lifecycle hook
 onMounted(() => {
   getList(); // Initial load
+
+  // 监听工位安排变化，刷新特殊工时列表
+  eventBus.on('workstation-arrangement-changed', () => {
+    getList();
+  });
 });
 </script>
 

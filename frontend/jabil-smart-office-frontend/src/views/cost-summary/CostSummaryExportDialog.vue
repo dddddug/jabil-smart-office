@@ -46,9 +46,9 @@ const confirmExport = async () => {
   try {
     ElMessage.info('正在准备导出，请稍候...');
     const res = await exportCostSummaryExcel(props.filterParams);
-    
+
     // Assuming the API returns a blob for file download
-    const blob = new Blob([res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
