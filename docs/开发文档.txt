@@ -1,0 +1,1432 @@
+一、项目定位与品牌规范
+1.1 品牌标识
+•系统名称：Jabil 智慧协同平台（Jabil Smart Office）
+•版本号：v2.0.0
+•品牌色：Jabil蓝（#0066CC）、科技青（#00A8E8）、深蓝背景（#0A1628）
+•LOGO：JABIL 标准品牌标识 + 智慧协同平台文字组合
+1.2 部署信息
+•系统标识：SYS-ID: JABIL-202606
+•状态栏显示：SYSTEM ONLINE | Jabil 广州 | 智能办公中心 | 2026年07月08日星期三 10:30:00
+二、全局架构与开发约束（⚠️ 核心补充）
+2.1 数据库建设策略
+⚠️ 强制约束：当前数据库 stockroom_db 中不存在本项目所需的任何业务表。 - 全量新建：所有模块（用户、排班、工位、单据、KPI等）对应的数据表均需从零创建。 - 禁止复用：严禁假设或依赖任何已有表结构，必须先执行完整的 DDL 建表脚本。 - 初始化数据：建表后需同步提供基础字典数据、角色权限、系统配置等种子数据插入脚本。
+
+2.1.1 数据库表命名规范
+⚠️ 强制约束：所有数据库表必须遵循以下命名规范，避免与数据库中已有表冲突。
+
+命名格式：jso_系统模块_功能表名
+
+命名说明：
+- jso：Jabil Smart Office 系统前缀，统一标识本系统的表
+- 系统模块：表所属的功能模块分类，如 system（系统管理）、org（组织结构）、biz（业务）等
+- 功能表名：具体功能的表名，清晰描述表的用途
+
+模块分类示例：
+- system：系统管理模块（用户、角色、权限、配置等）
+- org：组织结构模块（厂区、部门、员工等）
+- biz：业务模块（排班、工位、单据等）
+- report：报表模块（KPI、Cost汇总等）
+
+命名示例：
+- jso_system_role_management：系统管理 - 角色管理表
+- jso_system_user_management：系统管理 - 用户管理表
+- jso_org_plant_management：组织结构 - 厂区管理表
+- jso_org_department_management：组织结构 - 部门管理表
+- jso_org_employee_roster：组织结构 - 员工花名册表
+- jso_biz_employee_schedule：业务 - 员工排班表
+- jso_biz_station_arrangement：业务 - 工位安排表
+
+索引命名规范：idx_表名_字段名
+示例：idx_jso_system_role_management_status
+
+序列命名规范：表名_id_seq
+示例：jso_system_role_management_id_seq
+
+字段命名规范：使用下划线命名法（snake_case）
+示例：id, name, description, status, created_at, updated_at
+2.2 Trae 开发环境约束
+⚠️ 强制约束：使用 Trae 进行开发时，拒绝安装任何额外程序/插件/扩展。 - 仅使用 Trae 原生内置功能及项目已有依赖。 - 不得通过 Trae 市场安装第三方工具、LSP、格式化插件等。 - 所有开发、调试、构建操作必须在纯原生环境下完成。
+2.3 开发顺序策略
+⚠️ 强制约束：严格遵循 “前端优先 → 微信端跟进 → 后端补齐” 的开发节奏。 1. 第一阶段（前端）：完成 PC/平板/手机网页端全部页面、交互、Mock 数据对接。 2. 第二阶段（微信端）：基于已定稿的前端 UI 与接口契约，开发微信小程序端。 3. 第三阶段（后端）：根据前端 + 微信端实际调用的接口清单，反向补齐后端 API、业务逻辑与数据库实现。 - 后端开发以前端/微信端已确认的接口文档为唯一依据，禁止提前过度设计。
+2.4 多端架构
+终端	技术栈	适配要求
+网页端（PC）	Vue 3 + Element Plus + ECharts	响应式布局，支持大屏宽屏（1920px+）
+网页端（平板）	同上	触控优化，侧边栏可折叠
+网页端（手机）	同上	底部导航，卡片式布局
+微信小程序	原生框架 + Vant Weapp	全机型兼容安卓/iOS，适配安全区
+2.5 数据库连接配置
+Host: 10.114.100.171
+Port: 5432
+Database: stockroom_db
+Username: postgres
+Password: 74454321
+
+2.6 模块开发状态概览
+所有主要业务模块的Vue组件已创建为占位页面，并已集成到前端路由中。具体模块及对应的占位组件如下：
+表格
+模块名称	Vue组件文件	当前状态	已实现功能
+员工排班	EmployeeScheduleView.vue	✅ 完整功能已实现 (含后端接口)	实现了周视图排班显示，支持日期切换、员工排班编辑弹窗，可进行班次分配；特殊工时界面已关联周视图、月视图和定义范围视图；修复了筛选器相关问题；Excel导出功能已实现（邮件正文精简、补卡Sheet仅含表头、公差Sheet嵌入图片、汇总Sheet拆分'打破7休1'单元格）；修复了相关TypeScript类型错误。
+工位安排	StationArrangementView.vue	基础功能已开发 (CRUD及UI)	实现了工位信息的CRUD，支持工位状态管理、员工分配/解除分配功能。
+单据接收	ReceiptManagementView.vue	基础功能已开发 (CRUD及UI)	实现了单据的CRUD功能，支持批量确认、批量导出。	
+便捷打印	ConvenientPrintView.vue	基础功能已开发 (CRUD及UI)	实现了打印内容选择、打印预览和模拟打印功能。	
+Cost汇总	CostSummaryView.vue	基础功能已开发 (CRUD及UI)	实现了费用数据的展示、筛选和汇总功能。	
+产量追踪	ProductionTrackingView.vue	基础功能已开发 (CRUD及UI)	实现了产量数据的录入、查询、追踪及筛选功能。	
+奖金评比	BonusEvaluationView.vue	基础功能已开发 (CRUD及UI)	实现了奖金评比规则的CRUD，并模拟了评比结果的展示。	
+请假公差	LeaveManagementView.vue	基础功能已开发 (CRUD及UI)	实现了请假/公差申请的CRUD，支持申请状态管理（待审批、已批准、已拒绝）。
+关键KPI	KpiIndicatorsView.vue	基础功能已开发 (CRUD及UI)	实现了KPI指标的展示、筛选和整体达成率计算。	
+BIN体积管理	BinVolumeManagementView.vue	基础功能已开发 (CRUD及UI)	实现了BIN信息的CRUD，支持自动体积计算和状态管理。	
+过期料延期	ExpiredMaterialExtensionView.vue	基础功能已开发 (CRUD及UI)	实现了过期物料的展示、延期申请、延期记录查看和物料删除功能。	
+6S管理	SixSManagementView.vue	基础功能已开发 (CRUD及UI)	实现了检查标准配置、评分录入和整改追踪功能。	
+员工花名册	EmployeeRosterView.vue	✅ 完整功能已实现 (含后端接口)	数据概览仪表盘，Excel批量导入，完整CRUD；已修复 Axios 响应数据结构和 `string | undefined` 类型赋值相关错误。
+组织结构	OrganizationalStructureView.vue	基础功能已开发 (CRUD及UI)	作为父视图，整合了厂区管理和部门管理，支持内部导航切换。
+厂区管理	PlantManagementView.vue	✅ 完整功能已实现 (含后端接口)	实现了厂区信息的CRUD，支持新增、编辑、删除厂区；已修复 Axios 响应数据结构相关错误。
+部门管理	DepartmentManagementView.vue	✅ 完整功能已实现 (含后端接口)	实现了部门信息的CRUD，支持新增、编辑、删除部门，并可关联所属厂区；已修复 Axios 响应数据结构相关错误。
+用户管理	UserManagementView.vue	✅ 完整功能已实现 (含后端接口)	jso_system_user_management	实现了用户信息的CRUD，支持用户与角色、厂区、部门的关联；已修复 Axios 响应数据结构相关错误。
+权限管理	PermissionManagementView.vue	基础功能已开发 (CRUD及UI)	实现了权限的CRUD和角色权限的分配功能。	
+角色管理	RoleManagementView.vue	✅ 完整功能已实现 (含后端接口)	角色CRUD，批量同步
+部门计算规则配置	DeptCalcRulesConfigView.vue	✅ 完整功能已实现 (含前后端)	实现了部门计算规则的CRUD，支持厂区、部门、核算周期、预估费用、汇率、Rate系数的配置与管理，并支持启用、停用操作。	
+智能排班规则配置	SmartScheduleRulesConfigView.vue	基础功能已开发 (CRUD及UI)	实现了班次、人数、配比、节假日、请假过滤、均衡、轮换、加班上限等规则配置。	
+员工工时费率配置	EmployeeHourlyRateConfigView.vue	基础功能已开发 (CRUD及UI)	实现了员工工时费率的CRUD，并支持按员工/级别筛选，强制生效日期。	
+福利基数配置	WelfareBaseConfigView.vue	基础功能已开发 (CRUD及UI)	实现了福利基数的CRUD，并强制要求生效日期。
+
+三、登录页面（已实现）
+3.1 页面布局结构
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SYSTEM ONLINE | Jabil 广州 | 智能办公中心 | 2026年07月08日星期三 10:30:00 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐  │
+│  │                                 │  │                                 │  │
+│  │   [JABIL LOGO]                  │  │   欢迎回到 Jabil                │  │
+│  │   Jabil 智慧协同平台            │  │   登录您的账号，开启高效办公之旅  │  │
+│  │   v2.0.0                        │  │                                 │  │
+│  │                                 │  │   工号 / 用户名                 │  │
+│  │   欢迎使用 Jabil 智能办公平台    │  │   ┌─────────────────────────┐   │  │
+│  │                                 │  │   │ 👤 admin                │   │  │
+│  │   集员工排班、数据管理、关键KPI │  │   └─────────────────────────┘   │  │
+│  │   追踪、绩效评估等核心功能，     │  │                                 │  │
+│  │   助力企业数字化转型，           │  │   登录密码                      │  │
+│  │   提升工作效率与协作体验。       │  │   ┌─────────────────────────┐   │  │
+│  │                                 │  │   │ 🔒 ●●●●●●●●              │   │  │
+│  │                                 │  │   └─────────────────────────┘   │  │
+│  │                                 │  │                                 │  │
+│  │   ┌────────┐ ┌────────┐        │  │   ☑ 记住密码（自动填充）   忘记密码？│  │
+│  │   │  10+   │ │  24/7  │        │  │                                 │  │
+│  │   │核心功能│ │全天候  │        │  │   ┌─────────────────────────┐   │  │
+│  │   │ 模块   │ │运维支持│        │  │   │      登 录 系 统 →      │   │  │
+│  │   └────────┘ └────────┘        │  │   └─────────────────────────┘   │  │
+│  │   ┌────────┐                   │  │                                 │  │
+│  │   │ 99.9%  │                   │  │   ● SERVER ONLINE    SYS-ID:    │  │
+│  │   │系统可用│                   │  │     JABIL-202606                │  │
+│  │   │性保障  │                   │  │                                 │  │
+│  │   └────────┘                   │  │   © 2026 Jabil 智慧协同平台 v2.0.0│ │
+│  │                                 │  │   Powered by Jabil Smart Office │  │
+│  └─────────────────────────────────┘  └─────────────────────────────────┘  │
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  📊 员工排班  🏭 工位安排  📈 数据报表  🏆 绩效评比  📝 请假公差  │   │
+│  │                                                                     │   │
+│  │  📉 KPI指标  👥 员工管理  🔐 权限分配                              │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+3.2 登录表单元素
+表格
+元素	类型	规则
+工号/用户名	输入框	支持工号、SAP ID、用户名
+登录密码	密码输入框	支持显示/隐藏切换
+记住密码	复选框	自动填充上次登录账号
+忘记密码	链接	跳转密码重置流程
+登录系统	主按钮	渐变蓝色，带箭头图标
+3.3 底部功能导航（登录页展示）
+图标 + 文字：📊 员工排班 🏭 工位安排 📈 数据报表 🏆 绩效评比 📝 请假公差 📉 KPI指标 👥 员工管理 🔐 权限分配
+四、主控制台（Dashboard）— 一比一还原
+4.1 顶部全局导航栏
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  JABIL 智慧协同平台                                    [🌐 系统公告] [🔔]  │
+│  欢迎使用 Jabil 智慧协同平台                    [👤 管理员] [⚙️ 设置] [🚪] │
+│  2026年7月8日星期三                                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  [◀ 首页]                                          [关闭其他] [关闭全部]  │
+└─────────────────────────────────────────────────────────────────────────────┘
+4.2 左侧导航菜单（深色侧边栏）
+表格
+图标	菜单名称	权限	说明
+📊	仪表盘	全部	首页数据看板
+📅	员工排班	全部	基础功能已开发
+🏭	工位安排	管理员	基础功能已开发
+📦	单据接收	全部	基础功能已开发
+🖨️	便捷打印	全部	基础功能已开发
+💰	Cost汇总	管理员	基础功能已开发
+📈	产量追踪	管理员	基础功能已开发
+🏆	奖金评比	管理员	基础功能已开发
+📝	请假公差	全部	基础功能已开发
+📉	关键KPI	全部	基础功能已开发
+📦	BIN体积管理	管理员	基础功能已开发
+⏳	过期料延期	兄弟部门+管理员	基础功能已开发
+🧹	6S管理	管理员	基础功能已开发
+──	──────────	────	系统管理分隔线
+👥	员工花名册	管理员	完整功能已实现 (含后端接口)
+🏢	组织结构	超级管理员	基础功能已开发
+🏭	厂区管理	超级管理员	✅ 完整功能已实现
+🏢	部门管理	超级管理员	✅ 完整功能已实现
+👤	用户管理	管理员	✅ 完整功能已实现
+🔐	权限管理	超级管理员	基础功能已开发
+🎭	角色管理	超级管理员	✅ 完整功能已实现
+──	──────────	────	配置分隔线
+⚙️	部门计算规则配置	超级管理员/厂区管理员	✅ 完整功能已实现
+🤖	智能排班规则配置	超级管理员/厂区管理员	基础功能已开发
+💵	员工工时费率配置	超级管理员/厂区管理员	基础功能已开发
+🎁	福利基数配置	超级管理员/厂区管理员	基础功能已开发
+4.3 仪表盘核心指标卡片（顶部8卡片）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  👥 在职员工        💰 本月费用        📦 本月产量        🏆 奖金总额      │
+│  34 / 35人          ¥2,160.00          670件            ¥3,300.00          │
+│  点击查看详情 →    点击查看详情 →    点击查看详情 →    点击查看详情 →    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ⏳ 待审批          📅 本月排班                                        │
+│  0项                832人次                                             │
+│  点击查看详情 →    点击查看详情 →                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+卡片数据定义：
+表格
+卡片	数据源	计算规则
+在职员工	花名册	在职人数 / 总人数（含3PL+Jabil）
+本月费用	Cost汇总	当月实际费用合计（业务月周期）
+本月产量	产量追踪	当月产量合计
+奖金总额	奖金评比	当月奖金合计
+待审批	请假公差	待审批申请数量
+本月排班	排班系统	当月排班总人次
+4.4 数据可视化区域
+4.4.1 最近7天产量趋势（折线图）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  📈 最近7天产量趋势                                                    共0件 │
+│                                                                             │
+│  0 ┤                                                                        │
+│    │  ○────────○────────○────────○────────○────────○────────○               │
+│  0 ┼────┬────────┬────────┬────────┬────────┬────────┬────────┬              │
+│    6/22  6/23    6/24    6/25    6/26    6/27    6/28                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+X轴：日期（MM/DD）
+Y轴：产量件数
+数据点：圆形标记，悬停显示数值
+空状态：显示"共0件"
+4.4.2 本月班次分布（横向条形图）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  📊 本月班次分布                                                           │
+│                                                                             │
+│  早班    │ 0                                                              │
+│  中班    │ 0                                                              │
+│  晚班    │ 0                                                              │
+│  休息    │ 0                                                              │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+班次类型：早班(A)、中班(B)、晚班(C/N)、休息
+显示当月各班次人次统计
+4.5 今日排班与费用分类
+4.5.1 今日排班（2026-07-08）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  📅 今日排班 (2026-07-08)                                                  │
+│                                                                             │
+│  今日暂无排班，请前往排班模块生成                                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+空状态提示文案
+点击跳转排班模块
+4.5.2 费用分类（2026-07）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  💰 费用分类 (2026-07)                                                     │
+│                                                                             │
+│  办公用品    ████████████████████                                    ¥320.00 │
+│  差旅费      ██████████████████████████████████████████████████████ ¥1,200.00 │
+│  设备维修    ██████████████████████████                             ¥560.00 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+横向进度条展示各类费用占比
+右侧显示具体金额
+数据按月汇总（业务月周期）
+4.6 待审批申请
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  📝 待审批申请                                                             │
+│                                                                             │
+│  暂无待审批事项 🎉                                                         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+空状态显示庆祝图标
+有数据时显示审批列表（申请人、类型、时间、操作按钮）
+五、核心业务模块详细需求
+5.1 员工排班模块
+5.1.1 页面结构
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [周视图(默认)] [月视图] [自定义范围]  [📅 日期选择]  [⚡ 一键排班] [🖨️ 打印] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  日历表头：六  日  一  二  三  四  五（星期六为首日）                        │
+│                                                                             │
+│  ┌────┬────┬────┬────┬────┬────┬────┐                                    │
+│  │ 07/04│07/05│07/06│07/07│07/08│07/09│07/10│                             │
+│  │ 星期六│星期日│星期一│星期二│星期三│星期四│星期五│                             │
+│  ├────┼────┼────┼────┼────┼────┼────┤                                    │
+│  │ A班 │ B班 │ N班 │ A+  │ 休  │ C班 │ ... │                             │
+│  │ 8人  │ 6人  │ 5人  │ 3人  │ -   │ 7人  │ ... │                             │
+│  └────┴────┴────┴────┴────┴────┴────┘                                    │
+│                                                                             │
+│  [子页面Tab] [破七休一公差申请] [考勤汇总]                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.1.2 排班编辑弹窗
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [头像] 张三 | SAP: 3319301 | 部门: C区                              [✕]  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  班次选择（单选，色系区分）：                                                │
+│  ○ A班(白)  ○ B班(蓝)  ○ C班(绿)  ○ N班(紫)                              │
+│  ○ A+(橙)  ○ B+(红)  ○ C+(青)  ○ N+(粉)  ○ A2(灰)                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  特殊状态：                                                                  │
+│  □ 调休  □ 年假  □ 请假  □ 旷工  □ 离职                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  临时事项：                                                                  │
+│  类型：[加班/公差/请假 ▼]  开始：[时间选择]  结束：[时间选择]              │
+│  时长：自动计算  事由：[必填文本框]                                          │
+│  [上传证明材料]（公差>2小时强制上传）                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  [保存]  [删除]                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.1.3 工时计算标准
+表格
+状态/班次	工时
+调休/年假/请假/旷工/离职	0小时
+A / B / C / N	8小时
+A+ / B+ / C+ / N+	12小时
+A2	10.5小时
+5.2 工位安排模块
+5.2.1 页面布局
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [📅 日期选择(默认当天)] [区域筛选▼] [导出] [批量分配]                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
+│  │ 今日到岗 │ │ 已分配   │ │ 待分配   │ │ 工位总数 │                        │
+│  │   45人   │ │   38人   │ │    7人   │ │   50个   │                        │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  到岗人员列表                    │  工位矩阵可视化区域                        │
+│  ┌────────────────────────────┐  │  ┌──┬──┬──┬──┬──┐                        │
+│  │ □ 张三 (A班)               │  │  │C1│C2│C3│C4│...│                        │
+│  │ □ 李四 (B班)               │  │  ├──┼──┼──┼──┤                        │
+│  │ □ 王五 (N班)               │  │  │借│EM│HM│...│                        │
+│  │ ...                        │  │  └──┴──┴──┴──┘                        │
+│  │                            │  │  [+ 添加工位]                           │
+│  │ 当日无排班记录或全员休息    │  │                                          │
+│  │ (空状态提示)               │  │                                          │
+│  └────────────────────────────┘  └──────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.2.2 核心规则
+多对多分配：一个员工可分配至多个工位；一个工位可同时分配多名员工
+工位卡片：显示名称、当前已分配人数、状态（空闲·点击分配 / 已满）
+动态添加工位：+ 添加工位 按钮，支持新增工位节点
+特殊工时：强制填写姓名、起始时间、结束时间、事由
+5.3 单据接收模块
+5.3.1 功能清单
+表格
+功能	说明
+单据录入	扫描/手动录入单据信息
+接收确认	确认接收状态，记录时间
+状态追踪	待接收/已接收/已处理/异常
+批量操作	批量确认、批量导出
+历史查询	按日期/类型/状态筛选
+5.4 便捷打印模块
+5.4.1 打印规范
+版式：纯净A4纸版式，无动画效果
+内容：排班表、单据、报表
+优化：自动调整格式，确保信息完整显示
+打印按钮：各模块右上角统一放置 🖨️ 图标按钮
+5.5 Cost汇总模块
+5.5.1 页面布局（一比一还原仪表盘风格）
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Cost汇总 - 费用分析与预算管理                                               │
+│  [周] [月(默认)] [年] [自定义]  年份：[2026▼] 月份：[6月▼]                    │
+│  当前周期：2026年6月 (05/24 - 06/23)                    [导出Excel/CSV]     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                        │
+│  │ 周期预算总计  │ │ 福利费用     │ │ 工时费用     │                        │
+│  │ ¥1,200,000  │ │ ¥180,000    │ │ ¥950,000    │                        │
+│  │ 日均¥40,000  │ │ 关联45人     │ │ [实际支出]   │                        │
+│  └──────────────┘ └──────────────┘ └──────────────┘                        │
+│  ┌──────────────┐                                                          │
+│  │ Gap(结余)    │  ¥70,000  ↑12.5% [绿色正/红色负]                        │
+│  └──────────────┘                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  [费用趋势分析折线图]        [各级别工时分析横向条形图]                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  每日费用详情表格：                                                           │
+│  月份 | WK | 日期 | 日均费用 | 当日总费用 | Gap | L1工时 | L1费用 | ... | 总工时 │
+│  福利费 | 工时费 | 汇率                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.5.2 核心计算逻辑
+福利费用：
+plain
+福利费用 = (福利基数 × 当月3PL在职人数) / 当月天数
+工时费用：
+plain
+工时费用 = Σ(员工当日工时 × 当日生效费率)
+Gap（结余）：
+plain
+Gap = 预算总计 - 实际费用
+5.5.3 版本化管理
+表格
+配置项	表名	关键字段
+福利基数	welfare_base_rates	rate_amount, effective_date
+员工工时费率	employee_hourly_rates	employee_id, rate_amount, effective_date
+成本参数	cost_parameters	plant_id, dept_id, param_type, amount, effective_month
+匹配规则： 生效时间 ≤ 业务日期的最大一条记录
+5.6 产量追踪模块
+5.6.1 功能清单
+表格
+功能	说明
+产量录入	按日期/班次/工位录入产量数据
+趋势分析	7天/30天/自定义范围趋势图
+目标对比	实际产量 vs 目标产量
+达成率	自动计算并预警
+导出报表	Excel/CSV导出
+5.7 奖金评比模块
+5.7.1 功能清单
+表格
+功能	说明
+评比规则配置	按部门/级别配置评比公式
+数据录入	绩效指标录入
+自动计算	基于规则自动计算奖金
+结果公示	排名展示，权限控制
+历史查询	按月/季度/年度查询
+5.8 请假公差模块
+5.8.1 页面布局
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [临时加班] [临时请假&公差] [请假&年假(默认)]                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                        │
+│  │ 总申请   │ │ 待审批   │ │ 已批准   │ │ 已拒绝   │                        │
+│  │   128   │ │   12⚠️   │ │   98✓   │ │   18✗   │                        │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  [时间筛选] [状态下拉▼]  [+ 新增申请]                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  申请记录列表：                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ 张三 | 年假 | 2026-07-04~07-06 | 事由：探亲                              │ │
+│  │ 状态：[pending橙色]  [查看] [删除]                                       │ │
+│  ├────────────────────────────────────────────────────────────────────────┤ │
+│  │ 李四 | 公差 | 2026-07-09 | 事由：客户拜访                                │ │
+│  │ 状态：[approved绿色] [查看]                                             │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.8.2 业务流程分类
+表格
+类型	审批方式	发起端限制
+临时加班	免审批，自动记录	仅特定终端，微信端/员工端无入口
+临时公差	免审批，系统校验归档	全端可用
+正式请假	需审批（审批人必选）	全端可用
+年假申请	需审批（审批人必选）	全端可用
+离职申请	需审批（审批人必选）	全端可用
+5.8.3 审批人权限
+表格
+操作	说明
+同意	更新状态，扣减额度/启动离职流程
+拒绝	必须填写理由，流程终止
+转审批	流转给其他指定人员
+5.8.4 权限控制矩阵
+表格
+角色	临时加班	临时公差	请假/年假/离职	查看范围
+普通员工	❌ 无权限	✅ 免审申请	✅ 需审批人	仅本人
+审批人	❌ 无权限	✅ 免审申请	✅ 需审批人	本人+下属
+系统管理员	✅ 可录入	✅ 可录入	✅ 可录入/修正	全部数据
+5.9 关键KPI模块
+5.9.1 KPI指标看板
+plain
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  关键KPI指标                                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │
+│  │ 产量达成率    │ │ 费用控制率    │ │ 人员出勤率    │ │ 安全事故率    │        │
+│  │   95.2%      │ │   88.5%      │ │   98.1%      │ │   0%         │        │
+│  │ [进度环]     │ │ [进度环]     │ │ [进度环]     │ │ [进度环]     │        │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘        │
+│                                                                             │
+│  [趋势图区域] [部门对比图] [个人排名]                                         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+5.10 BIN体积管理模块
+5.10.1 功能清单
+表格
+功能	说明
+BIN信息维护	BIN编号、位置、容量、当前存量
+体积计算	自动计算占用率
+预警设置	容量阈值预警（橙色/红色）
+历史记录	存取记录追踪
+5.11 过期料延期模块
+5.11.1 功能清单
+表格
+功能	说明
+过期料登记	物料信息、过期日期、状态
+延期申请	申请延期，审批流程
+预警提醒	提前7天/3天/1天预警（橙色/红色）
+处理记录	报废/延期/使用记录
+5.12 6S管理模块
+5.12.1 功能清单
+表格
+功能	说明
+检查标准配置	按区域/项目配置检查标准
+评分录入	现场检查评分
+不达标预警	低于阈值自动预警（橙色/红色）
+整改追踪	问题整改状态追踪
+历史报表	月度/季度6S评分报表
+六、系统管理模块
+6.1 员工花名册
+6.1.1 功能实现状态
+✅ 数据概览仪表盘已实现：
+- 总人数统计（含3PL/Jabil分类统计
+- 平均工龄计算
+- 各级别人数分布可视化（含进度条展示
+- 渐变卡片设计，带悬停动画效果
+✅ 人员列表已实现：
+- 多字段搜索筛选（姓名、SAP工号、厂区、部门、状态
+- 完整表格展示，支持分页
+- 员工信息CRUD操作
+✅ Excel批量导入功能已实现：
+- 支持下载导入模板
+- 支持Excel文件解析
+- 支持数据预览
+- 自动匹配厂区和部门
+- 批量导入员工数据
+✅ 后端接口已实现：
+- RESTful API接口完整
+- SQLite数据库支持
+- 实时数据同步
+6.1.2 数据概览仪表盘
+表格
+指标	说明
+Total Headcount	总人数
+3PL Headcount	第三方人数
+Jabil Headcount	自有员工人数
+Average Tenure	平均工龄（精确到小数点后一位）
+Level Mix	各职级人数分布及占比进度条（可视化）
+6.1.3 人员列表
+搜索字段： 姓名、级别、SAP ID、工号、电话（多字段模糊搜索）
+筛选字段： 部门、状态（在职/离职）
+列表字段：
+表格
+字段	说明
+姓名	-
+岗位	-
+级别	Level 1-7
+性别	-
+SAP ID	-
+工号	-
+部门	-
+电话	-
+入职日期	-
+入职年限	自动计算
+离职日期	离职员工必填
+IC卡号	-
+用工类型	Jabil/3PL
+状态	在职/离职
+操作	编辑/删除
+批量操作： Excel导入/导出花名册
+6.2 组织结构管理
+表格
+模块	功能
+厂区管理	6个厂区的CRUD，配置厂区参数
+部门管理	厂区下部门CRUD，包含2个跨厂区兄弟部门
+岗位管理	岗位定义与部门关联
+6.3 用户与权限管理
+6.3.1 账号生命周期
+表格
+阶段	规则
+注册	信息录入管理表后可直接登录；注册信息自动同步数据库
+登录	支持密码登录、密码重置
+离职冻结	离职次月起自动禁止登录（前端拦截 + 后端鉴权双重拦截）
+密码策略	每3个月强制变更
+6.3.2 权限分级
+表格
+角色	数据范围	菜单权限
+超级管理员	全部数据	全部菜单
+厂区管理员	本厂区全部部门	全部菜单
+普通厂区部门管理员	本厂区、本部门	排除配置页面
+兄弟部门	跨厂区数据	仅"过期料延期"、"单据接收"
+普通员工（网页端）	本人数据	核心业务模块
+普通员工（小程序）	本人数据	仅排班查看、请假/公差/离职申请、图片上传
+七、独立配置页面（仅超级管理员/厂区管理员）
+7.1 部门计算规则配置
+plain
+页面结构：
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  [厂区选择▼] → [部门选择▼]                                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  [Cost汇总] [产量统计] [KPI考核] [奖金评比]                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  公式编辑区（按选中模块独立）：                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  变量列表：{产量} {工时} {人数} {达标率} ...                            │ │
+│  │  公式输入：= {产量} * {Rate} + {福利基数} * {人数}                        │ │
+│  │  [保存规则] [重置] [测试计算]                                           │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│  ⚠️ 不同部门计算规则相互独立                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+7.2 智能排班规则配置
+表格
+配置项	说明
+班次设置	A/B/C/N/A+/B+/C+/N+/A2
+人数上限	每班次最大人数
+人员配比	各级别人员比例要求
+节假日规避	自动跳过法定节假日
+请假过滤	自动排除已审批请假人员
+跨工位均衡	避免员工连续分配同一工位
+夜班轮换	夜班人员轮换规则
+加班上限	单日/单周最大加班时长
+7.3 员工工时费率配置
+表：employee_hourly_rates
+字段：id, employee_id, rate_amount, effective_date
+功能：按员工/级别筛选，新增费率时强制填写"生效时间"
+7.4 福利基数配置
+表：welfare_base_rates
+字段：id, rate_amount, effective_date
+功能：新增时强制填写"生效时间"
+八、全局核心业务规则（最高优先级）
+8.1 业务月（财务月）周期定义
+⚠️ 强制规范：系统内所有"月份"维度严禁使用自然月
+表格
+项目	定义
+起止时间	每月24日 00:00:00 至 次月23日 23:59:59
+归属逻辑	周期归属为"起始日所在的自然月"
+示例	2026-06-24 00:00 ~ 2026-07-23 23:59 → "2026年6月（June 2026）"
+技术落地：
+sql
+CREATE OR REPLACE FUNCTION get_business_month(ts TIMESTAMP)
+RETURNS VARCHAR(7) AS $$
+DECLARE
+    start_date DATE;
+BEGIN
+    start_date := DATE_TRUNC('month', ts) + INTERVAL '23 days';
+    IF ts >= start_date THEN
+        RETURN TO_CHAR(ts, 'YYYY-MM');
+    ELSE
+        RETURN TO_CHAR(ts - INTERVAL '1 month', 'YYYY-MM');
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+前端交互： 月份选择器必须显示 2026年6月 (06/24 - 07/23)
+8.2 智能排班周期定义
+表格
+项目	定义
+最小执行单位	周（每次"一键排班"仅生成一周）
+排班周期	星期六 → 下星期五
+日历表头顺序	六、日、一、二、三、四、五
+8.3 账号生命周期管理
+表格
+阶段	规则
+注册	信息录入后可直接登录，自动同步数据库
+离职冻结	离职次月起自动禁止登录（前端+后端双重拦截）
+密码策略	每3个月强制变更
+九、数据库与接口硬性要求
+9.1 接口架构规范
+表格
+模块	接口前缀	包含功能
+组织结构	/api/org/*	厂区、部门、岗位、职级
+排班	/api/schedule/*	智能排班、手动调整、考勤汇总
+物料	/api/material/*	BIN体积、过期料、单据接收
+成本产量	/api/cost/*	Cost汇总、产量追踪、公式计算
+审批	/api/approval/*	请假、公差、离职、加班
+系统配置	/api/config/*	规则配置、费率配置、福利配置
+9.2 耗时业务隔离
+表格
+业务类型	处理方式	接口规范
+智能排班生成	异步任务队列	POST /api/schedule/generate-async
+公式自动计算	异步任务队列	POST /api/cost/calculate-async
+文件上传	独立接口	POST /api/upload/*
+邮件触发	独立接口	POST /api/notify/email
+9.3 接口文档规范
+请求地址（含版本号 /api/v1/*）
+请求方式、入参、出参、异常返回码、权限范围
+十、交互设计规范
+10.1 通用交互
+表格
+场景	要求
+数据可视化看板	动态过渡动画、加载动画、状态变色
+设备状态模块	实时状态变色（绿-正常/黄-警告/红-故障）
+风险数据预警	橙色预警、红色高危，附带弹窗提醒
+PC端排班	支持拖拽调班
+请假审批	支持批量审批单据
+单据打印	纯净A4版式，无动画，保障打印整洁
+10.2 排班交互专项
+表格
+功能	要求
+视图切换	顶部周/月/自定义选项卡
+时间选择器	直观日期控件，支持快速切换
+打印优化	自动调整格式，信息完整显示
+十一、多端适配标准
+表格
+终端	适配要求
+PC网页端	多断点自适应，支持大屏宽屏布局（1920px+）
+平板网页端	响应式布局，触控优化，侧边栏可折叠
+手机网页端	移动端适配，底部导航，卡片式布局
+微信小程序（安卓）	全机型兼容，适配各分辨率
+微信小程序（iOS）	全机型兼容，适配安全区
+十二、需求动态扩展机制
+12.1 架构预留
+模块化架构，各业务模块独立部署
+数据库表预留扩展字段（ext_json JSONB）
+接口版本控制（/api/v1/, /api/v2/）
+12.2 增量更新流程
+plain
+1. 新需求评估 → 2. 影响分析（全局规则/表结构/接口）→ 
+3. 平滑升级方案 → 4. 版本记录更新 → 5. 实施部署
+12.3 版本记录
+交付文档中单独建立 "需求变更与扩展记录" 章节
+十三、数据库核心表结构（已实现）
+
+13.1 数据库连接配置
+Host: 10.114.100.171
+Port: 5432
+Database: stockroom_db
+Username: postgres
+Password: 74454321
+
+13.2 表结构规范
+命名格式：jso_系统模块_功能表名
+模块分类：
+- system：系统管理模块
+- org：组织结构模块
+- hr：人力资源模块
+- biz：业务模块
+- report：报表模块
+
+13.3 已实现的数据库表（DDL）
+
+-- ========================================
+-- 系统管理 - 角色管理表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_system_role_management (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_system_role_management_status 
+    ON jso_system_role_management(status);
+CREATE INDEX IF NOT EXISTS idx_jso_system_role_management_name 
+    ON jso_system_role_management(name);
+
+-- 初始化数据
+INSERT INTO jso_system_role_management (name, description, status, created_at) VALUES
+('超级管理员', '拥有系统所有权限', 'active', '2023-01-01'),
+('厂区管理员', '负责单个厂区的管理', 'active', '2023-03-15'),
+('部门管理员', '负责单个部门的管理', 'active', '2023-06-20'),
+('普通员工', '日常操作权限', 'active', '2023-09-10'),
+('访客', '仅查看权限', 'inactive', '2023-12-01')
+ON CONFLICT (name) DO NOTHING;
+
+-- ========================================
+-- 组织结构 - 厂区管理表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_org_plant_management (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    manager_id INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_org_plant_management_name 
+    ON jso_org_plant_management(name);
+
+-- 初始化数据
+INSERT INTO jso_org_plant_management (id, name, description, created_at) VALUES
+(0, '公司总部', 'Jabil集团总部和跨厂区部门', '2022-01-01'),
+(1, '广州厂区', 'Jabil广州生产基地', '2023-01-01'),
+(2, '上海厂区', 'Jabil上海研发中心', '2023-03-15'),
+(3, '深圳厂区', 'Jabil深圳电子厂', '2023-06-20')
+ON CONFLICT (name) DO NOTHING;
+
+-- ========================================
+-- 组织结构 - 部门管理表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_org_department_management (
+    id SERIAL PRIMARY KEY,
+    plant_id INTEGER NOT NULL REFERENCES jso_org_plant_management(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    manager_id INTEGER,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(plant_id, name)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_org_department_management_plant_id 
+    ON jso_org_department_management(plant_id);
+CREATE INDEX IF NOT EXISTS idx_jso_org_department_management_name 
+    ON jso_org_department_management(name);
+
+-- 初始化数据
+INSERT INTO jso_org_department_management (plant_id, name, description, created_at) VALUES
+(0, 'IA', '信息自动化部', '2022-01-01'),
+(0, '采购', '采购部', '2022-01-01'),
+(0, '人力资源', '人力资源部', '2022-01-01'),
+(1, '生产部', '负责生产制造', '2023-01-01'),
+(1, '研发部', '负责产品研发', '2023-01-01'),
+(1, '质量部', '负责质量管理', '2023-01-01'),
+(2, '行政部', '负责行政管理', '2023-03-15'),
+(2, '销售部', '负责销售业务', '2023-03-15'),
+(3, '供应链', '负责供应链管理', '2023-06-20')
+ON CONFLICT (plant_id, name) DO NOTHING;
+
+-- ========================================
+-- 系统管理 - 用户管理表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_system_user_management (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    real_name VARCHAR(100),
+    employee_id VARCHAR(50),
+    role_id INTEGER REFERENCES jso_system_role_management(id),
+    plant_id INTEGER REFERENCES jso_org_plant_management(id),
+    department_id INTEGER REFERENCES jso_org_department_management(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    gender VARCHAR(10),
+    position VARCHAR(100),
+    level VARCHAR(20),
+    phone VARCHAR(20),
+    hire_date DATE,
+    leave_date DATE,
+    ic_card_number VARCHAR(50),
+    employee_type VARCHAR(20),
+    login_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_system_user_management_username 
+    ON jso_system_user_management(username);
+CREATE INDEX IF NOT EXISTS idx_jso_system_user_management_role_id 
+    ON jso_system_user_management(role_id);
+CREATE INDEX IF NOT EXISTS idx_jso_system_user_management_plant_id 
+    ON jso_system_user_management(plant_id);
+CREATE INDEX IF NOT EXISTS idx_jso_system_user_management_status 
+    ON jso_system_user_management(status);
+
+-- 初始化数据
+INSERT INTO jso_system_user_management (username, password, real_name, employee_id, 
+    role_id, plant_id, department_id, status, created_at) VALUES
+('admin', '123456', '系统管理员', 'EMP001', 1, 1, 1, 'active', '2023-01-01'),
+('plant_manager', '123456', '张三', 'EMP002', 2, 1, 2, 'active', '2023-03-15'),
+('dept_manager', '123456', '李四', 'EMP003', 3, 2, 5, 'active', '2023-05-20'),
+('employee', '123456', '王五', 'EMP004', 4, 1, 1, 'active', '2023-07-01')
+ON CONFLICT (username) DO NOTHING;
+
+-- ========================================
+-- 人力资源 - 员工花名册表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_hr_employee_roster (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    sap_employee_id VARCHAR(50),
+    real_name VARCHAR(100),
+    gender VARCHAR(10),
+    position VARCHAR(100),
+    level VARCHAR(20),
+    phone VARCHAR(20),
+    hire_date DATE,
+    leave_date DATE,
+    ic_card_number VARCHAR(50),
+    employee_type VARCHAR(20),
+    plant_id INTEGER REFERENCES jso_org_plant_management(id),
+    department_id INTEGER REFERENCES jso_org_department_management(id),
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    login_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_hr_employee_roster_username 
+    ON jso_hr_employee_roster(username);
+CREATE INDEX IF NOT EXISTS idx_jso_hr_employee_roster_plant_id 
+    ON jso_hr_employee_roster(plant_id);
+CREATE INDEX IF NOT EXISTS idx_jso_hr_employee_roster_department_id 
+    ON jso_hr_employee_roster(department_id);
+CREATE INDEX IF NOT EXISTS idx_jso_hr_employee_roster_status 
+    ON jso_hr_employee_roster(status);
+
+-- ========================================
+-- 配置管理 - 部门计算规则配置表
+-- ========================================
+CREATE TABLE IF NOT EXISTS jso_config_dept_calc_rules (
+    id SERIAL PRIMARY KEY,
+    plant_id INTEGER NOT NULL REFERENCES jso_org_plant_management(id) ON DELETE CASCADE,
+    department_id INTEGER NOT NULL REFERENCES jso_org_department_management(id) ON DELETE CASCADE,
+    business_month VARCHAR(7) NOT NULL, -- 核算周期，例如 'YYYY-MM'
+    estimated_cost NUMERIC(18, 2) NOT NULL DEFAULT 0.00, -- 当月预估费用
+    exchange_rate NUMERIC(10, 4) NOT NULL DEFAULT 1.0000, -- 汇率
+    rate_coefficient NUMERIC(10, 4) NOT NULL DEFAULT 1.0000, -- Rate 系数
+    status VARCHAR(20) NOT NULL DEFAULT 'active', -- 配置状态：'active' (启用), 'inactive' (停用)
+    enabled_at TIMESTAMP, -- 启用日期
+    disabled_at TIMESTAMP, -- 停用日期
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (plant_id, department_id, business_month)
+);
+
+-- 索引
+CREATE INDEX IF NOT EXISTS idx_jso_config_dept_calc_rules_plant_dept_month 
+    ON jso_config_dept_calc_rules(plant_id, department_id, business_month);
+CREATE INDEX IF NOT EXISTS idx_jso_config_dept_calc_rules_status 
+    ON jso_config_dept_calc_rules(status);
+
+-- 触发器（自动更新 updated_at 字段，沿用项目中已有的 update_updated_at_column 函数）
+DROP TRIGGER IF EXISTS update_jso_config_dept_calc_rules_updated_at 
+    ON jso_config_dept_calc_rules;
+CREATE TRIGGER update_jso_config_dept_calc_rules_updated_at
+    BEFORE UPDATE ON jso_config_dept_calc_rules
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ========================================
+-- 更新时间触发器函数（通用）
+-- ========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ========================================
+-- 为所有表添加更新时间触发器
+-- ========================================
+DROP TRIGGER IF EXISTS update_jso_system_role_management_updated_at 
+    ON jso_system_role_management;
+CREATE TRIGGER update_jso_system_role_management_updated_at
+    BEFORE UPDATE ON jso_system_role_management
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_jso_org_plant_management_updated_at 
+    ON jso_org_plant_management;
+CREATE TRIGGER update_jso_org_plant_management_updated_at
+    BEFORE UPDATE ON jso_org_plant_management
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_jso_org_department_management_updated_at 
+    ON jso_org_department_management;
+CREATE TRIGGER update_jso_org_department_management_updated_at
+    BEFORE UPDATE ON jso_org_department_management
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_jso_system_user_management_updated_at 
+    ON jso_system_user_management;
+CREATE TRIGGER update_jso_system_user_management_updated_at
+    BEFORE UPDATE ON jso_system_user_management
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_jso_hr_employee_roster_updated_at 
+    ON jso_hr_employee_roster;
+CREATE TRIGGER update_jso_hr_employee_roster_updated_at
+    BEFORE UPDATE ON jso_hr_employee_roster
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+
+13.4 模块与数据表映射
+
+表格
+模块名称	对应数据表	说明
+员工排班	jso_biz_employee_schedule	
+工位安排	jso_biz_station_arrangement	
+单据接收	jso_material_receipt	
+便捷打印	(无直接对应表)	
+Cost汇总	jso_cost_summary	
+产量追踪	jso_cost_production_tracking	
+奖金评比	jso_biz_bonus_evaluation	
+请假公差	jso_approval_leave_management	
+关键KPI	jso_report_kpi_indicators	
+BIN体积管理	jso_material_bin_volume_management	
+过期料延期	jso_material_expired_extension	
+6S管理	jso_biz_6s_management	
+员工花名册	jso_hr_employee_roster	
+组织结构	(无直接对应表)	作为父视图，整合了厂区管理和部门管理，支持内部导航切换。
+厂区管理	jso_org_plant_management	
+部门管理	jso_org_department_management	
+用户管理	jso_system_user_management	
+权限管理	jso_system_permission_management	
+角色管理	jso_system_role_management	
+部门计算规则配置	jso_config_dept_calc_rules	
+智能排班规则配置	jso_config_smart_schedule_rules	
+员工工时费率配置	jso_config_employee_hourly_rates	
+福利基数配置	jso_config_welfare_base_rates	
+
+
+十四、RESTful API 接口文档（已实现）
+
+14.1 通用响应格式
+成功响应：
+json
+{
+    "success": true,
+    "data": {...}
+}
+
+错误响应：
+json
+{
+    "success": false,
+    "error": "错误信息"
+}
+
+14.2 角色管理 API
+基础路径：/api/roles
+
+GET /api/roles
+- 说明：获取所有角色列表
+- 响应：{ "roles": [...] }
+- 注意：前端通过 response.data.roles 访问实际数据。
+
+POST /api/roles
+- 说明：创建新角色
+- 入参：{ "name": "角色名", "description": "描述", "status": "active" }
+- 响应：{ "role": {...} }
+- 注意：前端通过 response.data.role 访问实际数据。
+
+PUT /api/roles/:id
+- 说明：更新角色信息
+- 入参：{ "name": "角色名", "description": "描述", "status": "active" }
+- 响应：{ "role": {...} }
+- 注意：前端通过 response.data.role 访问实际数据。
+
+DELETE /api/roles/:id
+- 说明：删除角色
+- 响应：{ "success": true }
+
+PUT /api/roles
+- 说明：批量同步角色（覆盖更新）
+- 入参：{ "roles": [...] }
+- 响应：{ "roles": [...] }
+- 注意：前端通过 response.data.roles 访问实际数据。
+
+14.3 厂区管理 API
+基础路径：/api/plants
+
+GET /api/plants
+- 说明：获取所有厂区列表（含负责人信息）
+- 响应：{ "plants": [{ "id": 1, "name": "广州厂区", "managerName": "张三", ... }] }
+- 注意：前端通过 response.data.plants 访问实际数据。
+
+POST /api/plants
+- 说明：创建新厂区
+- 入参：{ "name": "厂区名", "description": "描述", "managerId": 1 }
+- 响应：{ "plant": {...} }
+- 注意：前端通过 response.data.plant 访问实际数据。
+
+PUT /api/plants/:id
+- 说明：更新厂区信息
+- 入参：{ "name": "厂区名", "description": "描述", "managerId": 1 }
+- 响应：{ "plant": {...} }
+- 注意：前端通过 response.data.plant 访问实际数据。
+
+DELETE /api/plants/:id
+- 说明：删除厂区
+- 响应：{ "success": true }
+
+14.4 部门管理 API
+基础路径：/api/departments
+
+GET /api/departments
+- 说明：获取所有部门列表（含厂区和负责人信息）
+- 响应：{ "departments": [...] }
+- 注意：前端通过 response.data.departments 访问实际数据。
+
+GET /api/plants/:plantId/departments
+- 说明：获取指定厂区的部门列表
+- 响应：{ "departments": [...] }
+- 注意：前端通过 response.data.departments 访问实际数据。
+
+POST /api/departments
+- 说明：创建新部门
+- 入参：{ "plantId": 1, "name": "部门名", "description": "描述", "managerId": 1 }
+- 响应：{ "department": {...} }
+- 注意：前端通过 response.data.department 访问实际数据。
+
+PUT /api/departments/:id
+- 说明：更新部门信息
+- 入参：{ "plantId": 1, "name": "部门名", "description": "描述", "managerId": 1 }
+- 响应：{ "department": {...} }
+- 注意：前端通过 response.data.department 访问实际数据。
+
+DELETE /api/departments/:id
+- 说明：删除部门
+- 响应：{ "success": true }
+
+14.5 用户管理 API
+基础路径：/api/users
+
+GET /api/users
+- 说明：获取所有用户列表（含角色、厂区、部门信息）
+- 响应：{ "users": [...] }
+- 注意：前端通过 response.data.users 访问实际数据。
+
+POST /api/users
+- 说明：创建新用户（同时同步到员工花名册表）
+- 入参：{
+    "username": "用户名",
+    "realName": "姓名",
+    "employeeId": "SAP工号",
+    "roleId": 1,
+    "plantId": 1,
+    "departmentId": 1,
+    "status": "active",
+    "gender": "男",
+    "position": "岗位",
+    "level": "Level 1",
+    "phone": "电话",
+    "hireDate": "2023-01-01",
+    "leaveDate": null,
+    "icCardNumber": "IC卡号",
+    "employeeType": "Jabil"
+}
+- 响应：{ "user": {...} }
+- 注意：前端通过 response.data.user 访问实际数据。
+
+PUT /api/users/:id
+- 说明：更新用户信息（同时同步到员工花名册表）
+- 入参：同 POST /api/users
+- 响应：{ "user": {...} }
+- 注意：前端通过 response.data.user 访问实际数据。
+
+DELETE /api/users/:id
+- 说明：删除用户（同时从员工花名册表删除）
+- 响应：{ "success": true }
+
+POST /api/users/:id/reset-password
+- 说明：重置密码为 123456
+- 响应：{ "success": true, "message": "密码已重置为123456" }
+
+POST /api/users/batch
+- 说明：批量导入用户
+- 入参：{ "users": [...] }
+- 响应：{ "success": 数量, "failed": 数量, "errors": [...] }
+
+14.6 员工花名册 API
+基础路径：/api/employees
+
+GET /api/employees
+- 说明：获取所有员工列表（含厂区、部门信息）
+- 响应：{ "employees": [...] }
+- 注意：前端通过 response.data.employees 访问实际数据。
+
+POST /api/employees
+- 说明：创建新员工
+- 入参：{
+    "username": "用户名",
+    "sapEmployeeId": "SAP工号",
+    "realName": "姓名",
+    "gender": "男",
+    "position": "岗位",
+    "level": "Level 1",
+    "phone": "电话",
+    "hireDate": "2023-01-01",
+    "leaveDate": null,
+    "icCardNumber": "IC卡号",
+    "employeeType": "Jabil",
+    "plantId": 1,
+    "departmentId": 1,
+    "status": "active"
+}
+- 响应：{ "employee": {...} }
+- 注意：前端通过 response.data.employee 访问实际数据。
+
+PUT /api/employees/:id
+- 说明：更新员工信息
+- 入参：同 POST /api/employees
+- 响应：{ "employee": {...} }
+- 注意：前端通过 response.data.employee 访问实际数据。
+
+DELETE /api/employees/:id
+- 说明：删除员工
+- 响应：{ "success": true }
+
+14.7 登录认证 API
+POST /api/login
+- 说明：用户登录
+- 入参：{ "username": "用户名", "password": "密码" }
+- 响应：{
+    "user": {
+        "id": 1,
+        "username": "admin",
+        "realName": "系统管理员",
+        "roleName": "超级管理员",
+        "status": "active",
+        "loginCount": 5,
+        ...
+    }
+}
+- 注意：前端通过 response.data.user 访问实际数据。
+
+14.8 部门计算规则配置 API
+基础路径：/api/config/dept-calc-rules
+
+GET /api/config/dept-calc-rules
+- 说明：获取部门计算规则列表，支持筛选、分页
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 请求参数 (Query)：plantId (可选), departmentId (可选), businessMonth (可选, YYYY-MM), status (可选), page (可选), pageSize (可选)
+- 响应示例：
+```json
+{
+    "success": true,
+    "data": {
+        "total": 100,
+        "page": 1,
+        "pageSize": 10,
+        "list": [
+            {
+                "id": 1,
+                "plantId": 1,
+                "plantName": "广州厂区",
+                "departmentId": 101,
+                "departmentName": "生产部",
+                "businessMonth": "2026-07",
+                "estimatedCost": 100000.00,
+                "exchangeRate": 7.2000,
+                "rateCoefficient": 1.0500,
+                "status": "active",
+                "enabledAt": "2026-07-01T00:00:00Z",
+                "disabledAt": null,
+                "createdAt": "2026-06-20T10:00:00Z",
+                "updatedAt": "2026-06-20T10:00:00Z"
+            }
+        ]
+    }
+}
+```
+
+POST /api/config/dept-calc-rules
+- 说明：创建新的部门计算规则
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 请求体：
+```json
+{
+    "plantId": 1,
+    "departmentId": 101,
+    "businessMonth": "2026-07",
+    "estimatedCost": 100000.00,
+    "exchangeRate": 7.2000,
+    "rateCoefficient": 1.0500
+}
+```
+- 响应示例：
+```json
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "plantId": 1,
+        "departmentId": 101,
+        "businessMonth": "2026-07",
+        "estimatedCost": 100000.00,
+        "exchangeRate": 7.2000,
+        "rateCoefficient": 1.0500,
+        "status": "active",
+        "enabledAt": "2026-07-08T10:00:00Z",
+        "disabledAt": null,
+        "createdAt": "2026-07-08T10:00:00Z",
+        "updatedAt": "2026-07-08T10:00:00Z"
+    }
+}
+```
+
+PUT /api/config/dept-calc-rules/:id
+- 说明：更新指定ID的部门计算规则
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 请求体：
+```json
+{
+    "estimatedCost": 120000.00,
+    "exchangeRate": 7.1500,
+    "rateCoefficient": 1.0800
+}
+```
+- 响应示例：
+```json
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "plantId": 1,
+        "departmentId": 101,
+        "businessMonth": "2026-07",
+        "estimatedCost": 120000.00,
+        "exchangeRate": 7.1500,
+        "rateCoefficient": 1.0800,
+        "status": "active",
+        "enabledAt": "2026-07-01T00:00:00Z",
+        "disabledAt": null,
+        "createdAt": "2026-06-20T10:00:00Z",
+        "updatedAt": "2026-07-08T10:30:00Z"
+    }
+}
+```
+
+POST /api/config/dept-calc-rules/:id/enable
+- 说明：启用指定ID的部门计算规则，并记录enabledAt时间
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 响应示例：
+```json
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "status": "active",
+        "enabledAt": "2026-07-08T10:45:00Z"
+    }
+}
+```
+
+POST /api/config/dept-calc-rules/:id/disable
+- 说明：停用指定ID的部门计算规则，并记录disabledAt时间
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 响应示例：
+```json
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "status": "inactive",
+        "disabledAt": "2026-07-08T10:46:00Z"
+    }
+}
+```
+
+DELETE /api/config/dept-calc-rules/:id
+- 说明：删除指定ID的部门计算规则
+- 权限：仅厂区管理员、指定部分厂区管理员
+- 响应示例：
+```json
+{
+    "success": true,
+    "message": "部门计算规则删除成功。"
+}
+```
+
+14.9 排班 API
+(此编号是推测，根据上下文没有14.8，将重新从14.9开始)
+
+14.10 特殊工时 API
+基础路径：/api/special-working-hours
+
+POST /api/special-working-hours/export
+- 说明：导出特殊工时数据到Excel
+- 入参：{ "selectedDates": "选定的日期数组", "filters": "筛选条件" }
+- 响应：Excel文件流
+
+14.10 自动停用用户机制
+功能：每天凌晨1点自动检查并停用离职超过1个月的用户
+触发方式：
+- 服务器启动时立即执行一次
+- Cron 定时任务：每天 01:00 执行
+逻辑：
+- 计算离职日期的次月第一天
+- 如果今天 >= 次月第一天，则自动将用户和员工花名册状态设为 inactive
+
+
+十五、开发状态更新
+
+15.1 模块开发状态（2026-06-29更新）
+表格
+模块名称	Vue组件文件	当前状态	说明
+员工排班	EmployeeScheduleView.vue	✅ 完整功能已实现 (含后端接口)	实现了周视图排班显示，支持日期切换、员工排班编辑弹窗，可进行班次分配；特殊工时界面已关联周视图、月视图和定义范围视图；修复了筛选器相关问题；Excel导出功能已实现（邮件正文精简、补卡Sheet仅含表头、公差Sheet嵌入图片、汇总Sheet拆分'打破7休1'单元格）；修复了相关TypeScript类型错误。
+工位安排	StationArrangementView.vue	基础功能已开发 (CRUD及UI)	工位CRUD，员工分配/解除分配
+单据接收	ReceiptManagementView.vue	基础功能已开发 (CRUD及UI)	单据CRUD，批量确认导出
+便捷打印	ConvenientPrintView.vue	基础功能已开发 (CRUD及UI)	打印预览功能
+Cost汇总	CostSummaryView.vue	基础功能已开发 (CRUD及UI)	费用数据展示筛选汇总
+产量追踪	ProductionTrackingView.vue	基础功能已开发 (CRUD及UI)	产量数据录入查询追踪
+奖金评比	BonusEvaluationView.vue	基础功能已开发 (CRUD及UI)	奖金评比规则CRUD，结果展示
+请假公差	LeaveManagementView.vue	基础功能已开发 (CRUD及UI)	申请CRUD，状态管理
+关键KPI	KpiIndicatorsView.vue	基础功能已开发 (CRUD及UI)	KPI指标展示筛选
+BIN体积管理	BinVolumeManagementView.vue	基础功能已开发 (CRUD及UI)	BIN信息CRUD，体积计算
+过期料延期	ExpiredMaterialExtensionView.vue	基础功能已开发 (CRUD及UI)	延期申请流程
+6S管理	SixSManagementView.vue	基础功能已开发 (CRUD及UI)	检查标准配置，评分录入
+员工花名册	EmployeeRosterView.vue	✅ 完整功能已实现 (含后端接口)	数据概览仪表盘，Excel批量导入，完整CRUD
+组织结构	OrganizationalStructureView.vue	基础功能已开发 (CRUD及UI)	整合厂区和部门管理
+厂区管理	PlantManagementView.vue	✅ 完整功能已实现 (含后端接口)	厂区CRUD，负责人配置
+部门管理	DepartmentManagementView.vue	✅ 完整功能已实现 (含后端接口)	部门CRUD，所属厂区配置
+用户管理	UserManagementView.vue	✅ 完整功能已实现 (含后端接口)	用户CRUD，角色/厂区/部门关联，批量导入
+权限管理	PermissionManagementView.vue	基础功能已开发 (CRUD及UI)	权限CRUD和分配
+角色管理	RoleManagementView.vue	✅ 完整功能已实现 (含后端接口)	角色CRUD，批量同步
+部门计算规则配置	DeptCalcRulesConfigView.vue	✅ 完整功能已实现 (含前后端)	实现了部门计算规则的CRUD，支持厂区、部门、核算周期、预估费用、汇率、Rate系数的配置与管理，并支持启用、停用操作。
+智能排班规则配置	SmartScheduleRulesConfigView.vue	基础功能已开发 (CRUD及UI)	排班规则配置
+员工工时费率配置	EmployeeHourlyRateConfigView.vue	基础功能已开发 (CRUD及UI)	费率配置
+福利基数配置	WelfareBaseConfigView.vue	基础功能已开发 (CRUD及UI)	福利基数配置
+
+15.2 导航菜单状态更新
+表格
+图标	菜单名称	权限	状态
+📊	仪表盘	全部	占位页面
+📅	员工排班	全部	基础功能已开发
+🏭	工位安排	管理员	基础功能已开发
+📦	单据接收	全部	基础功能已开发
+🖨️	便捷打印	全部	基础功能已开发
+💰	Cost汇总	管理员	基础功能已开发
+📈	产量追踪	管理员	基础功能已开发
+🏆	奖金评比	管理员	基础功能已开发
+📝	请假公差	全部	基础功能已开发
+📉	关键KPI	全部	基础功能已开发
+📦	BIN体积管理	管理员	基础功能已开发
+⏳	过期料延期	兄弟部门+管理员	基础功能已开发
+🧹	6S管理	管理员	基础功能已开发
+──	──────────	────	──────────
+👥	员工花名册	管理员	✅ 完整功能已实现
+🏢	组织结构	超级管理员	基础功能已开发
+🏭	厂区管理	超级管理员	✅ 完整功能已实现
+🏢	部门管理	超级管理员	✅ 完整功能已实现
+👤	用户管理	管理员	✅ 完整功能已实现
+🔐	权限管理	超级管理员	基础功能已开发
+🎭	角色管理	超级管理员	✅ 完整功能已实现
+──	──────────	────	──────────
+⚙️	部门计算规则配置	超级管理员/厂区管理员	基础功能已开发
+🤖	智能排班规则配置	超级管理员/厂区管理员	基础功能已开发
+💵	员工工时费率配置	超级管理员/厂区管理员	基础功能已开发
+🎁	福利基数配置	超级管理员/厂区管理员	基础功能已开发
+
+十六、开发里程碑建议
+表格
+阶段	周期	交付物
+Phase 1	2周	基础架构、数据库设计、登录认证、仪表盘框架
+Phase 2	3周	基础管理模块 (角色、组织架构、用户、员工花名册、员工排班、请假公差、工位安排) 基础功能已完成 (CRUD及UI)
+Phase 3	3周	智能排班（含规则配置）、工位安排、考勤汇总
+Phase 4	2周	请假公差、审批流程、单据接收
+Phase 5	3周	Cost汇总、产量追踪、KPI、奖金评比
+Phase 6	2周	BIN体积、过期料、6S管理、便捷打印
+Phase 7	2周	小程序开发、多端适配、UI精细化
+Phase 8	2周	集成测试、性能优化、文档完善、上线部署

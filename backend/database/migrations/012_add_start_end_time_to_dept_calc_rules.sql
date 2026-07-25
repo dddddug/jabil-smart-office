@@ -1,0 +1,5 @@
+ALTER TABLE jso_config_dept_calc_rules
+ADD COLUMN IF NOT EXISTS start_time TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
+ALTER TABLE jso_config_dept_calc_rules
+ADD COLUMN IF NOT EXISTS end_time TIMESTAMP WITH TIME ZONE;

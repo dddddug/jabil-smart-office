@@ -1,0 +1,2 @@
+ALTER TABLE jso_cost_summary_data
+ADD CONSTRAINT jso_cost_summary_data_unique_fiscal_dept_position UNIQUE (fiscal_month, department_id, position);

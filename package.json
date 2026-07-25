@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dayjs": "^1.11.21",
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.22.0",
+    "xlsx": "^0.18.5"
+  }
+}

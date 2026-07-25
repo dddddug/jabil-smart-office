@@ -1,0 +1,77 @@
+// ========== 导出Excel和发送邮件功能 ==========
+
+// 导出Excel
+const exportToExcel = () => {
+  console.log('📥 导出Excel...');
+  
+  const weekNum = getWeekNumber(currentPeriodStart.value);
+  const fileName = `破7休1和周工时上限、公差补卡申请-${weekNum}(HY).xlsx`;
+  
+  // 创建工作簿
+  const wb = XLSX.utils.book_new();
+
+  // 1. 汇总表
+  const summaryDataForExcel = summaryData.value.map(dept => ({
+    '申请部门': dept.department,
+    '申请人': dept.applicant,
+    '打破7休1-申请人数': dept.overworkCount,
+    '周工时>63.75-申请人数': dept.overLimitCount,
+    '周工时>63.75-超出总工时': dept.totalOverHours,
+    '实施周期': dept.period,
+    '原因说明': dept.reason
+  }));
+  const ws1 = XLSX.utils.json_to_sheet(summaryDataForExcel);
+  XLSX.utils.book_append_sheet(wb, ws1, '汇总表');
+
+  // 2. 破7休1详细表
+  const overworkDataForExcel = overworkingEmployees.value.map((emp, idx) => ({
+    '序号': idx + 1,
+    '区域': emp.plant || '',
+    '部门': emp.department,
+    '级别': emp.level || '',
+    '工号': emp.sap,
+    '姓名': emp.name,
+    '开始日期': emp.startDate,
+    '结束日期': emp.endDate,
+    '连续工作天数': emp.consecutiveDays,
+    '申请超周工时上限的原因': emp.reason
+  }));
+  const ws2 = XLSX.utils.json_to_sheet(overworkDataForExcel);
+  XLSX.utils.book_append_sheet(wb, ws2, '破7休1详细');
+
+  // 3. 周工时上限详细表
+  const weeklyDataForExcel = weeklyLimitEmployees.value.map((emp, idx) => ({
+    '序号': idx + 1,
+    '区域': emp.plant || '',
+    '部门': emp.department,
+    '级别': emp.level || '',
+    '工号': emp.sap,
+    '姓名': emp.name,
+    '日期': emp.weekDate,
+    '周工时': emp.totalHours,
+    '超出工时': emp.overLimitHours,
+    '申请超周工时上限的原因': emp.reason
+  }));
+  const ws3 = XLSX.utils.json_to_sheet(weeklyDataForExcel);
+  XLSX.utils.book_append_sheet(wb, ws3, '周工时上限详细');
+
+  // 4. 公差补卡申请表
+  const errandDataForExcel = errandFixList.value.map(item => ({
+    '区域': item.plant || '',
+    '部门': item.department,
+    '工号': item.sap,
+    '姓名': item.employeeName,
+    '开始时间': item.startTime,
+    '结束时间': item.endTime,
+    '假期类型': item.leaveType,
+    '备注': item.reason,
+    'OT': item.ot,
+    '证据': item.evidence ? '有' : '无'
+  }));
+  const ws4 = XLSX.utils.json_to_sheet(errandDataForExcel);
+  XLSX.utils.book_append_sheet(wb, ws4, '公差补卡申请');
+
+  // 保存文件
+  XLSX.writeFile(wb, fileName);
+  console.log('✅ Excel导出完成:', fileName);
+};

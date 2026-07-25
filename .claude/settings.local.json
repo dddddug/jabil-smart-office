@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(tasklist)",
+      "Bash(findstr node.exe)",
+      "Bash(curl -s 'http://localhost:3002/api/cost-summary?fiscalMonth=2026-06&page=1&pageSize=10' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGVJZCI6MSwicGxhbnRJZCI6bnVsbCwiZGVwYXJ0bWVudElkIjpudWxsLCJqdGkiOiJjZGRhYmYwNS05YzM5LTQ2ZjktYWVhMC1iYWE4MWQ5OGUzZTgiLCJpYXQiOjE3ODQzNDE2MzUsImV4cCI6MTc4NDM1NjAzNX0.YWJhSxp_HMfuIDweAYB2V66vTEhZgjjTQXhrGmYA43U')",
+      "Bash(python3 -m json.tool)"
+    ]
+  }
+}

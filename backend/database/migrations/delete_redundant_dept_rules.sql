@@ -1,0 +1,1 @@
+DELETE FROM jso_config_dept_calc_rules WHERE plant_id = 7;
