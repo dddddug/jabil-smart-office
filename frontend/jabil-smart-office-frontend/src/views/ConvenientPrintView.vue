@@ -997,9 +997,15 @@ const skipBatchAndGoToQuantity = () => {
 const loadDepartments = async () => {
   try {
     const response = await getDepartmentList({});
-    if ((response as { data?: { departments: Department[] } })?.data?.departments) {
-      departmentList.value = (response as { data: { departments: Department[] } }).data.departments;
+    console.log('[loadDepartments] 响应:', response);
+    // 响应拦截器已自动解包 data，直接使用 response.departments
+    if (response && Array.isArray(response.departments)) {
+      departmentList.value = response.departments;
+    } else if (Array.isArray(response)) {
+      // 兼容直接返回数组的情况
+      departmentList.value = response;
     }
+    console.log('[loadDepartments] 部门列表:', departmentList.value);
   } catch (error) {
     console.error('加载部门失败:', error);
   }

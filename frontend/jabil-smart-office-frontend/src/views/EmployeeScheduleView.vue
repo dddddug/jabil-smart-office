@@ -3400,6 +3400,9 @@ const saveShift = async () => {
           ElMessage.success('排班保存成功！');
         }
 
+        // 清除请求缓存，确保获取最新数据
+        clearRequestCache();
+
         // 保存成功后，重新获取数据
         await fetchEmployees();
       } catch (error) {
@@ -3942,6 +3945,9 @@ const handleScheduleFileUpload = async (e: Event) => {
     ElMessage.warning(`导入完成！\n新增: ${totalInserted} 条\n更新: ${totalUpdated} 条\n(部分文件可能导入失败)`);
   }
 
+  // 清除请求缓存，确保获取最新数据
+  clearRequestCache();
+
   // 重新加载数据
   await fetchEmployees();
 
@@ -4098,6 +4104,9 @@ const pasteSelection = async () => {
     }
   }
   
+  // 清除请求缓存，确保获取最新数据
+  clearRequestCache();
+
   // 刷新数据
   await fetchEmployees();
   // 自动清空选择
@@ -4260,6 +4269,9 @@ const saveBatchShift = async () => {
 
   // 清空选择
   clearSelection();
+
+  // 清除请求缓存，确保获取最新数据
+  clearRequestCache();
 
   // 刷新数据
   await fetchEmployees();
@@ -5746,12 +5758,17 @@ const exportLeaveToExcel = async () => {
   margin-bottom: 24px;
 }
 
-/* 顶部汇总区域 */
+/* 顶部汇总区域 - 滚动时固定在顶部 */
 .summary-top-section {
   display: flex;
   gap: 16px;
   align-items: stretch;
   margin-bottom: 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background-color: #F3F4F6;
+  padding: 8px 0;
 }
 
 /* 按级别汇总工时 - 紧凑卡片形式 */
@@ -6039,7 +6056,7 @@ const exportLeaveToExcel = async () => {
   color: #374151;
   font-size: 12px;
   position: sticky;
-  top: 0;
+  top: 100px;
   z-index: 50;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
