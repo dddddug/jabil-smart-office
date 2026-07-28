@@ -79,7 +79,23 @@
       "Read(//tmp/**)",
       "Bash(curl -s \"http://localhost:3002/api/schedule/by-date?scheduleDate=2026-07-28\")",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git tag *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(winget install *)",
+      "Bash(ls -la \"/c/Users/1167023/AppData/Local/Microsoft/WindowsApps/\" | grep -i gh || echo \"未找到 gh\")",
+      "Read(//c/Users/1167023/AppData/Local/Microsoft/WindowsApps//**)",
+      "Bash(powershell.exe -Command \"winget install --id GitHub.cli -e --silent\")",
+      "Bash(cmd.exe /c \"gh --version\")",
+      "Bash(git restore *)",
+      "Bash(git commit -m 'fix: 修复前端构建时的 TypeScript 类型错误 *)",
+      "Bash(timeout 3 node server.js)",
+      "Bash(curl -s http://localhost:3000/api/users/health)",
+      "Bash(curl -s http://localhost:3002/api/users/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4173/)",
+      "Bash(ipconfig)",
+      "Bash(npm version *)"
     ]
   }
 }
