@@ -42,7 +42,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
 // ========== 请求防抖 ==========
 const debounceMap = new Map<string, {
-  timer: NodeJS.Timeout | null;
+  timer: ReturnType<typeof setTimeout> | null;
   resolve: ((value?: any) => void) | null;
   reject: ((reason?: any) => void) | null;
   config: AxiosRequestConfig | null;
@@ -161,9 +161,9 @@ service.request = function <T = any, R = T, D = any>(
     }
 
     // 非 GET 请求直接执行
-    originalRequest(config as any)
-      .then(resolve)
-      .catch(reject);
+    (originalRequest(config as any) as Promise<any>)
+      .then((res: any) => resolve(res))
+      .catch((err: any) => reject(err));
   });
 } as any;
 

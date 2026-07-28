@@ -1087,6 +1087,7 @@ interface TemporaryLeaveItem {
   type?: string;
   reason?: string;
   proofFile?: string;
+  hours?: number | string;
 }
 
 // 新增 Department 和 Plant 接口
@@ -2605,7 +2606,7 @@ const calculateEmployeeLeaveHours = (employeeId: number, startDate: string, endD
       }
 
       // 获取数据库中的 hours 字段
-      const leaveHours = parseFloat(item.hours) || 0;
+      const leaveHours = parseFloat(String(item.hours ?? '')) || 0;
       if (leaveHours <= 0) {
         return;
       }

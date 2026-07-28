@@ -16,8 +16,18 @@ export interface Notification {
   updatedAt?: string;
 }
 
+// 未读数量响应
+export interface UnreadCountResponse {
+  count: number;
+}
+
+// 通知列表响应
+export interface NotificationsResponse {
+  notifications: Notification[];
+}
+
 // 获取当前用户的通知列表
-export function getNotifications(read?: boolean) {
+export function getNotifications(read?: boolean): Promise<NotificationsResponse> {
   const params: any = {};
   if (read !== undefined) {
     params.read = read;
@@ -30,7 +40,7 @@ export function getNotifications(read?: boolean) {
 }
 
 // 获取未读通知数量
-export function getUnreadCount() {
+export function getUnreadCount(): Promise<UnreadCountResponse> {
   return request({
     url: '/notifications/unread-count',
     method: 'get',

@@ -1375,11 +1375,11 @@ const handleEndDistribution = (doc: K045Document) => {
       await endDistributionK045Document(doc.id!);
       // 分料结束后自动打开邮件客户端
       const notifyResult = await sendK045Notification(doc.id!);
-      const notifyData = notifyResult?.data || notifyResult;
-      if (notifyData?.mailtoUrl) {
+      // sendK045Notification 返回的已是解包后的数据（response interceptor 自动解包）
+      if (notifyResult?.mailtoUrl) {
         // 直接设置 location 打开邮件客户端，避免被浏览器阻止
-        window.location.href = notifyData.mailtoUrl;
-      } else if (!notifyData?.submitterEmail) {
+        window.location.href = notifyResult.mailtoUrl;
+      } else if (!notifyResult?.submitterEmail) {
         ElMessage.warning(`未找到 ${doc.submitterName} 的邮箱地址，请手动发送邮件通知`);
       }
       ElMessage.success('分料已结束');

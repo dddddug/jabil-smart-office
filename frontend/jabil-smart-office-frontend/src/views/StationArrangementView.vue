@@ -435,7 +435,7 @@ const autoAssignByPosition = async () => {
 
   for (const employee of scheduledEmployees.value) {
     // 检查员工是否有特殊职位
-    if (!specialPositions.includes(employee.position)) continue;
+    if (!employee.position || !specialPositions.includes(employee.position)) continue;
 
     // 检查是否已分配
     const alreadyAssigned = workstations.value.some(ws =>

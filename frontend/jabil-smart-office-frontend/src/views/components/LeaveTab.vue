@@ -746,6 +746,9 @@ interface LeaveRequest {
   transferInApprovalStatus?: string
   transferInApprovalComment?: string
   proofFile?: string // 证明文件
+  startTime?: string // 临时请假/加班的开始时间（时:分）
+  endTime?: string // 临时请假/加班的结束时间（时:分）
+  hours?: number | string // 请假时长（小时）
 }
 
 interface Employee {
@@ -1146,9 +1149,9 @@ const formatTemporaryTime = (dateStr: string | undefined, timeStr: string | unde
   // 提取日期部分
   let datePart = dateStr
   if (dateStr.includes('T')) {
-    datePart = dateStr.split('T')[0]
+    datePart = dateStr.split('T')[0] || dateStr
   } else if (dateStr.includes(' ')) {
-    datePart = dateStr.split(' ')[0]
+    datePart = dateStr.split(' ')[0] || dateStr
   }
 
   // 优先使用单独的 timeStr，其次从 dateStr 解析时间
