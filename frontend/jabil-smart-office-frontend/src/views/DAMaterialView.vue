@@ -622,6 +622,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { clearRequestCache } from '../utils/request';
 import {
   DAMaterialStatus,
   DAMaterialStatusText,
@@ -930,9 +931,11 @@ const closeEditDialog = () => {
 const handleReSubmit = async () => {
   if (!editingDocumentId.value) return;
 
+  const ecnNo = submitForm.ecnNo ?? '';
+
   // DA编号为N/A时，ECN编号和ECN附件为必填
   if (submitForm.daNo.toUpperCase() === 'N/A') {
-    if (!submitForm.ecnNo.trim()) {
+    if (!ecnNo.trim()) {
       ElMessage.warning('DA编号为N/A时，ECN编号为必填');
       return;
     }
@@ -957,6 +960,7 @@ const handleReSubmit = async () => {
     });
     ElMessage.success('单据已重新提交');
     closeEditDialog();
+    clearRequestCache(); // 清除请求缓存
     loadDocuments();
     loadStats();
   } catch (error: any) {
@@ -999,7 +1003,7 @@ const resetSubmitForm = () => {
 const loadControlTypes = async () => {
   try {
     const res = await getDAMaterialConfigs();
-    const configs = res?.data || res || [];
+    const configs = (res as any)?.data || res || [];
     const controlTypeConfig = configs.find((c: any) => c.configKey === DAMATERIAL_CONFIG_KEYS.CONTROL_TYPES);
     if (controlTypeConfig && controlTypeConfig.configValue) {
       controlTypes.value = controlTypeConfig.configValue.split(',').map((s: string) => s.trim()).filter((s: string) => s);
@@ -1196,9 +1200,11 @@ const handleSubmit = async () => {
     return;
   }
 
+  const ecnNo = submitForm.ecnNo ?? '';
+
   // DA编号为N/A时，ECN编号和ECN附件为必填
   if (submitForm.daNo.toUpperCase() === 'N/A') {
-    if (!submitForm.ecnNo.trim()) {
+    if (!ecnNo.trim()) {
       ElMessage.warning('DA编号为N/A时，ECN编号为必填');
       return;
     }
@@ -1219,6 +1225,7 @@ const handleSubmit = async () => {
     await createDAMaterialDocument(submitForm);
     ElMessage.success('单据提交成功');
     closeSubmitDialog();
+    clearRequestCache(); // 清除请求缓存，确保刷新获取最新数据
     loadDocuments();
     loadStats();
   } catch (error) {
@@ -1260,6 +1267,7 @@ const handleWithdraw = (doc: DAMaterialDocument) => {
     try {
       await withdrawDAMaterialDocument(doc.id!);
       ElMessage.success('单据已撤回');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1283,6 +1291,7 @@ const handleCancel = (doc: DAMaterialDocument) => {
     try {
       await cancelDAMaterialDocument(doc.id!);
       ElMessage.success('单据已取消');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1306,6 +1315,7 @@ const handleRush = (doc: DAMaterialDocument) => {
     try {
       await rushDAMaterialDocument(doc.id!);
       ElMessage.success('催单通知已发送');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1336,6 +1346,7 @@ const handlePrint = (doc: DAMaterialDocument) => {
       // 打印附件
       printAttachment(doc);
 
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1373,6 +1384,7 @@ const handleReceive = (doc: DAMaterialDocument) => {
     try {
       await receiveDAMaterialDocument(doc.id!, receivedBy);
       ElMessage.success('单据已接收');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1396,7 +1408,7 @@ const handleLockBin = (doc: DAMaterialDocument) => {
   const lockedBy = currentUser?.realName || currentUser?.username || '仓库操作员';
 
   ElMessageBox.confirm(
-    `确定执行锁BIN操作吗？单据 ${doc.documentNo} 将标记为已发料。操作人：${lockedBy}`,
+    `确定执行锁BIN操作吗？单据 ${doc.documentNo} 将标记为已发料，并通知提交人。操作人：${lockedBy}`,
     '🔒 锁BIN确认',
     {
       confirmButtonText: '确定',
@@ -1406,8 +1418,44 @@ const handleLockBin = (doc: DAMaterialDocument) => {
   ).then(async () => {
     lockBinLoading.value = true;
     try {
-      await lockBinDAMaterialDocument(doc.id!, lockedBy);
+      const result = await lockBinDAMaterialDocument(doc.id!, lockedBy);
+      const resData = result?.data || result;
+
+      // 调试日志
+      console.log('[lockBIN] API响应结果:', result);
+      console.log('[lockBIN] 解析后数据:', resData);
+
+      // 获取提交人邮箱并发送邮件通知
+      const submitterEmail = resData?.submitterEmail;
+      console.log('[lockBIN] 提交人邮箱:', submitterEmail);
+      if (submitterEmail) {
+        const documentNo = resData?.documentNo || doc.documentNo;
+        const subject = encodeURIComponent(`【发料通知】管控物料单据 ${documentNo} 已发料完成`);
+        const body = encodeURIComponent(
+          `您好，${doc.submitterName}\n\n` +
+          `您的管控物料单据 ${documentNo} 已完成发料，请尽快到仓库领取。\n\n` +
+          `发料信息：\n` +
+          `- 单号：${documentNo}\n` +
+          `- W/C：${doc.wcName}\n` +
+          `- DA编号：${doc.daNo}\n` +
+          `- 操作人：${lockedBy}\n` +
+          `- 发料时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n` +
+          `请登录 Jabil Smart Office 系统查看详情。\n\n` +
+          `---\nJabil Smart Office 系统自动发送`
+        );
+        const mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
+        console.log('[lockBIN] === 准备发送邮件 ===');
+        console.log('[lockBIN] 收件人:', submitterEmail);
+        console.log('[lockBIN] 邮件链接:', mailtoUrl);
+        console.log('[lockBIN] 尝试打开邮件客户端...');
+        window.location.href = mailtoUrl;
+        console.log('[lockBIN] window.location.href 已设置');
+      } else {
+        ElMessage.warning(`提交人 ${doc.submitterName} 未设置邮箱，已跳过邮件通知`);
+      }
+
       ElMessage.success('锁BIN操作成功，状态已更新为已发料');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error: any) {
@@ -1435,6 +1483,7 @@ const handleSign = (doc: DAMaterialDocument) => {
     try {
       await signDAMaterialDocument(doc.id!, signedBy);
       ElMessage.success('单据已签收');
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1468,6 +1517,7 @@ const confirmReject = async () => {
     await rejectDAMaterialDocument(rejectingDocument.value!.id!, rejectReason.value);
     ElMessage.success('单据已拒绝');
     closeRejectDialog();
+    clearRequestCache(); // 清除请求缓存
     loadDocuments();
     loadStats();
   } catch (error) {
@@ -1556,6 +1606,7 @@ const confirmReturn = async () => {
 
       ElMessage.success('单据已退回');
       closeReturnDialog();
+      clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {

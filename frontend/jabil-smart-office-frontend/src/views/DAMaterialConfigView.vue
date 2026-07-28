@@ -51,7 +51,7 @@
                     <td>
                       <input
                         type="text"
-                        v-model="controlTypes[index].name"
+                        v-model="item.name"
                         placeholder="管控类型名称"
                         class="location-input"
                       />

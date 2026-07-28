@@ -10,6 +10,7 @@ import { K045_DOCUMENT_TABLE, USER_TABLE } from '../config/db_constants.js';
 import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logDebug } from '../utils/logger.js';
+import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
 
 // 单据状态枚举
 const DocumentStatus = {
@@ -447,7 +448,17 @@ export const receiveDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.RECEIVED, receivedBy || '接收员', id]);
 
-    logInfo('K045单据接收成功', { id, documentNo: existingDoc.rows[0].document_no, receivedBy });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '📥',
+      '【接收通知】K045单据已接收',
+      `您的单据 ${docData.document_no} 已被接收，正在处理中。`,
+      'k045',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
+    logInfo('K045单据接收成功', { id, documentNo: docData.document_no, receivedBy });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, receivedAt: result.rows[0].received_at }, '单据已接收');
 
   } catch (err) {
@@ -488,7 +499,17 @@ export const rejectDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.REJECTED, reason, id]);
 
-    logInfo('K045单据被拒绝', { id, documentNo: existingDoc.rows[0].document_no, reason });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '❌',
+      '【拒绝通知】K045单据被拒绝',
+      `您的单据 ${docData.document_no} 被拒绝，拒绝原因：${reason}`,
+      'k045',
+      { documentId: id, documentNo: docData.document_no, reason }
+    );
+
+    logInfo('K045单据被拒绝', { id, documentNo: docData.document_no, reason });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, rejectReason: result.rows[0].reject_reason }, '单据已拒绝');
 
   } catch (err) {
@@ -546,6 +567,14 @@ export const returnDocument = async (req, res, next) => {
     `, [DocumentStatus.RETURNED, returnedBy || '接收打印员', reason, id]);
 
     const updatedDoc = result.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '↩️',
+      '【退回通知】K045单据被退回',
+      `您的单据 ${docData.document_no} 已被退回，退回原因：${reason}`,
+      'k045',
+      { documentId: id, documentNo: docData.document_no, reason }
+    );
 
     // 注意：邮件通知已移至前端使用 mailto: 方式实现
     // 这里只返回提交人邮箱，由前端打开邮件客户端
@@ -642,7 +671,17 @@ export const signDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.SIGNED, signedBy || '签收员', id]);
 
-    logInfo('K045单据签收成功', { id, documentNo: existingDoc.rows[0].document_no, signedBy });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '✍️',
+      '【签收通知】K045单据已签收',
+      `您的单据 ${docData.document_no} 已完成签收，正在分料中。`,
+      'k045',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
+    logInfo('K045单据签收成功', { id, documentNo: docData.document_no, signedBy });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, signedAt: result.rows[0].signed_at }, '单据已签收');
 
   } catch (err) {
@@ -678,7 +717,17 @@ export const endDistribution = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.DISTRIBUTION_ENDED, id]);
 
-    logInfo('K045单据分料结束', { id, documentNo: existingDoc.rows[0].document_no });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '✅',
+      '【分料完成通知】K045单据分料完成',
+      `您的单据 ${docData.document_no} 已完成分料，请确认收货。`,
+      'k045',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
+    logInfo('K045单据分料结束', { id, documentNo: docData.document_no });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, distributionEndedAt: result.rows[0].distribution_ended_at }, '分料已结束');
 
   } catch (err) {
@@ -725,7 +774,7 @@ export const confirmComplete = async (req, res, next) => {
 };
 
 /**
- * 发送邮件通知
+ * 发送邮件通知 - 生成 mailto 链接
  */
 export const sendNotification = async (req, res, next) => {
   try {
@@ -743,12 +792,40 @@ export const sendNotification = async (req, res, next) => {
 
     const doc = existingDoc.rows[0];
 
-    // TODO: 实现实际的邮件发送逻辑
-    // 这里可以集成 nodemailer 或其他邮件服务
+    // 获取提交人邮箱
+    let submitterEmail = '';
+    try {
+      const userResult = await pool.query(
+        `SELECT email FROM ${USER_TABLE} WHERE real_name = $1 OR username = $1 LIMIT 1`,
+        [doc.submitter_name]
+      );
+      if (userResult.rows.length > 0 && userResult.rows[0].email) {
+        submitterEmail = userResult.rows[0].email;
+      }
+    } catch (err) {
+      logDebug('获取提交人邮箱失败', { submitterName: doc.submitter_name, error: err.message });
+    }
+
+    // 生成 mailto 链接
+    let mailtoUrl = '';
+    if (submitterEmail) {
+      const subject = encodeURIComponent(`K045单据分料完成通知 - ${doc.document_no}`);
+      const body = encodeURIComponent(
+        `您好 ${doc.submitter_name}，\n\n` +
+        `您的 K045 单据 ${doc.document_no} 已完成分料。\n\n` +
+        `请确认收货后，在系统中进行确认完成操作。\n\n` +
+        `---\n` +
+        `Jabil Smart Office\n` +
+        `单据管理系统`
+      );
+      mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
+    }
+
     logInfo('K045单据邮件通知', {
       id,
       documentNo: doc.document_no,
       submitterName: doc.submitter_name,
+      submitterEmail,
       status: doc.status
     });
 
@@ -756,8 +833,10 @@ export const sendNotification = async (req, res, next) => {
       id: doc.id,
       documentNo: doc.document_no,
       submitterName: doc.submitter_name,
+      submitterEmail,
+      mailtoUrl,
       status: doc.status
-    }, '邮件通知已发送');
+    }, '邮件通知已准备');
 
   } catch (err) {
     next(err);

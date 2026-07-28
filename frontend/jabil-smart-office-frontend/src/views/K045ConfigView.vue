@@ -59,14 +59,14 @@
                     <td>
                       <input
                         type="text"
-                        v-model="deliveryLocationConfigs[index].location"
+                        v-model="item.location"
                         placeholder="配送地点名称"
                         class="location-input"
                       />
                     </td>
                     <td>
                       <select
-                        v-model="deliveryLocationConfigs[index].departments"
+                        v-model="item.departments"
                         class="location-select"
                       >
                         <option value="">允许所有部门</option>

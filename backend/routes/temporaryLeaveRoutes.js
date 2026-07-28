@@ -136,25 +136,25 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { leaveType, startDate, endDate, hours, reason, proofFile, plantId, departmentId } = req.body;
-    
+    const { leaveType, startDate, endDate, startTime, endTime, hours, reason, proofFile, plantId, departmentId } = req.body;
+
     // 验证：公差且时长大于2小时必须有证明材料
     if (leaveType === 'ERRAND' && hours > 2 && !proofFile) {
       return res.status(400).json({ error: '公差超过2小时，请上传证明材料' });
     }
-    
+
     const result = await pool.query(
-      `UPDATE ${TEMPORARY_LEAVE_TABLE} 
-       SET leave_type = $1, start_date = $2, end_date = $3, hours = $4, reason = $5, proof_file = $6, plant_id = $7, department_id = $8, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9 
+      `UPDATE ${TEMPORARY_LEAVE_TABLE}
+       SET leave_type = $1, start_date = $2, end_date = $3, start_time = $4, end_time = $5, hours = $6, reason = $7, proof_file = $8, plant_id = $9, department_id = $10, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $11
        RETURNING *`,
-      [leaveType, startDate, endDate, hours, reason, proofFile, plantId, departmentId, id]
+      [leaveType, startDate, endDate, startTime, endTime, hours, reason, proofFile, plantId, departmentId, id]
     );
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '记录不存在' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('更新临时请假公差记录失败:', error);

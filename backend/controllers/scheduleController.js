@@ -8,9 +8,11 @@ import XLSX from 'xlsx';
 import { USER_TABLE, PLANT_TABLE, DEPT_TABLE, TEMPORARY_OVERTIME_TABLE, TEMPORARY_LEAVE_TABLE, SHIFT_DURATION_RULES_TABLE, SCHEDULE_TABLE } from '../config/db_constants.js';
 import { checkBreak7Rest1 } from '../utils/scheduleUtils.js';
 import { handleScheduleUpload } from '../services/batchUploadService.js';
+import { parseExcel } from '../utils/excelUtils.js';
 import { success, created, error as httpError, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError, NotFoundError } from '../middlewares/errorHandler.js';
 import { logInfo, logWarn, logError, logDatabase } from '../utils/logger.js';
+import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
 
 /**
  * 获取员工排班和工时统计
@@ -174,8 +176,8 @@ export const getEmployeesWithSchedule = async (req, res, next) => {
       const leaveHours = leaveMap[user.id] || 0;
       const totalHours = scheduleHours + overtimeHours - leaveHours;
 
-      // 检查破7休1
-      const break7Rest1Violations = await checkBreak7Rest1(user.id, queryStart, queryEnd, pool);
+      // 检查破7休1（传入离职日期）
+      const break7Rest1Violations = await checkBreak7Rest1(user.id, queryStart, queryEnd, pool, user.leave_date);
 
       return {
         id: user.id,
@@ -258,6 +260,35 @@ export const saveSchedule = async (req, res, next) => {
     }
 
     logDatabase(existing.rows.length > 0 ? 'UPDATE' : 'INSERT', 'jso_hr_employee_schedule', { employeeId, scheduleDate });
+
+    // 获取员工信息并发送通知
+    try {
+      const userResult = await pool.query(
+        `SELECT real_name, department_id FROM ${USER_TABLE} WHERE id = $1`,
+        [employeeId]
+      );
+      if (userResult.rows.length > 0) {
+        const userInfo = userResult.rows[0];
+        // 通知员工
+        await notifyUser(pool, userInfo.real_name, '📅',
+          '【排班通知】您的排班已更新',
+          `您的 ${scheduleDate} 排班已更新为：${shift}`,
+          'schedule',
+          { employeeId, scheduleDate, shift }
+        );
+        // 通知部门成员
+        if (userInfo.department_id) {
+          await notifyDepartment(pool, userInfo.department_id, '📅',
+            '【部门通知】员工排班已更新',
+            `部门成员 ${userInfo.real_name} 的 ${scheduleDate} 排班已更新为：${shift}`,
+            'schedule',
+            { employeeId, scheduleDate, shift, employeeName: userInfo.real_name }
+          );
+        }
+      }
+    } catch (notifyErr) {
+      logWarn('发送排班通知失败', { error: notifyErr.message });
+    }
 
     success(res, { item: result.rows[0] }, '保存排班成功');
   } catch (err) {
@@ -453,7 +484,7 @@ export const getScheduleByDate = async (req, res, next) => {
     // 日期存储为UTC时间，需要用 at time zone 转换到北京时间比较
     const result = await pool.query(`
       SELECT s.employee_id, s.shift, s.special_status,
-             u.real_name, u.employee_id as sap_employee_id, u.plant_id, u.department_id, u.employee_type,
+             u.real_name, u.employee_id as sap_employee_id, u.plant_id, u.department_id, u.employee_type, u.position,
              p.name as plant_name, d.name as department_name,
              COALESCE(sh.duration_hours, 0) as duration_hours
       FROM ${SCHEDULE_TABLE} s

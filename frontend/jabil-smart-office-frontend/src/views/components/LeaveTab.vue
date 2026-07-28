@@ -102,16 +102,16 @@
         <el-tag :type="getTypeTagType(row.type)" size="small">{{ row.type }}</el-tag>
       </template>
     </el-table-column>
-      
+
       <!-- 临时加班、临时请假&公差的时间列 -->
       <el-table-column label="开始时间" width="180" v-if="tabType === 'overtime' || tabType === 'temporary'">
         <template #default="{ row }">
-          <span>{{ formatDateTime(row.startDate) }}</span>
+          <span>{{ formatTemporaryTime(row.startDate, row.startTime) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="结束时间" width="180" v-if="tabType === 'overtime' || tabType === 'temporary'">
         <template #default="{ row }">
-          <span>{{ formatDateTime(row.endDate) }}</span>
+          <span>{{ formatTemporaryTime(row.endDate, row.endTime) }}</span>
         </template>
       </el-table-column>
       
@@ -344,7 +344,7 @@
       v-model:current-page="currentPage"
       v-model:page-size="pageSize"
       :total="total"
-      :page-sizes="[10, 20, 50, 100]"
+      :page-sizes="[15, 50, 100]"
       layout="total, sizes, prev, pager, next, jumper"
       @current-change="handlePageChange"
       @size-change="handlePageSizeChange"
@@ -771,7 +771,7 @@ const dialogVisible = ref(false)
 const transferDialogVisible = ref(false)
 const isEdit = ref(false)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(15)
 const total = ref(0)
 const totalPages = ref(1)
 const totalPending = ref(0)
@@ -803,7 +803,11 @@ const saveState = () => {
     currentPage: currentPage.value,
     pageSize: pageSize.value,
     filterStatus: filterStatus.value,
-    filterEmployee: filterEmployee.value
+    filterEmployee: filterEmployee.value,
+    dateRange: dateRange.value ? [
+      dateRange.value[0] instanceof Date ? dateRange.value[0].toISOString() : dateRange.value[0],
+      dateRange.value[1] instanceof Date ? dateRange.value[1].toISOString() : dateRange.value[1]
+    ] : null
   }
   localStorage.setItem(getStorageKey('state'), JSON.stringify(state))
 }
@@ -815,9 +819,19 @@ const loadState = () => {
     if (savedState) {
       const state = JSON.parse(savedState)
       currentPage.value = state.currentPage || 1
-      pageSize.value = state.pageSize || 10
+      // 迁移：如果存储的 pageSize 是旧默认值 10 或 20，则改为 15
+      pageSize.value = (state.pageSize && state.pageSize !== 10 && state.pageSize !== 20) ? state.pageSize : 15
       filterStatus.value = state.filterStatus || ''
       filterEmployee.value = state.filterEmployee || ''
+      // 恢复日期范围
+      if (state.dateRange && Array.isArray(state.dateRange) && state.dateRange.length === 2) {
+        dateRange.value = [
+          new Date(state.dateRange[0]),
+          new Date(state.dateRange[1])
+        ]
+      } else {
+        dateRange.value = null
+      }
     }
   } catch (error) {
     ElMessage.error('加载状态失败: ' + getErrorMessage(error))
@@ -829,6 +843,11 @@ watch(currentPage, saveState)
 watch(pageSize, saveState)
 watch(filterStatus, saveState)
 watch(filterEmployee, saveState)
+watch(dateRange, () => {
+  saveState()
+  currentPage.value = 1
+  loadData()
+}, { deep: true })
 
 const employees = ref<Employee[]>([])
 const departments = ref<{ id: number, name: string, plantId: number }[]>([])
@@ -899,18 +918,31 @@ const loadData = async () => {
     const params = new URLSearchParams()
     params.append('page', currentPage.value.toString())
     params.append('pageSize', pageSize.value.toString())
-    
+
     // 根据tab类型传递type参数，区分请假和离职
     if (props.tabType === 'annual') {
       params.append('type', 'annual')
     } else if (props.tabType === 'resignation') {
       params.append('type', 'resignation')
     }
-    
+
+    // 传递筛选条件
     if (filterStatus.value) {
       params.append('status', filterStatus.value)
     }
-    
+
+    // 传递日期范围
+    if (dateRange.value && dateRange.value.length === 2) {
+      const startDate = dateRange.value[0]
+      const endDate = dateRange.value[1]
+      if (startDate instanceof Date) {
+        params.append('startDate', dayjs(startDate).format('YYYY-MM-DD'))
+      }
+      if (endDate instanceof Date) {
+        params.append('endDate', dayjs(endDate).format('YYYY-MM-DD'))
+      }
+    }
+
     const response = await fetch(`/api/${apiType}?${params}`, {
       headers: getAuthHeaders()
     })
@@ -956,7 +988,7 @@ const loadData = async () => {
           // 转换类型为中文
           if (type === 'LEAVE') type = '临时请假'
           if (type === 'ERRAND') type = '公差'
-          
+
           // 后端现在直接返回带时间的完整日期！
           startDate = item.startDate || ''
           endDate = item.endDate || ''
@@ -1004,6 +1036,9 @@ const loadData = async () => {
             transferDate: (item.transferDate || item.transfer_date) ? (item.transferDate || item.transfer_date).split('T')[0] : null,
             // 证明文件
             proofFile: item.proofFile || item.proof_file || '',
+            // 时间字段（供编辑时使用）
+            startTime: item.startTime || '',
+            endTime: item.endTime || '',
             // 转岗审批相关字段
             transferOutApproverId: item.transferOutApproverId || item.transfer_out_approver_id,
             transferOutApproverName: item.transferOutApproverName || item.transfer_out_approver_name,
@@ -1077,10 +1112,10 @@ const durationUnit = computed(() => {
 // 格式化日期时间显示
 const formatDateTime = (dateTime: string) => {
   if (!dateTime) return '-'
-  
+
   try {
     let result = dateTime
-    
+
     // 1. 处理 ISO 格式：2024-07-01T18:00:00.000Z
     if (dateTime.includes('T')) {
       const datePart = dateTime.split('T')[0]
@@ -1104,10 +1139,89 @@ const formatDateTime = (dateTime: string) => {
   }
 }
 
+// 格式化临时请假/加班的时间显示（优先使用单独的time字段）
+const formatTemporaryTime = (dateStr: string | undefined, timeStr: string | undefined) => {
+  if (!dateStr) return '-'
+
+  // 提取日期部分
+  let datePart = dateStr
+  if (dateStr.includes('T')) {
+    datePart = dateStr.split('T')[0]
+  } else if (dateStr.includes(' ')) {
+    datePart = dateStr.split(' ')[0]
+  }
+
+  // 优先使用单独的 timeStr，其次从 dateStr 解析时间
+  let timePart = ''
+  if (timeStr) {
+    // timeStr 可能是 "02:00" 或 "02:00:00" 格式
+    timePart = timeStr.substring(0, 5)
+  } else if (dateStr.includes(' ')) {
+    // 从 dateStr 解析时间
+    const match = dateStr.match(/(\d{2}):(\d{2})/)
+    if (match) {
+      timePart = match[0]
+    }
+  } else if (dateStr.includes('T')) {
+    // 从 ISO 格式解析
+    const match = dateStr.match(/T(\d{2}):(\d{2})/)
+    if (match) {
+      timePart = match[1] + ':' + match[2]
+    }
+  }
+
+  return timePart ? `${datePart} ${timePart}` : datePart
+}
+
+// 正确解析日期字符串，处理 'YYYY-MM-DD HH:mm' 或 'YYYY-MM-DD HH:mm:ss' 格式
+const parseDateStr = (dateStr: string | null | undefined): Date | null => {
+  if (!dateStr) return null
+  // 处理 'YYYY-MM-DD HH:mm' 或 'YYYY-MM-DD HH:mm:ss' 格式
+  const match = String(dateStr).match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2})/)
+  if (match) {
+    const [, date, hours, minutes] = match
+    return new Date(`${date}T${hours}:${minutes}:00`)
+  }
+  return new Date(dateStr)
+}
+
+// 从带日期和时间的字符串中提取日期部分
+const extractDateFromDateTime = (dateTimeStr: string | null | undefined): Date | null => {
+  if (!dateTimeStr) return null
+  const match = String(dateTimeStr).match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match) {
+    return new Date(match[1] + 'T00:00:00')
+  }
+  return parseDateStr(dateTimeStr)
+}
+
 const filteredData = computed(() => {
-  // 后端已处理分页，这里只做简单的员工姓名筛选
   return requests.value.filter(r => {
-    return !filterEmployee.value || r.employeeName.includes(filterEmployee.value)
+    // 员工姓名筛选
+    if (filterEmployee.value && !r.employeeName.includes(filterEmployee.value)) {
+      return false
+    }
+    // 状态筛选
+    if (filterStatus.value && r.status !== filterStatus.value) {
+      return false
+    }
+    // 日期范围筛选
+    if (dateRange.value && dateRange.value.length === 2) {
+      const itemDate = r.startDate?.split(' ')[0] || r.startDate || ''
+      const startDateStr = dateRange.value[0] instanceof Date
+        ? dayjs(dateRange.value[0]).format('YYYY-MM-DD')
+        : dateRange.value[0]
+      const endDateStr = dateRange.value[1] instanceof Date
+        ? dayjs(dateRange.value[1]).format('YYYY-MM-DD')
+        : dateRange.value[1]
+      if (itemDate && itemDate < startDateStr) {
+        return false
+      }
+      if (itemDate && itemDate > endDateStr) {
+        return false
+      }
+    }
+    return true
   })
 })
 
@@ -1127,11 +1241,12 @@ const form = ref({
 const approvers = ref<Approver[]>([])
 
 // Helper function to get the authentication token
+import { getToken } from '@/utils/request'
 const getAuthHeaders = (): Record<string, string> => {
-  const user = getCurrentUser();
+  const token = getToken();
   return {
     'Content-Type': 'application/json',
-    ...(user && user.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
 };
 
@@ -1586,12 +1701,12 @@ const hasAddPermission = () => {
 // 检查当前用户是否有编辑/提交/撤回的权限
 const hasEditPermission = (row: any) => {
   if (!currentUser) return false
-  
+
   const userRoleId = currentUser.roleId
-  
+
   // 超级管理员（roleId=1）有所有权限
   if (userRoleId === 1) return true
-  
+
   // 临时加班、临时请假&公差只允许：
   // - 厂区管理员（roleId=2）且厂区匹配
   // - 部门管理员（roleId=3）且部门匹配
@@ -1693,19 +1808,20 @@ const handleEdit = (row: LeaveRequest) => {
   isEdit.value = true
   editingId.value = row.id
   const rowAny = row as any
+
   form.value = {
             employeeId: row.employeeId,
             type: row.type,
-            startDate: new Date(row.startDate),
-            endDate: new Date(row.endDate),
+            startDate: parseDateStr(row.startDate),
+            endDate: parseDateStr(row.endDate),
             reason: row.reason,
             approverId: rowAny.approverId ?? null,
-            transferDate: rowAny.transferDate ? new Date(rowAny.transferDate) : null,
+            transferDate: rowAny.transferDate ? parseDateStr(rowAny.transferDate) : null,
             transferDepartmentId: rowAny.transferDepartmentId ?? null,
             transferToId: rowAny.transferToId ?? null,
             transferPlantId: rowAny.transferPlantId ?? null,
           }
-  
+
   // 初始化已上传的文件信息
   if (props.tabType === 'temporary') {
     uploadedProofFile.value = (row as any).proofFile || ''
@@ -1718,20 +1834,22 @@ const handleEdit = (row: LeaveRequest) => {
     uploadedProofFile.value = ''
     fileList.value = []
   }
-  
+
   // 根据 tabType 不同初始化不同的控件
   if (props.tabType === 'overtime' || props.tabType === 'temporary') {
     // 临时加班/临时请假：日期 + 时间
-    const start = new Date(row.startDate)
-    const end = new Date(row.endDate)
-    
-    formDate.value = new Date(start.getFullYear(), start.getMonth(), start.getDate())
-    formStartTime.value = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`
-    formEndTime.value = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`
+    const start = parseDateStr(row.startDate)
+    const end = parseDateStr(row.endDate)
+
+    // 使用 startDate 中的日期部分作为 formDate
+    formDate.value = start ? extractDateFromDateTime(row.startDate) : null
+    // 使用后端返回的 startTime 和 endTime（如果存在），否则从 startDate/endDate 解析
+    formStartTime.value = row.startTime || (start ? `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}` : '')
+    formEndTime.value = row.endTime || (end ? `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}` : '')
     formDateRange.value = [null, null]
   } else if (props.tabType === 'annual') {
     // 请假&年假：日期区间
-    formDateRange.value = [new Date(row.startDate), new Date(row.endDate)]
+    formDateRange.value = [parseDateStr(row.startDate), parseDateStr(row.endDate)]
     formDate.value = null
     formStartTime.value = ''
     formEndTime.value = ''
@@ -2015,6 +2133,8 @@ const handleSubmit = async () => {
         employeeId: form.value.employeeId,
         reason: form.value.reason,
         applicantId: currentUser?.id, // 记录申请人ID
+        plantId: currentUser?.plantId,
+        departmentId: currentUser?.departmentId,
       }
 
       // 根据 tabType 和 type 组装请求体
@@ -2031,6 +2151,8 @@ const handleSubmit = async () => {
         requestBody.leaveType = form.value.type === '临时请假' ? 'LEAVE' : 'ERRAND'
         requestBody.startDate = dayjs(form.value.startDate).format('YYYY-MM-DD HH:mm:ss')
         requestBody.endDate = dayjs(form.value.endDate).format('YYYY-MM-DD HH:mm:ss')
+        requestBody.startTime = formStartTime.value
+        requestBody.endTime = formEndTime.value
         requestBody.hours = calculateDuration(form.value.startDate!, form.value.endDate!)
         requestBody.proofFile = uploadedProofFile.value // 提交证明文件
       } else if (props.tabType === 'annual') {
@@ -2152,7 +2274,7 @@ const handleFileChange = async (file: any) => {
     const response = await fetch('/api/proof/upload', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${getCurrentUser()?.token}`,
+        'Authorization': `Bearer ${getToken()}`,
       },
       body: formData
     })
@@ -2229,17 +2351,17 @@ const downloadTemplate = () => {
   const apiType = getApiType()
   let templateName = ''
   if (apiType === 'temporary-overtime') {
-    templateName = 'overtime_template.xlsx'
+    templateName = '临时加班导入模板.xlsx'
   } else if (apiType === 'temporary-leave') {
-    templateName = 'temporary_leave_errand_template.xlsx'
+    templateName = '临时请假&公差导入模板.xlsx'
   } else if (apiType === 'formal-leave') {
-    templateName = 'formal_leave_template.xlsx'
+    templateName = '正式请假导入模板.xlsx'
   } else if (apiType === 'resignation-transfer') {
-    templateName = 'resignation_transfer_template.xlsx'
+    templateName = '离职转岗导入模板.xlsx'
   }
-  
+
   if (templateName) {
-    window.open(`/api/template/download/${templateName}`, '_blank')
+    window.open(`/api/templates/${encodeURIComponent(templateName)}`, '_blank')
   } else {
     ElMessage.warning('当前类型没有可用的模板')
   }
@@ -2267,10 +2389,11 @@ const confirmBatchUpload = async () => {
   batchUploadSuccess.value = null
   
   try {
-    const response = await fetch(`/api/${apiType}/batch-upload`, {
+    const token = getToken()
+    const response = await fetch(`/api/batch/${apiType}/batch-upload`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${currentUser?.token}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: formData,
     })

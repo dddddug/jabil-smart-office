@@ -11,6 +11,7 @@ import { USER_TABLE, ROLE_TABLE, PLANT_TABLE, DEPT_TABLE, JSO_JWT_BLACKLIST_TABL
 import { success, created, error as httpError, paginated, batchResult } from '../utils/responseHelper.js';
 import { AppError, BadRequestError, NotFoundError, UnauthorizedError, ForbiddenError } from '../middlewares/errorHandler.js';
 import { logInfo, logWarn, logError, logUserAction } from '../utils/logger.js';
+import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
 
 /**
  * 获取当前登录用户信息
@@ -325,6 +326,24 @@ export const createUser = async (req, res, next) => {
 
     logInfo('创建用户成功', { userId: newUser.id, username, createdBy: req.user?.username });
     logUserAction(req.user?.id, req.user?.username, 'create_user', { targetUserId: newUser.id, targetUsername: username });
+
+    // 通知新创建的用户
+    await notifyUser(pool, newUser.real_name, '👤',
+      '【账号通知】您的账号已创建',
+      `您的账号已创建，用户名：${username}，默认密码：123456，请及时登录修改密码。`,
+      'user',
+      { userId: newUser.id, username }
+    );
+
+    // 通知部门成员
+    if (departmentId) {
+      await notifyDepartment(pool, departmentId, '👥',
+        '【部门通知】新成员加入',
+        `部门新成员 ${realName} (${username}) 已加入。`,
+        'user',
+        { userId: newUser.id, username, realName }
+      );
+    }
 
     created(res, {
       id: newUser.id,
@@ -715,6 +734,24 @@ export const updateUser = async (req, res, next) => {
 
       logInfo('更新用户成功', { userId: id, updatedBy: req.user?.username });
       logUserAction(req.user?.id, req.user?.username, 'update_user', { targetUserId: id });
+
+      // 通知用户信息变更
+      await notifyUser(pool, updatedUser.real_name, '✏️',
+        '【信息变更通知】您的账号信息已更新',
+        `您的账号信息已由管理员更新，请留意变更内容。`,
+        'user',
+        { userId: id, updatedBy: req.user?.username }
+      );
+
+      // 如果状态变为 inactive（离职），通知用户
+      if (hasLeaveDate && existing.status !== 'inactive') {
+        await notifyUser(pool, updatedUser.real_name, '🚪',
+          '【离职通知】您的账号已停用',
+          `您的账号已因离职被停用，如有疑问请联系管理员。`,
+          'user',
+          { userId: id }
+        );
+      }
     } else {
       updatedUser = existing;
     }

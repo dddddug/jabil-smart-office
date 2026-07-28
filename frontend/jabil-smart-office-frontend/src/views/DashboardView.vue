@@ -134,11 +134,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import DashboardContent from './DashboardContent.vue';
 import request from '../utils/request'; // 导入 request 实例
 import { ElMessage } from 'element-plus'; // 导入 ElMessage 用于提示
+import { getNotifications, getUnreadCount, markAsRead, markAllAsRead as markAllReadApi } from '../api/notification';
 
 interface Tab {
   title: string;
@@ -186,19 +187,25 @@ const handleLogout = async () => {
   }
 };
 
-const notifications = ref([
-  { id: 1, icon: '📋', title: '请假待审批', message: '张三的年假申请待审批', time: '10分钟前', read: false },
-  { id: 2, icon: '📦', title: '新单据待接收', message: '新单据待接收：生产订单#202406001', time: '30分钟前', read: false },
-  { id: 3, icon: '⚠️', title: '过期料提醒', message: '有过期料需要处理：物料 A1001', time: '2小时前', read: false },
-  { id: 4, icon: '📊', title: 'KPI报告生成', message: '本月KPI报告已生成', time: '昨天', read: true },
-]);
+const notifications = ref<any[]>([]);
+const notificationsLoading = ref(false);
+const unreadCount = ref(0);
 
 const showNotificationPanel = ref(false);
 const activeNotificationTab = ref<'unread' | 'read'>('unread');
 
-const unreadNotificationsCount = computed(() => 
-  notifications.value.filter(n => !n.read).length
-);
+// 加载未读数量（用于徽章显示）
+const loadUnreadCount = async () => {
+  try {
+    const res = await getUnreadCount();
+    unreadCount.value = res?.count || 0;
+  } catch (error) {
+    console.error('加载未读数量失败:', error);
+    unreadCount.value = 0;
+  }
+};
+
+const unreadNotificationsCount = computed(() => unreadCount.value);
 
 const displayNotifications = computed(() => {
   if (activeNotificationTab.value === 'unread') {
@@ -211,15 +218,79 @@ const toggleNotificationPanel = () => {
   showNotificationPanel.value = !showNotificationPanel.value;
 };
 
-const markAllAsRead = () => {
-  notifications.value.forEach(n => n.read = true);
+// 格式化时间显示
+const formatTime = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  if (hours < 24) return `${hours}小时前`;
+  if (days < 7) return `${days}天前`;
+  return date.toLocaleDateString('zh-CN');
 };
 
-const handleNotificationClick = (notification: any) => {
+// 加载通知列表
+const loadNotifications = async () => {
+  notificationsLoading.value = true;
+  try {
+    const res = await getNotifications();
+    notifications.value = (res?.notifications || []).map((n: any) => ({
+      ...n,
+      time: formatTime(n.createdAt)
+    }));
+    // 同时更新未读数量
+    await loadUnreadCount();
+  } catch (error) {
+    console.error('加载通知失败:', error);
+    notifications.value = [];
+  } finally {
+    notificationsLoading.value = false;
+  }
+};
+
+// 切换标签页时重新加载通知
+watch(activeNotificationTab, () => {
+  loadNotifications();
+});
+
+// 打开通知面板时加载
+watch(showNotificationPanel, (newVal) => {
+  if (newVal) {
+    loadNotifications();
+  }
+});
+
+// 标记单个通知为已读
+const handleNotificationClick = async (notification: any) => {
   if (!notification.read) {
-    notification.read = true;
+    try {
+      await markAsRead(notification.id);
+      notification.read = true;
+      unreadCount.value = Math.max(0, unreadCount.value - 1);
+    } catch (error) {
+      console.error('标记已读失败:', error);
+    }
   }
   showNotificationPanel.value = false;
+};
+
+// 标记所有通知为已读
+const markAllAsRead = async () => {
+  try {
+    await markAllReadApi();
+    notifications.value.forEach(n => n.read = true);
+    unreadCount.value = 0;
+    ElMessage.success('已全部标记为已读');
+  } catch (error) {
+    console.error('标记全部已读失败:', error);
+    ElMessage.error('操作失败，请重试');
+  }
 };
 
 // 从 localStorage 恢复标签页
@@ -395,6 +466,10 @@ onMounted(() => {
       localStorage.removeItem('user');
     }
   }
+
+  // 加载通知
+  loadNotifications();
+
   // 清除旧的 lastRoute 避免干扰
   localStorage.removeItem('lastRoute');
 
@@ -425,6 +500,24 @@ onMounted(() => {
     router.replace({ name: targetTab.routeName });
   } else {
     router.replace({ name: 'dashboard' });
+  }
+});
+
+// 定时刷新未读数量
+let unreadCountTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  // 启动定时刷新
+  loadUnreadCount();
+  unreadCountTimer = setInterval(() => {
+    loadUnreadCount();
+  }, 30000); // 每30秒刷新一次
+});
+
+onBeforeUnmount(() => {
+  if (unreadCountTimer) {
+    clearInterval(unreadCountTimer);
+    unreadCountTimer = null;
   }
 });
 </script>

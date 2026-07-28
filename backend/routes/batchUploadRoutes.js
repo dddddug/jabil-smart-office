@@ -106,20 +106,29 @@ router.post('/resignation-transfer/batch-upload', authenticateToken, memoryUploa
 router.post('/schedule/batch-upload', authenticateToken, memoryUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: '请上传Excel文件' });
+      return res.status(400).json({ code: 400, error: '请上传Excel文件' });
     }
 
     const rows = parseExcel(req.file.buffer);
     const result = await handleScheduleUpload(rows);
 
+    console.log('[BatchUpload] handleScheduleUpload result:', JSON.stringify(result));
+
     if (!result.success) {
-      return res.status(400).json({ error: '数据验证失败', details: result.errors });
+      return res.status(400).json({ code: 400, message: '数据验证失败', data: result.errors });
     }
 
-    res.json(result);
+    const responseData = {
+      code: 200,
+      message: '批量上传成功',
+      data: result
+    };
+
+    console.log('[BatchUpload] Final response:', JSON.stringify(responseData));
+    return res.status(200).json(responseData);
   } catch (error) {
     console.error('批量上传排班失败:', error);
-    res.status(500).json({ error: '批量上传失败', message: error.message });
+    res.status(500).json({ code: 500, message: '批量上传失败', data: error.message });
   }
 });
 
@@ -132,16 +141,16 @@ router.get('/:type/download-template', authenticateToken, async (req, res) => {
 
   switch (type) {
     case 'temporary-overtime':
-      templateFileName = 'TemporaryOvertimeImportTemplate.xlsx';
+      templateFileName = '临时加班导入模板.xlsx';
       break;
     case 'temporary-leave':
-      templateFileName = 'TemporaryLeaveImportTemplate.xlsx';
+      templateFileName = '临时请假&公差导入模板.xlsx';
       break;
     case 'formal-leave':
-      templateFileName = 'FormalLeaveImportTemplate.xlsx';
+      templateFileName = '正式请假导入模板.xlsx';
       break;
-    case 'resignation-transfer': // New case
-      templateFileName = 'ResignationTransferImportTemplate.xlsx';
+    case 'resignation-transfer':
+      templateFileName = '离职转岗导入模板.xlsx';
       break;
     case 'schedule': 
       templateFileName = 'EmployeeScheduleImportTemplate.xlsx';
@@ -152,7 +161,7 @@ router.get('/:type/download-template', authenticateToken, async (req, res) => {
 
   // Redirect to the static file serving endpoint
   // The actual static serving is handled by server.js at /api/templates
-  const redirectUrl = `/api/templates/${templateFileName}`;
+  const redirectUrl = `/api/templates/${encodeURIComponent(templateFileName)}`;
   res.redirect(redirectUrl);
 });
 

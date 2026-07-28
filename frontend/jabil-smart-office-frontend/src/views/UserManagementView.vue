@@ -94,99 +94,123 @@
 
     <!-- Add/Edit User Dialog -->
     <div v-if="isDialogOpen" class="dialog-overlay">
-      <div class="dialog-content">
+      <div class="dialog-content user-dialog">
         <div class="dialog-header">
           <h3>{{ isEditMode ? '编辑用户' : '新增用户' }}</h3>
           <button class="dialog-close" @click="closeDialog">×</button>
         </div>
         <div class="dialog-body">
-          <form @submit.prevent="saveUser">
-            <div class="form-group">
-              <label for="username">用户名 *</label>
-              <input type="text" id="username" v-model="currentUser.username" :disabled="isEditMode" />
+          <form @submit.prevent="saveUser" class="compact-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="username">用户名 *</label>
+                <input type="text" id="username" v-model="currentUser.username" :disabled="isEditMode" />
+              </div>
+              <div class="form-group">
+                <label for="realName">姓名</label>
+                <input type="text" id="realName" v-model="currentUser.realName" />
+              </div>
             </div>
-            <div class="form-group" v-if="!isEditMode">
-              <div class="hint-text">初始密码统一为: <strong>123456</strong></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="employeeId">工号</label>
+                <input type="text" id="employeeId" v-model="currentUser.employeeId" />
+              </div>
+              <div class="form-group">
+                <label for="oldEmployeeId">旧工号</label>
+                <input type="text" id="oldEmployeeId" v-model="currentUser.oldEmployeeId" />
+              </div>
             </div>
-            <div class="form-group">
-              <label for="realName">姓名</label>
-              <input type="text" id="realName" v-model="currentUser.realName" />
+            <div class="form-row">
+              <div class="form-group">
+                <label for="role">角色 *</label>
+                <select id="role" v-model="currentUser.roleId" required>
+                  <option value="">请选择</option>
+                  <option v-for="role in availableRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="status">状态</label>
+                <select id="status" v-model="currentUser.status">
+                  <option value="active">启用</option>
+                  <option value="inactive">禁用</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="employeeId">工号</label>
-              <input type="text" id="employeeId" v-model="currentUser.employeeId" />
+            <div class="form-row">
+              <div class="form-group">
+                <label for="plant">厂区</label>
+                <select id="plant" v-model="currentUser.plantId" @change="onPlantChange">
+                  <option value="">请选择</option>
+                  <option v-for="plant in availablePlants" :key="plant.id" :value="plant.id">{{ plant.name }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="department">部门</label>
+                <select id="department" v-model="currentUser.departmentId" :disabled="!currentUser.plantId">
+                  <option value="">请选择</option>
+                  <option v-for="dept in filteredDepartments" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="oldEmployeeId">旧工号</label>
-              <input type="text" id="oldEmployeeId" v-model="currentUser.oldEmployeeId" />
+            <div class="form-row">
+              <div class="form-group">
+                <label for="gender">性别</label>
+                <select id="gender" v-model="currentUser.gender">
+                  <option value="">请选择</option>
+                  <option value="男">男</option>
+                  <option value="女">女</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="phone">电话</label>
+                <input type="text" id="phone" v-model="currentUser.phone" />
+              </div>
             </div>
-            <div class="form-group">
-              <label for="role">角色 *</label>
-              <select id="role" v-model="currentUser.roleId" required>
-                <option value="">请选择角色</option>
-                <option v-for="role in availableRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="email">邮箱</label>
+                <input type="text" id="email" v-model="currentUser.email" placeholder="user@example.com" />
+              </div>
+              <div class="form-group">
+                <label for="position">岗位</label>
+                <input type="text" id="position" v-model="currentUser.position" />
+              </div>
             </div>
-            <div class="form-group">
-              <label for="plant">厂区</label>
-              <select id="plant" v-model="currentUser.plantId" @change="onPlantChange">
-                <option value="">请选择厂区</option>
-                <option v-for="plant in availablePlants" :key="plant.id" :value="plant.id">{{ plant.name }}</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="level">级别</label>
+                <input type="text" id="level" v-model="currentUser.level" />
+              </div>
+              <div class="form-group">
+                <label for="employeeType">员工类型</label>
+                <select id="employeeType" v-model="currentUser.employeeType">
+                  <option value="">请选择</option>
+                  <option value="Jabil">Jabil</option>
+                  <option value="3PL">3PL</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="department">部门</label>
-              <select id="department" v-model="currentUser.departmentId" :disabled="!currentUser.plantId">
-                <option value="">请选择部门</option>
-                <option v-for="department in filteredDepartments" :key="department.id" :value="department.id">{{ department.name }}</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="hireDate">入职日期</label>
+                <input type="date" id="hireDate" v-model="currentUser.hireDate" />
+              </div>
+              <div class="form-group">
+                <label for="leaveDate">离职日期</label>
+                <input type="date" id="leaveDate" v-model="currentUser.leaveDate" />
+              </div>
             </div>
-            <div class="form-group">
-              <label for="status">状态</label>
-              <select id="status" v-model="currentUser.status">
-                <option value="active">启用</option>
-                <option value="inactive">禁用</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="gender">性别</label>
-              <select id="gender" v-model="currentUser.gender">
-                <option value="">请选择</option>
-                <option value="男">男</option>
-                <option value="女">女</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="position">岗位</label>
-              <input type="text" id="position" v-model="currentUser.position" />
-            </div>
-            <div class="form-group">
-              <label for="level">级别</label>
-              <input type="text" id="level" v-model="currentUser.level" />
-            </div>
-            <div class="form-group">
-              <label for="phone">电话</label>
-              <input type="text" id="phone" v-model="currentUser.phone" />
-            </div>
-            <div class="form-group">
-              <label for="hireDate">入职日期</label>
-              <input type="date" id="hireDate" v-model="currentUser.hireDate" />
-            </div>
-            <div class="form-group">
-              <label for="leaveDate">离职日期</label>
-              <input type="date" id="leaveDate" v-model="currentUser.leaveDate" />
-            </div>
-            <div class="form-group">
-              <label for="icCardNumber">IC卡号</label>
-              <input type="text" id="icCardNumber" v-model="currentUser.icCardNumber" />
-            </div>
-            <div class="form-group">
-              <label for="employeeType">员工类型</label>
-              <select id="employeeType" v-model="currentUser.employeeType">
-                <option value="">请选择</option>
-                <option value="Jabil">Jabil</option>
-                <option value="3PL">3PL</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="icCardNumber">IC卡号</label>
+                <input type="text" id="icCardNumber" v-model="currentUser.icCardNumber" />
+              </div>
+              <div class="form-group" v-if="!isEditMode">
+                <label>初始密码</label>
+                <div class="static-value">123456</div>
+              </div>
+              <div class="form-group" v-else></div>
             </div>
           </form>
         </div>
@@ -314,10 +338,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import * as XLSX from 'xlsx';
 import dayjs from '@/plugins/dayjs';
-import request from '@/utils/request'; // 导入 axios 实例
+import request from '@/utils/request';
+import { clearRequestCache } from '@/utils/request'; // 导入 axios 实例
 
 
 
@@ -592,7 +617,8 @@ const openAddUserDialog = () => {
     departmentId: undefined,
     departmentName: '',
     status: 'active',
-    createdAt: ''
+    createdAt: '',
+    email: ''
   };
   isDialogOpen.value = true;
 };
@@ -612,9 +638,10 @@ const saveUser = async () => {
   }
 
   isSaving.value = true;
+  let savedUser = null;
   try {
     if (isEditMode.value) {
-      await request.put(`/users/${currentUser.value.id}`, {
+      const response = await request.put(`/users/${currentUser.value.id}`, {
         username: currentUser.value.username,
         realName: currentUser.value.realName,
         employeeId: currentUser.value.employeeId,
@@ -631,10 +658,12 @@ const saveUser = async () => {
         leaveDate: currentUser.value.leaveDate,
         icCardNumber: currentUser.value.icCardNumber,
         employeeType: currentUser.value.employeeType,
+        email: currentUser.value.email,
       });
+      savedUser = response;
       showNotification('更新用户成功', 'success');
     } else {
-      await request.post('/users', {
+      const response = await request.post('/users', {
         username: currentUser.value.username,
         realName: currentUser.value.realName,
         employeeId: currentUser.value.employeeId,
@@ -651,33 +680,43 @@ const saveUser = async () => {
         leaveDate: currentUser.value.leaveDate,
         icCardNumber: currentUser.value.icCardNumber,
         employeeType: currentUser.value.employeeType,
+        email: currentUser.value.email,
       });
+      savedUser = response;
       showNotification('创建用户成功', 'success');
     }
-    await loadUsers();
-    // 如果更新的是当前登录用户，刷新 localStorage 中的用户信息
-    const loggedInUserStr = localStorage.getItem('user');
-        if (loggedInUserStr) {
-          const loggedInUser = JSON.parse(loggedInUserStr);
-          // 如果更新的是当前登录用户，刷新 localStorage 中的用户信息
-          if (loggedInUser.id === currentUser.value.id) {
-            // 从后端重新获取最新用户信息，并更新 localStorage
-            try {
-              const updatedUserData = await request.get(`/users/${currentUser.value.id}`);
-              if (updatedUserData && updatedUserData.user) {
-                localStorage.setItem('user', JSON.stringify(updatedUserData.user));
-              } else {
-                console.warn('获取更新后的用户数据失败，localStorage 未刷新。');
-              }
-            } catch (fetchError) {
-              console.error('重新获取当前登录用户数据失败:', fetchError);
-            }
-          }
-        }
+
     closeDialog();
-  } catch (error) {
+    await nextTick();
+    clearRequestCache();
+    await loadUsers();
+
+    // 如果更新的是当前登录用户，刷新 localStorage 中的用户信息
+    if (savedUser) {
+      const loggedInUserStr = localStorage.getItem('user');
+      if (loggedInUserStr) {
+        const loggedInUser = JSON.parse(loggedInUserStr);
+        if (loggedInUser.id === currentUser.value.id || (savedUser && savedUser.id === loggedInUser.id)) {
+          const userToSave = savedUser || currentUser.value;
+          localStorage.setItem('user', JSON.stringify({
+            ...loggedInUser,
+            ...userToSave
+          }));
+        }
+      }
+    }
+  } catch (error: any) {
     console.error('保存用户失败:', error);
-    showNotification('保存用户失败，请检查后端服务', 'error');
+    console.error('错误详情:', JSON.stringify(error, null, 2));
+    // 显示详细错误信息
+    const errorDetails = error?.details || [];
+    if (errorDetails.length > 0) {
+      console.error('验证错误详情:', errorDetails);
+      const messages = errorDetails.map((d: any) => `${d.field || '未知字段'}: ${d.message}`).join('; ');
+      showNotification(`保存用户失败: ${messages}`, 'error');
+    } else {
+      showNotification(error?.message || '保存用户失败，请检查后端服务', 'error');
+    }
   } finally {
     isSaving.value = false;
   }
@@ -706,6 +745,7 @@ const deleteUser = async (userToDelete: User) => {
   try {
     await request.delete(`/users/${userToDelete.id}`);
     showNotification('删除用户成功', 'success');
+    clearRequestCache();
     await loadUsers();
     selectedUser.value = null;
   } catch (error) {
@@ -730,7 +770,8 @@ const closeDialog = () => {
     departmentId: undefined,
     departmentName: '',
     status: 'active',
-    createdAt: ''
+    createdAt: '',
+    email: ''
   };
 };
 
@@ -1125,12 +1166,14 @@ const confirmImport = async () => {
   isImporting.value = true;
   try {
     const result = await request.post('/users/batch', { users: previewData.value });
-    importResults.value = result; // Assuming request.post returns the data directly
-    
-    showNotification(`导入完成: 成功 ${result.success} 条，更新 ${result.updated} 条，失败 ${result.failed} 条`,
-      result.failed === 0 ? 'success' : 'info');
-    
-    if (result.success > 0 || result.updated > 0) {
+    const resultData = result?.data || result;
+    importResults.value = resultData;
+
+    showNotification(`导入完成: 成功 ${resultData.success || 0} 条，更新 ${resultData.updated || 0} 条，失败 ${resultData.failed || 0} 条`,
+      resultData.failed === 0 ? 'success' : 'info');
+
+    if (resultData.success > 0 || resultData.updated > 0) {
+      clearRequestCache();
       await loadUsers();
     }
   } catch (error) {
@@ -1534,10 +1577,7 @@ onMounted(() => {
   padding: 0;
   border-radius: 10px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-  width: 400px;
   max-width: 90%;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
 }
 
 .dialog-header {
@@ -1627,6 +1667,74 @@ onMounted(() => {
 
 .dialog-actions .btn {
   padding: 10px 24px;
+}
+
+/* 用户编辑对话框样式 */
+.user-dialog {
+  width: 560px;
+}
+
+.compact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.form-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.form-row .form-group label {
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.form-row .form-group input,
+.form-row .form-group select {
+  padding: 7px 10px;
+  font-size: 13px;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.form-row .form-group input::placeholder {
+  color: #9CA3AF;
+  font-size: 12px;
+}
+
+.static-value {
+  padding: 7px 10px;
+  font-size: 13px;
+  color: #6B7280;
+  background-color: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+}
+
+.dialog-body {
+  padding: 14px 16px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #E5E7EB;
+}
+
+.dialog-actions .btn {
+  padding: 8px 20px;
+  font-size: 13px;
 }
 
 /* 批量导入对话框样式 */

@@ -10,6 +10,7 @@ import { DA_MATERIAL_DOCUMENT_TABLE, USER_TABLE } from '../config/db_constants.j
 import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logDebug, logError } from '../utils/logger.js';
+import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
 
 // 单据状态枚举
 const DocumentStatus = {
@@ -591,7 +592,17 @@ export const receiveDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.RECEIVED, receivedBy || '接收员', id]);
 
-    logInfo('管控物料单据接收成功', { id, documentNo: existingDoc.rows[0].document_no, receivedBy });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '📥',
+      '【接收通知】管控物料已接收',
+      `您的单据 ${docData.document_no} 已被仓库接收。`,
+      'da_material',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
+    logInfo('管控物料单据接收成功', { id, documentNo: docData.document_no, receivedBy });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, receivedAt: result.rows[0].received_at }, '单据已接收');
 
   } catch (err) {
@@ -632,7 +643,17 @@ export const rejectDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.REJECTED, reason, id]);
 
-    logInfo('管控物料单据被拒绝', { id, documentNo: existingDoc.rows[0].document_no, reason });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '❌',
+      '【拒绝通知】管控物料单据被拒绝',
+      `您的单据 ${docData.document_no} 被拒绝，拒绝原因：${reason}`,
+      'da_material',
+      { documentId: id, documentNo: docData.document_no, reason }
+    );
+
+    logInfo('管控物料单据被拒绝', { id, documentNo: docData.document_no, reason });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, rejectReason: result.rows[0].reject_reason }, '单据已拒绝');
 
   } catch (err) {
@@ -694,6 +715,14 @@ export const returnDocument = async (req, res, next) => {
     `, [DocumentStatus.RETURNED, returnedBy || '接收员', reason, id]);
 
     const updatedDoc = result.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '↩️',
+      '【退回通知】管控物料单据被退回',
+      `您的单据 ${docData.document_no} 已被退回，退回原因：${reason}`,
+      'da_material',
+      { documentId: id, documentNo: docData.document_no, reason }
+    );
 
     logInfo('管控物料单据被退回', { id, documentNo: docData.document_no, reason, returnedBy, submitterEmail });
     success(res, {
@@ -787,7 +816,17 @@ export const signDocument = async (req, res, next) => {
       RETURNING *
     `, [DocumentStatus.SIGNED, signedBy || '签收员', id]);
 
-    logInfo('管控物料单据签收成功', { id, documentNo: existingDoc.rows[0].document_no, signedBy });
+    const docData = existingDoc.rows[0];
+
+    // 通知提交人
+    await notifyUser(pool, docData.submitter_name, '✍️',
+      '【签收通知】管控物料已签收',
+      `您的单据 ${docData.document_no} 已完成签收，请确认是否领取。`,
+      'da_material',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
+    logInfo('管控物料单据签收成功', { id, documentNo: docData.document_no, signedBy });
     success(res, { id: result.rows[0].id, status: result.rows[0].status, signedAt: result.rows[0].signed_at }, '单据已签收');
 
   } catch (err) {
@@ -819,6 +858,20 @@ export const lockBinDocument = async (req, res, next) => {
 
     const docData = existingDoc.rows[0];
 
+    // 获取提交人的邮箱
+    let submitterEmail = null;
+    try {
+      const userResult = await pool.query(
+        `SELECT email FROM ${USER_TABLE} WHERE real_name = $1 OR username = $1 LIMIT 1`,
+        [docData.submitter_name]
+      );
+      if (userResult.rows.length > 0) {
+        submitterEmail = userResult.rows[0].email;
+      }
+    } catch (err) {
+      logDebug('获取提交人邮箱失败', { submitterName: docData.submitter_name, error: err.message });
+    }
+
     const result = await pool.query(`
       UPDATE ${DA_MATERIAL_DOCUMENT_TABLE}
       SET status = $1, material_issued_at = NOW(), material_issued_by = $2, updated_at = NOW()
@@ -828,13 +881,22 @@ export const lockBinDocument = async (req, res, next) => {
 
     const updatedDoc = result.rows[0];
 
+    // 获取提交人的用户ID并创建通知
+    await notifyUser(pool, docData.submitter_name, '📦',
+      '【发料通知】管控物料已发料',
+      `您的单据 ${docData.document_no} 已完成发料，请尽快到仓库领取。`,
+      'da_material',
+      { documentId: id, documentNo: docData.document_no }
+    );
+
     logInfo('管控物料单据已锁BIN（已发料）', { id, documentNo: docData.document_no, lockedBy });
     success(res, {
       id: updatedDoc.id,
       status: updatedDoc.status,
       materialIssuedAt: updatedDoc.material_issued_at,
       materialIssuedBy: updatedDoc.material_issued_by,
-      documentNo: docData.document_no
+      documentNo: docData.document_no,
+      submitterEmail
     }, '已锁BIN成功，状态已更新为已发料');
 
   } catch (err) {

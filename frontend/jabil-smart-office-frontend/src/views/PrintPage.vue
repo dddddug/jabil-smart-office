@@ -21,10 +21,17 @@ const error = ref('');
 const onIframeLoad = () => {
   // iframe加载完成后触发打印
   try {
-    // 给一点延迟确保PDF完全渲染
+    // 给一点延迟确保PDF完全渲染，然后直接打印iframe内容
     setTimeout(() => {
-      window.print();
-    }, 500);
+      // 使用 iframe.contentWindow.print() 只打印 iframe 内的 PDF，不打印父页面
+      const iframe = document.querySelector('.pdf-iframe') as HTMLIFrameElement;
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.print();
+      } else {
+        // 降级方案
+        window.print();
+      }
+    }, 800);
   } catch (e) {
     console.error('打印失败:', e);
   }
@@ -56,6 +63,7 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  background: white;
 }
 
 .print-container {
@@ -63,6 +71,7 @@ html, body {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  background: white;
 }
 
 .loading, .error {
@@ -72,7 +81,7 @@ html, body {
   height: 100vh;
   font-size: 18px;
   color: #666;
-  background: #f5f5f5;
+  background: white;
 }
 
 .error {
@@ -86,30 +95,24 @@ html, body {
   background: white;
 }
 
-/* 隐藏浏览器默认的打印按钮和页眉页脚 */
+/* 打印时隐藏父页面容器，只打印 iframe 内的 PDF 内容 */
 @media print {
   html, body {
     width: 100%;
     height: auto;
     overflow: visible;
+    background: white;
   }
 
   .print-container {
-    height: auto;
-  }
-
-  .loading, .error {
-    display: none;
+    display: none !important;
   }
 
   .pdf-iframe {
     display: block;
+    width: 100%;
     height: 100vh;
+    border: none;
   }
-}
-
-@page {
-  margin: 0;
-  size: auto;
 }
 </style>

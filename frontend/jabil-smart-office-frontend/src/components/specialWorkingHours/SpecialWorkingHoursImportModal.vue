@@ -147,7 +147,8 @@ export default {
     async handleDownloadTemplate() {
       try {
         const res = await downloadImportTemplate()
-        downloadFile(res.data, 'SpecialWorkingHoursImportTemplate.xlsx')
+        // 请求拦截器已返回 data 部分，res 本身就是 blob
+        downloadFile(res, 'SpecialWorkingHoursImportTemplate.xlsx')
         this.$message.success('导入模板下载成功')
       } catch (error) {
         this.$message.error('导入模板下载失败：' + (error?.message || '未知错误'))

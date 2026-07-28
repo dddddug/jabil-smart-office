@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logError } from '../utils/logger.js';
+import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
 
 // 单据表名
 const DOCUMENT_TABLE = 'jso_pnc_transfer_document';
@@ -554,6 +555,24 @@ export const sendEmail = async (req, res, next) => {
       SET status = $1, email_sent_at = NOW(), updated_at = NOW()
       WHERE id = $2
     `, [DocumentStatus.SENT, id]);
+
+    // 通知创建人
+    await notifyUser(pool, doc.creator_name, '📧',
+      '【发送通知】PNC转仓单已发送',
+      `您的转仓单 ${doc.transfer_no} 已成功发送邮件。`,
+      'pnc_transfer',
+      { documentId: id, transferNo: doc.transfer_no }
+    );
+
+    // 如果有部门，通知部门成员
+    if (doc.department_id) {
+      await notifyDepartment(pool, doc.department_id, '📧',
+        '【部门通知】PNC转仓单已发送',
+        `部门成员 ${doc.creator_name} 创建的转仓单 ${doc.transfer_no} 已发送邮件。`,
+        'pnc_transfer',
+        { documentId: id, transferNo: doc.transfer_no, creatorName: doc.creator_name }
+      );
+    }
 
     success(res, {
       id: doc.id,

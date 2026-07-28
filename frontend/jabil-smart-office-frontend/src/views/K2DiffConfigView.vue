@@ -40,7 +40,7 @@
                     <td>
                       <input
                         type="text"
-                        v-model="configList[index].differenceType"
+                        v-model="item.differenceType"
                         placeholder="请输入差异类型名称"
                         class="config-input"
                       />
@@ -48,7 +48,7 @@
                     <td>
                       <input
                         type="text"
-                        v-model="configList[index].returnLocation"
+                        v-model="item.returnLocation"
                         placeholder="请输入对应退料地点"
                         class="config-input"
                       />

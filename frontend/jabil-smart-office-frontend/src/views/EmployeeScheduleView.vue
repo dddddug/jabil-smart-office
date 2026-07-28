@@ -808,7 +808,11 @@
             <div class="employee-avatar-large">{{ editingEmployee?.name.charAt(0) }}</div>
             <div class="employee-info-large">
               <span class="employee-name-large">{{ editingEmployee?.name }}</span>
-              <span class="employee-meta">SAP: {{ editingEmployee?.sap }} | 部门: {{ editingEmployee?.department }}</span>
+              <span class="employee-meta">
+                <span class="meta-item"><i class="el-icon-postcard"></i> 工号: {{ editingEmployee?.sap }}</span>
+                <span class="meta-separator">|</span>
+                <span class="meta-item"><i class="el-icon-office-building"></i> {{ editingEmployee?.department }}</span>
+              </span>
             </div>
           </div>
           <button class="dialog-close" @click="closeShiftEditDialog">×</button>
@@ -987,10 +991,11 @@ import 'dayjs/locale/zh-cn';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import SpecialWorkingHoursPage from './SpecialWorkingHoursPage.vue';
-import request from '@/utils/request';
+import request, { clearRequestCache } from '@/utils/request';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { fetchImageAsBase64 } from '@/utils/fileUtils';
 import { formatShanghaiDateTime } from '../utils/dateUtils';
+import eventBus from '@/utils/eventBus';
 
 
 interface ErrandFixItem {
@@ -1226,7 +1231,10 @@ const setOverworkReason = (employeeId: number, startDate: string, endDate: strin
     r.endDate === endDate
   );
   if (index !== -1) {
-    overworkReasons.value[index].reason = reason;
+    const item = overworkReasons.value[index];
+    if (item) {
+      item.reason = reason;
+    }
   } else {
     overworkReasons.value.push({ employeeId, startDate, endDate, reason });
   }
@@ -1265,7 +1273,10 @@ const setWeeklyLimitReason = (employeeId: number, weekDate: string, weekEndDate:
     r.weekEndDate === weekEndDate
   );
   if (index !== -1) {
-    weeklyLimitReasons.value[index].reason = reason;
+    const item = weeklyLimitReasons.value[index];
+    if (item) {
+      item.reason = reason;
+    }
   } else {
     weeklyLimitReasons.value.push({ employeeId, weekDate, weekEndDate, reason });
   }
@@ -1296,7 +1307,10 @@ const getSummaryReason = (department: string): string => {
 const setSummaryReason = (department: string, reason: string) => {
   const index = summaryReasons.value.findIndex(r => r.department === department);
   if (index !== -1) {
-    summaryReasons.value[index].reason = reason;
+    const item = summaryReasons.value[index];
+    if (item) {
+      item.reason = reason;
+    }
   } else {
     summaryReasons.value.push({ department, reason });
   }
@@ -2325,7 +2339,7 @@ const loadPlants = async () => {
 const loadDepartments = async () => {
   try {
     // 防御：确保 departments.value 存在
-    if (!departments.value || !('value' in departments.value)) {
+    if (!departments.value) {
       console.error('[ERROR] departments ref 未正确初始化');
       return;
     }
@@ -2581,28 +2595,46 @@ const calculateEmployeeLeaveHours = (employeeId: number, startDate: string, endD
   let total = 0;
   try {
     temporaryLeaves.value.forEach(item => {
-      if (item && item.employeeId === employeeId && item.startDate && item.endDate) {
-        // 跳过公差类型，不计算在请假工时内
-        if (item.leaveType === 'ERRAND' || item.type === '公差') {
-          return;
-        }
-        
-        // 检查日期范围
-        const itemStartDate = dayjs(item.startDate).startOf('day');
-        const itemEndDate = dayjs(item.endDate).endOf('day');
-        const rangeStart = dayjs(startDate);
-        const rangeEnd = dayjs(endDate);
-        
-        // 计算日期重叠
-        const overlapStart = itemStartDate.isAfter(rangeStart) ? itemStartDate : rangeStart;
-        const overlapEnd = itemEndDate.isBefore(rangeEnd) ? itemEndDate : rangeEnd;
-        
-        if (overlapStart.isBefore(overlapEnd) || overlapStart.isSame(overlapEnd)) {
-          total += overlapEnd.diff(overlapStart, 'hour', true);
+      if (!item || item.employeeId !== employeeId) {
+        return;
+      }
+
+      // 跳过公差类型，不计算在请假工时内
+      if (item.leaveType === 'ERRAND' || item.type === '公差') {
+        return;
+      }
+
+      // 获取数据库中的 hours 字段
+      const leaveHours = parseFloat(item.hours) || 0;
+      if (leaveHours <= 0) {
+        return;
+      }
+
+      // 解析请假日期范围
+      const itemStartDate = dayjs(item.startDate);
+      const itemEndDate = dayjs(item.endDate);
+      const rangeStart = dayjs(startDate);
+      const rangeEnd = dayjs(endDate);
+
+      // 计算日期重叠
+      const overlapStart = itemStartDate.isAfter(rangeStart) ? itemStartDate : rangeStart;
+      const overlapEnd = itemEndDate.isBefore(rangeEnd) ? itemEndDate : rangeEnd;
+
+      // 只有在有重叠时才计算
+      if (overlapStart.isBefore(overlapEnd) || overlapStart.isSame(overlapEnd)) {
+        // 检查是否同一天请假（部分请假）
+        if (itemStartDate.format('YYYY-MM-DD') === itemEndDate.format('YYYY-MM-DD')) {
+          // 同一天请假：使用数据库中的 hours 字段（精确值，如 1 小时）
+          total += leaveHours;
+        } else {
+          // 多天请假：按重叠天数计算，每天 8 小时
+          const overlapDays = overlapEnd.diff(overlapStart, 'day') + 1;
+          total += overlapDays * 8;
         }
       }
     });
   } catch (error) {
+    console.error('[ERROR] calculateEmployeeLeaveHours:', error);
   }
   return total;
 };
@@ -3045,12 +3077,20 @@ const totalScheduledCount = computed(() => {
 const getEmployeeHours = (emp: any) => {
   // 获取当前视图的日期范围
   let currentDays: any[] = [];
+  let startDate = '';
+  let endDate = '';
   if (scheduleViewMode.value === 'week') {
     currentDays = weekDays.value;
+    startDate = weekDays.value[0]?.date || '';
+    endDate = weekDays.value[weekDays.value.length - 1]?.date || '';
   } else if (scheduleViewMode.value === 'month') {
     currentDays = monthDays.value;
+    startDate = monthDays.value[0]?.date || '';
+    endDate = monthDays.value[monthDays.value.length - 1]?.date || '';
   } else {
     currentDays = customRangeDays.value;
+    startDate = customRangeDays.value[0]?.date || '';
+    endDate = customRangeDays.value[customRangeDays.value.length - 1]?.date || '';
   }
 
   let scheduleHours = 0;
@@ -3060,16 +3100,18 @@ const getEmployeeHours = (emp: any) => {
   currentDays.forEach(day => {
     const dateStr = day.date;
     const schedule = emp.schedule[dateStr];
-    
+
     // 计算排班工时
     if (schedule && schedule.shift) {
       scheduleHours += getWorkHours(schedule.shift);
     }
 
-    // 计算加班和请假工时
+    // 计算加班工时（按天计算，因为加班是按天记录的）
     overtimeHours += calculateEmployeeOvertimeHours(emp.id, dateStr, dateStr);
-    leaveHours += calculateEmployeeLeaveHours(emp.id, dateStr, dateStr);
   });
+
+  // 请假工时只调用一次，传入整个日期范围（避免多天请假被重复计算）
+  leaveHours = calculateEmployeeLeaveHours(emp.id, startDate, endDate);
 
   const totalHours = scheduleHours + overtimeHours - leaveHours;
 
@@ -3333,10 +3375,32 @@ const saveShift = async () => {
           specialStatus: editingData.value.specialStatusList[0],
           tempMatter: editingData.value.tempMatter,
         });
-        
+
+        // 自动同步：如果特殊状态是离职，自动更新员工花名册状态
+        if (editingData.value.specialStatusList[0] === '离职') {
+          try {
+            // 尝试使用 userId（如果有的话）
+            const targetId = editingEmployee.value.userId || editingEmployee.value.id;
+            await request.put(`/users/${targetId}`, {
+              status: 'inactive',
+              leaveDate: editingDate.value
+            });
+            // 清除请求缓存，确保花名册获取最新数据
+            clearRequestCache();
+            // 通知员工花名册页面刷新
+            eventBus.emit('employee-roster-changed');
+            ElMessage.success('排班保存成功！员工状态已自动更新为离职');
+          } catch (syncError) {
+            // 花名册更新失败不影响排班保存的提示
+            console.error('自动同步员工状态失败:', syncError);
+            ElMessage.success('排班保存成功！');
+          }
+        } else {
+          ElMessage.success('排班保存成功！');
+        }
+
         // 保存成功后，重新获取数据
         await fetchEmployees();
-        ElMessage.success('排班保存成功！');
       } catch (error) {
         ElMessage.error('排班保存失败，请稍后重试！');
       }
@@ -3843,11 +3907,15 @@ const handleScheduleFileUpload = async (e: Event) => {
     formData.append('file', file as Blob);
 
     try {
-      const result = await request.post<any>('/schedule/batch-upload', formData);
+      const result = await request.post<any>('/batch/schedule/batch-upload', formData);
+
+      if (!result || typeof result !== 'object') {
+        throw new Error(`服务器返回数据格式异常`);
+      }
 
       totalInserted += result.insertedCount || 0;
       totalUpdated += result.updatedCount || 0;
-      
+
       // 如果有部分错误也展示
       if (result.errors && result.errors.length > 0) {
         ElMessage.warning(`文件 "${file.name}" 导入存在部分错误，请查看控制台！`);
@@ -3856,7 +3924,7 @@ const handleScheduleFileUpload = async (e: Event) => {
       anyError = true;
       let errorMsg = `文件 "${file.name}" 导入失败`;
       if (error.response && error.response.data && error.response.data.details && error.response.data.details.length > 0) {
-        errorMsg += ':\n' + error.response.data.details.slice(0, 3).map((err: any) => 
+        errorMsg += ':\n' + error.response.data.details.slice(0, 3).map((err: any) =>
           typeof err === 'object' ? `第${err.row}行: ${err.error}` : String(err)
         ).join('\n');
       } else if (error.message) {
@@ -4367,12 +4435,12 @@ const checkOverworking = () => {
       const dateStr = currentDate.format('YYYY-MM-DD');
       const schedule = emp.schedule[dateStr];
       
-      // 检查是否是工作日（非休息、非调休、非请假）
-      const isWorkDay = schedule && schedule.shift && 
-        schedule.shift !== '休' && 
-        schedule.shift !== '休息' && 
-        schedule.shift !== '调休' &&
-        schedule.shift !== '请假';
+      // 检查是否是工作日（非休息、非调休、非请假、非离职、非年假、非旷工，或特殊状态为离职）
+      const isRestStatus = schedule && (
+        schedule.specialStatus === '离职' ||
+        ['调休', '请假', '年假', '旷工', '离职', '休', '休息'].includes(schedule.shift)
+      );
+      const isWorkDay = schedule && !isRestStatus && schedule.shift;
       
       // 如果是工作日
       if (isWorkDay) {
@@ -5958,9 +6026,10 @@ const exportLeaveToExcel = async () => {
 .schedule-table th,
 .schedule-table td {
   border: 1px solid #E5E7EB;
-  padding: 6px 8px;
+  padding: 4px 6px;
   text-align: center;
   vertical-align: middle;
+  font-size: 12px;
 }
 
 .schedule-table th {
@@ -6551,20 +6620,21 @@ const exportLeaveToExcel = async () => {
   color: #111827;
   padding: 0;
   border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-  width: 400px;
-  max-width: 90%;
-  max-height: 90vh;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 520px;
+  max-width: 95%;
+  max-height: 85vh;
   overflow-y: auto;
+  border: 1px solid #E5E7EB;
 }
 
 .dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 16px 20px;
   border-bottom: 1px solid #E5E7EB;
-  background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
 }
 
 .dialog-header h3 {
@@ -6580,16 +6650,17 @@ const exportLeaveToExcel = async () => {
 }
 
 .employee-avatar-large {
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #0066CC 0%, #0052A3 100%);
+  background: linear-gradient(135deg, #409EFF 0%, #337ecc 100%);
   color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 22px;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.35);
 }
 
 .employee-info-large {
@@ -6600,43 +6671,65 @@ const exportLeaveToExcel = async () => {
 .employee-name-large {
   font-weight: 700;
   color: #111827;
-  font-size: 18px;
+  font-size: 20px;
+  letter-spacing: 0.5px;
 }
 
 .employee-meta {
   font-size: 13px;
   color: #6B7280;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #6B7280;
+}
+
+.meta-item i {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.meta-separator {
+  color: #D1D5DB;
+  font-weight: 300;
 }
 
 .dialog-close {
   background: none;
   border: none;
   font-size: 24px;
-  color: #6B7280;
+  color: #9CA3AF;
   cursor: pointer;
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
 .dialog-close:hover {
-  background-color: #F3F4F6;
-  color: #111827;
+  background-color: #FEE2E2;
+  color: #DC2626;
 }
 
 .dialog-body {
-  padding: 16px;
+  padding: 12px 16px;
 }
 
 .edit-info {
   display: flex;
-  margin-bottom: 20px;
-  padding: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
   background-color: #F9FAFB;
   border-radius: 8px;
 }
@@ -6654,91 +6747,123 @@ const exportLeaveToExcel = async () => {
 }
 
 .form-group {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: #374151;
   font-weight: 600;
   font-size: 14px;
+  padding-left: 8px;
+  border-left: 3px solid #409EFF;
 }
 
 .shift-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .shift-option {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
-  padding: 10px 16px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 13px;
+  font-weight: 600;
   color: white;
-  opacity: 0.85;
+  opacity: 0.8;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .shift-option:hover {
   opacity: 1;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.shift-option input[type="radio"] {
+  accent-color: white;
+  width: 16px;
+  height: 16px;
 }
 
 .special-status-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .special-status-options label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
-  padding: 8px 14px;
-  border: 1px solid #D1D5DB;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 12px;
   font-weight: 500;
   margin-bottom: 0;
   background-color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .special-status-options label:hover {
-  border-color: #0066CC;
-  background-color: #EFF6FF;
   transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.special-status-options label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
 }
 
 /* 给特殊状态不同的颜色 */
 .special-status-options label:has(input[value="调休"]) {
   color: #8B5CF6;
-  border-color: #C4B5FD;
+  border: 1px solid #DDD6FE;
+  background-color: #FAF5FF;
+}
+.special-status-options label:has(input[value="调休"]):hover {
+  background-color: #EDE9FE;
 }
 .special-status-options label:has(input[value="年假"]) {
-  color: #F59E0B;
-  border-color: #FCD34D;
+  color: #0891B2;
+  border: 1px solid #A5F3FC;
+  background-color: #ECFEFF;
+}
+.special-status-options label:has(input[value="年假"]):hover {
+  background-color: #CFFAFE;
 }
 .special-status-options label:has(input[value="请假"]) {
-  color: #F59E0B;
-  border-color: #FCD34D;
+  color: #EA580C;
+  border: 1px solid #FED7AA;
+  background-color: #FFF7ED;
+}
+.special-status-options label:has(input[value="请假"]):hover {
+  background-color: #FFEDD5;
 }
 .special-status-options label:has(input[value="旷工"]) {
   color: #DC2626;
-  border-color: #FCA5A5;
+  border: 1px solid #FECACA;
+  background-color: #FEF2F2;
+}
+.special-status-options label:has(input[value="旷工"]):hover {
+  background-color: #FEE2E2;
 }
 .special-status-options label:has(input[value="离职"]) {
   color: #6B7280;
-  border-color: #D1D5DB;
+  border: 1px solid #E5E7EB;
+  background-color: #F9FAFB;
+}
+.special-status-options label:has(input[value="离职"]):hover {
+  background-color: #F3F4F6;
 }
 
 .temporary-matter {
@@ -6769,66 +6894,71 @@ const exportLeaveToExcel = async () => {
 .matter-row select:focus,
 .matter-row input:focus {
   outline: none;
-  border-color: #0066CC;
-  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+  border-color: #409EFF;
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.15);
 }
 
 .dialog-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px 24px;
+  padding: 12px 16px 16px;
   border-top: 1px solid #E5E7EB;
 }
 
 .action-group {
   display: flex;
-  gap: 12px;
+  gap: 10px;
 }
 
 .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
   border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #0066CC 0%, #0052A3 100%);
+  background: linear-gradient(135deg, #409EFF 0%, #337ecc 100%);
   color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+  box-shadow: 0 4px 14px rgba(64, 158, 255, 0.35);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #0052A3 0%, #003D7A 100%);
-  box-shadow: 0 6px 16px rgba(0, 102, 204, 0.4);
+  background: linear-gradient(135deg, #337ecc 0%, #2B6CB0 100%);
+  box-shadow: 0 6px 20px rgba(64, 158, 255, 0.45);
+  transform: translateY(-1px);
 }
 
 .btn-secondary {
   background-color: #FFFFFF;
   color: #374151;
-  border: 1px solid #D1D5DB;
+  border: 1px solid #E5E7EB;
 }
 
 .btn-secondary:hover {
-  background-color: #F3F4F6;
-  border-color: #9CA3AF;
+  background-color: #F9FAFB;
+  border-color: #D1D5DB;
+  transform: translateY(-1px);
 }
 
 .btn-danger {
-  background-color: #FEE2E2;
-  color: #DC2626;
-  border: 1px solid #FECACA;
+  background: linear-gradient(135deg, #F56565 0%, #E53E3E 100%);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(245, 101, 101, 0.35);
 }
 
 .btn-danger:hover {
-  background-color: #FECACA;
+  background: linear-gradient(135deg, #E53E3E 0%, #C53030 100%);
+  box-shadow: 0 6px 20px rgba(245, 101, 101, 0.45);
+  transform: translateY(-1px);
 }
 
 /* Placeholders */
@@ -7224,7 +7354,8 @@ const exportLeaveToExcel = async () => {
 
 .data-table th,
 .data-table td {
-  padding: 4px 8px;
+  padding: 3px 6px;
+  font-size: 12px;
   text-align: left;
   border-bottom: 1px solid #F1F5F9;
 }
@@ -7277,8 +7408,8 @@ const exportLeaveToExcel = async () => {
 /* 紧凑表格 */
 .compact-table th,
 .compact-table td {
-  padding: 3px 3px;
-  font-size: 11px;
+  padding: 2px 2px;
+  font-size: 10px;
 }
 
 .compact-table th {

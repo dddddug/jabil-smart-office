@@ -37,16 +37,31 @@ import LeaveTab from './components/LeaveTab.vue'
 const route = useRoute()
 const router = useRouter()
 
-const activeTab = ref(route.query.tab ? String(route.query.tab) : 'overtime')
+// 使用 sessionStorage 持久化当前 tab
+const getStoredTab = () => {
+  return sessionStorage.getItem('leaveActiveTab') || 'overtime'
+}
 
-onMounted(() => {
-  if (!route.query.tab) {
-    router.replace({ query: { tab: activeTab.value } })
-  }
+const activeTab = ref(getStoredTab())
+
+// 监听 tab 切换，保存到 sessionStorage
+watch(activeTab, (newTab) => {
+  sessionStorage.setItem('leaveActiveTab', newTab)
+  router.replace({ query: { tab: newTab } })
 })
 
-watch(activeTab, (newTab) => {
-  router.push({ query: { tab: newTab } })
+onMounted(() => {
+  // 初始化时从 URL 同步（如果有的话）
+  if (route.query.tab && typeof route.query.tab === 'string') {
+    const urlTab = route.query.tab
+    if (urlTab !== activeTab.value) {
+      activeTab.value = urlTab
+      sessionStorage.setItem('leaveActiveTab', urlTab)
+    }
+  } else if (!sessionStorage.getItem('leaveActiveTab')) {
+    // 首次访问且 URL 没有 tab 参数
+    router.replace({ query: { tab: activeTab.value } })
+  }
 })
 </script>
 

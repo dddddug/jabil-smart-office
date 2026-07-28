@@ -47,7 +47,7 @@ export function getWorkHours(shift: string): number {
 
   // 尝试从数字提取（如 "8小时", "10H"）
   const match = shift.match(/(\d+)\s*[Hh时]/);
-  if (match) {
+  if (match && match[1]) {
     return parseInt(match[1], 10);
   }
 

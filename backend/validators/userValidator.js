@@ -104,7 +104,7 @@ export const createUserValidation = [
 export const updateUserValidation = [
   ...idParamValidation,
   body('username')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .isLength({ min: 3, max: 50 })
@@ -112,12 +112,12 @@ export const updateUserValidation = [
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('用户名只能包含字母、数字和下划线'),
   body('password')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .isLength({ min: 6, max: 100 })
     .withMessage('密码长度必须在6-100个字符之间'),
   body('realName')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .notEmpty()
@@ -125,62 +125,80 @@ export const updateUserValidation = [
     .isLength({ max: 100 })
     .withMessage('真实姓名长度不能超过100个字符'),
   body('employeeId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .isLength({ max: 50 })
     .withMessage('工号长度不能超过50个字符'),
   body('oldEmployeeId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .isLength({ max: 50 })
     .withMessage('旧工号长度不能超过50个字符'),
   body('email')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isEmail()
     .withMessage('邮箱格式不正确')
     .normalizeEmail(),
   body('phone')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .matches(/^1[3-9]\d{9}$/)
     .withMessage('手机号格式不正确'),
   body('gender')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isIn(['男', '女', '其他'])
     .withMessage('性别必须是男、女或其他'),
   body('roleId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1 })
     .withMessage('角色ID必须是正整数'),
   body('plantId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1 })
     .withMessage('厂区ID必须是正整数'),
   body('departmentId')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isInt({ min: 1 })
     .withMessage('部门ID必须是正整数'),
   body('position')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isString()
     .trim()
     .isLength({ max: 100 })
     .withMessage('职位长度不能超过100个字符'),
   body('hireDate')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isISO8601()
     .withMessage('入职日期必须是有效的日期格式 (YYYY-MM-DD)'),
   body('leaveDate')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isISO8601()
     .withMessage('离职日期必须是有效的日期格式 (YYYY-MM-DD)'),
   body('status')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isIn(['active', 'inactive'])
     .withMessage('状态必须是 active 或 inactive'),
+  body('level')
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('级别长度不能超过50个字符'),
+  body('icCardNumber')
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('IC卡号长度不能超过50个字符'),
+  body('employeeType')
+    .optional({ nullable: true, checkFalsy: true })
+    .isString()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('员工类型长度不能超过50个字符'),
 ];
 
 /**

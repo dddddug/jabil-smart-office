@@ -1,7 +1,6 @@
 import express from 'express';
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
-import { buildWhereClause } from '../utils/sqlUtils.js';
 import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 
 const router = express.Router();
@@ -14,19 +13,24 @@ const USER_TABLE = 'jso_system_user_management';
 // 获取当前用户的通知列表
 router.get('/notifications', authenticateToken, async (req, res) => {
   try {
-    const { userId, read } = req.query;
-    const where = buildWhereClause([
-      { sql: ' AND n.user_id = ?', value: userId },
-      { sql: ' AND n.read = ?', value: read !== undefined ? read === 'true' : undefined }
-    ]);
+    const { read } = req.query;
+    const userId = req.user.id; // 从 JWT token 获取用户ID
+
+    let whereClause = ' WHERE n.user_id = $1';
+    const values = [userId];
+
+    if (read !== undefined) {
+      whereClause += ' AND n.read = $2';
+      values.push(read === 'true');
+    }
 
     const query = `
       SELECT n.*, u.real_name as user_name
       FROM ${NOTIFICATION_TABLE} n
       LEFT JOIN ${USER_TABLE} u ON n.user_id = u.id
-    ` + where.clause + ` ORDER BY n.created_at DESC`;
+    ` + whereClause + ` ORDER BY n.created_at DESC`;
 
-    const result = await pool.query(query, where.values);
+    const result = await pool.query(query, values);
     
     const notifications = result.rows.map(row => ({
       id: row.id,
@@ -53,16 +57,12 @@ router.get('/notifications', authenticateToken, async (req, res) => {
 // 获取未读通知数量
 router.get('/notifications/unread-count', authenticateToken, async (req, res) => {
   try {
-    const { userId } = req.query;
-    const where = buildWhereClause([
-      { sql: ' AND read = false', value: true },
-      { sql: ' AND user_id = ?', value: userId }
-    ]);
+    const userId = req.user.id; // 从 JWT token 获取用户ID
 
-    const query = `SELECT COUNT(*) as count FROM ${NOTIFICATION_TABLE}` + where.clause;
-    const result = await pool.query(query, where.values);
+    const query = `SELECT COUNT(*) as count FROM ${NOTIFICATION_TABLE} WHERE read = false AND user_id = $1`;
+    const result = await pool.query(query, [userId]);
     const count = parseInt(result.rows[0].count);
-    
+
     res.json({ count });
   } catch (error) {
     console.error('获取未读通知数量失败:', error);
@@ -74,16 +74,17 @@ router.get('/notifications/unread-count', authenticateToken, async (req, res) =>
 router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
+    const userId = req.user.id; // 从 JWT token 获取用户ID
+
     const result = await pool.query(
-      `UPDATE ${NOTIFICATION_TABLE} SET read = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
-      [id]
+      `UPDATE ${NOTIFICATION_TABLE} SET read = true, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 RETURNING *`,
+      [id, userId]
     );
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: '通知不存在' });
+      return res.status(404).json({ error: '通知不存在或无权操作' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('标记通知为已读失败:', error);
@@ -94,14 +95,10 @@ router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
 // 标记所有通知为已读
 router.put('/notifications/read-all', authenticateToken, async (req, res) => {
   try {
-    const { userId } = req.body;
-    const where = buildWhereClause([
-      { sql: ' AND read = false', value: true },
-      { sql: ' AND user_id = ?', value: userId }
-    ]);
+    const userId = req.user.id; // 从 JWT token 获取用户ID
 
-    const query = `UPDATE ${NOTIFICATION_TABLE} SET read = true, updated_at = CURRENT_TIMESTAMP` + where.clause;
-    await pool.query(query, where.values);
+    const query = `UPDATE ${NOTIFICATION_TABLE} SET read = true, updated_at = CURRENT_TIMESTAMP WHERE read = false AND user_id = $1`;
+    await pool.query(query, [userId]);
 
     res.json({ success: true });
   } catch (error) {
@@ -148,13 +145,14 @@ router.post('/notifications', authenticateToken, async (req, res) => {
 router.delete('/notifications/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const result = await pool.query(`DELETE FROM ${NOTIFICATION_TABLE} WHERE id = $1 RETURNING *`, [id]);
-    
+    const userId = req.user.id; // 从 JWT token 获取用户ID
+
+    const result = await pool.query(`DELETE FROM ${NOTIFICATION_TABLE} WHERE id = $1 AND user_id = $2 RETURNING *`, [id, userId]);
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: '通知不存在' });
+      return res.status(404).json({ error: '通知不存在或无权删除' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('删除通知失败:', error);

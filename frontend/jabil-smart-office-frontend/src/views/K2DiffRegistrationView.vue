@@ -533,7 +533,9 @@ const renderBarChart = async () => {
       axisPointer: { type: 'shadow' },
       formatter: (params: unknown) => {
         const p = params as { axisValue: string; value: number }[];
-        return `${p[0].axisValue}<br/>总数: ${p[0].value}`;
+        const first = p[0];
+        if (!first) return '';
+        return `${first.axisValue}<br/>总数: ${first.value}`;
       }
     },
     grid: {
@@ -663,6 +665,13 @@ interface ConfigItem {
   differenceType: string;
   returnLocation: string;
 }
+
+// API 返回的配置项类型
+interface ApiConfigItem {
+  configKey: string;
+  configValue: string;
+}
+
 const configList = ref<ConfigItem[]>([]);
 const differenceTypes = computed(() => configList.value);
 const returnLocations = computed(() => configList.value);
@@ -934,11 +943,11 @@ const loadConfig = async () => {
     const configs = (response as ApiResponse<ConfigItem>).data || response || [];
 
     configList.value = [];
-    configs.forEach((item) => {
+    (configs as ApiConfigItem[]).forEach((item) => {
       if (item.configKey === K2_DIFF_CONFIG_KEYS.DIFFERENCE_TYPES && item.configValue) {
         try {
           const parsed = JSON.parse(item.configValue);
-          configList.value = parsed.map((p) => ({
+          configList.value = parsed.map((p: any) => ({
             id: p.id || 0,
             differenceType: p.differenceType || p.name || '',
             returnLocation: p.returnLocation || ''

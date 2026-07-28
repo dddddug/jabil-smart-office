@@ -37,6 +37,7 @@
           <el-button type="warning" icon="el-icon-download" @click="handleExportExcel">导出 Excel</el-button>
         </div>
       </el-card>
+
     </div>
 
     <!-- 表格区域 -->
@@ -85,6 +86,7 @@ import {
   exportSpecialWorkingHours,
 } from '@/api/specialWorkingHours';
 import { downloadFile } from '@/utils/excelUtils';
+import { clearRequestCache } from '@/utils/request';
 import eventBus from '@/utils/eventBus';
 import dayjs from '@/plugins/dayjs';
 
@@ -164,7 +166,8 @@ const eventDurations = computed(() => {
 // Define functions directly
 const getList = async () => {
   const params = {
-    ...searchForm,
+    event: searchForm.event,
+    employeeName: searchForm.employeeName,
     startDate: props.startDate || '',
     endDate: props.endDate || '',
     pageNum: pagination.pageNum,
@@ -172,14 +175,15 @@ const getList = async () => {
   };
   try {
     const res = await getSpecialWorkingHoursList(params);
-    tableData.value = res.data?.list || [];
-    total.value = res.data?.total || 0;
+    // 请求拦截器已经返回了 data 部分，所以 res 已经是 { list, total } 结构
+    tableData.value = res.list || [];
+    total.value = res.total || 0;
   } catch (error: any) {
+    // 如果是静默取消的请求，不显示错误
+    if (error.isCancelled || error.silent) return;
     ElMessage.error('获取列表失败：' + error.message);
   }
 };
-
-
 
 const handleTableSelectionChange = (val: SpecialWorkingHoursItem[]) => {
   selectedIds.value = val.map(item => item.id!);
@@ -217,6 +221,7 @@ const handleDelete = async (id: number) => {
       const res = await deleteSpecialWorkingHours([id]);
       if (res.success) {
         ElMessage.success('删除成功');
+        clearRequestCache(); // 清除请求缓存以确保获取最新数据
         getList();
         // 通知工位安排页面刷新
         eventBus.emit('special-working-hours-changed');
@@ -247,6 +252,7 @@ const handleBatchDelete = async () => {
       const res = await deleteSpecialWorkingHours(selectedIds.value);
       if (res.success) {
         ElMessage.success(`成功删除 ${res.deletedCount} 条记录`);
+        clearRequestCache(); // 清除请求缓存以确保获取最新数据
         getList();
         selectedIds.value = [];
         // 通知工位安排页面刷新
@@ -266,7 +272,8 @@ const handleExportExcel = async () => {
       ...searchForm,
     };
     const res = await exportSpecialWorkingHours(params);
-    downloadFile(res.data, '特殊工时记录.xlsx');
+    // 请求拦截器已返回 data 部分，res 本身就是 blob
+    downloadFile(res, '特殊工时记录.xlsx');
     ElMessage.success('Excel 导出成功');
   } catch (error: any) {
     ElMessage.error('Excel 导出失败：' + error.message);
@@ -278,6 +285,7 @@ const handleSubmitForm = async (formData: SpecialWorkingHoursItem) => {
     const res = await addSpecialWorkingHours(formData);
     ElMessage.success('操作成功');
     formModalVisible.value = false;
+    clearRequestCache(); // 清除请求缓存以确保获取最新数据
     getList();
     // 通知工位安排页面刷新
     eventBus.emit('special-working-hours-changed');
@@ -288,23 +296,20 @@ const handleSubmitForm = async (formData: SpecialWorkingHoursItem) => {
 
 // 导入成功后的处理
 const handleImportSuccess = () => {
+  clearRequestCache(); // 清除请求缓存以确保获取最新数据
   getList();
   // 通知工位安排页面刷新
   eventBus.emit('special-working-hours-changed');
 };
 
-// Watchers
-watch(() => props.startDate, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
+// 监听 startDate/endDate props 变化，视图切换时自动刷新
+watch([() => props.startDate, () => props.endDate], () => {
+  // 只有当 props 有值时才刷新
+  if (props.startDate && props.endDate) {
+    pagination.pageNum = 1;
     getList();
   }
-});
-
-watch(() => props.endDate, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    getList();
-  }
-});
+}, { immediate: true });
 
 // Lifecycle hook
 onMounted(() => {

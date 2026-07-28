@@ -47,7 +47,7 @@
         </div>
 
         <div class="table-container">
-          <table class="data-table">
+          <table class="data-table compact">
             <thead>
               <tr>
                 <th>ID</th>
@@ -196,7 +196,7 @@ const filteredDepartments = ref<Department[]>([]);
 
 // 分页
 const currentPage = ref(1);
-const pageSize = ref(10);
+const pageSize = ref(20);
 const total = ref(0);
 const totalPages = computed(() => Math.ceil(total.value / pageSize.value));
 
@@ -485,7 +485,7 @@ onMounted(() => {
 
 .data-table th,
 .data-table td {
-  padding: 12px 16px;
+  padding: 8px 12px;
   text-align: left;
 }
 
@@ -493,14 +493,23 @@ onMounted(() => {
   background-color: #F9FAFB;
   font-weight: 600;
   color: #374151;
-  font-size: 13px;
+  font-size: 12px;
   border-bottom: 2px solid #E5E7EB;
 }
 
 .data-table td {
   color: #4B5563;
-  font-size: 14px;
+  font-size: 13px;
   border-bottom: 1px solid #F3F4F6;
+}
+
+/* 紧凑行高样式 */
+.data-table.compact tbody tr td {
+  padding: 6px 12px;
+}
+
+.data-table tbody tr {
+  height: 40px;
 }
 
 .data-table tbody tr {

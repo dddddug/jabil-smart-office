@@ -401,6 +401,8 @@ import * as XLSX from 'xlsx';
 import { ElMessageBox } from 'element-plus'; // Import ElMessageBox
 
 import request from '@/utils/request'; // 导入 axios 实例
+import { clearRequestCache } from '@/utils/request';
+import eventBus from '@/utils/eventBus';
 
 const API_BASE = '/api';
 
@@ -501,7 +503,7 @@ const getCurrentUser = () => {
 const filteredEmployees = computed(() => {
   const currentUser = getCurrentUser();
   const roleId = currentUser?.roleId || 0;
-  
+
   const filtered = employees.value.filter((emp: Employee) => {
     // 根据角色过滤
     let roleMatch = true;
@@ -510,16 +512,24 @@ const filteredEmployees = computed(() => {
     } else if (roleId === 3 || roleId === 4) { // 部门管理员或普通员工：只显示自己部门的
       roleMatch = Number(emp.departmentId) === Number(currentUser?.departmentId);
     }
-    
+
     const nameMatch = !searchQuery.value.name ||
       ((emp.name || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()) ||
       (emp.employeeId || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()));
     const plantMatch = !searchQuery.value.plantId || Number(emp.plantId) === Number(searchQuery.value.plantId);
     const deptMatch = !searchQuery.value.departmentId || Number(emp.departmentId) === Number(searchQuery.value.departmentId);
-    
+
     return roleMatch && nameMatch && plantMatch && deptMatch;
   });
-  return filtered;
+
+  // 按状态排序：离职员工排到最后，其余按姓名拼音排序
+  return filtered.sort((a, b) => {
+    const aInactive = a.status === 'inactive' || a.status === 'RESIGNED';
+    const bInactive = b.status === 'inactive' || b.status === 'RESIGNED';
+    if (aInactive && !bInactive) return 1;  // 离职排后面
+    if (!aInactive && bInactive) return -1; // 在职排前面
+    return (a.name || '').localeCompare(b.name || '', 'zh-CN');
+  });
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredEmployees.value.length / pageSize.value)));
@@ -663,6 +673,9 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info' = 
 const loadEmployees = async () => {
   isLoading.value = true;
   try {
+    // 清除缓存以确保获取最新数据
+    clearRequestCache();
+
     const res = await request.get(`/users`) as { items: any[] };
     // res is already unwrapped by interceptor - it's { items: any[] }
     const userList = res?.items || [];
@@ -1268,6 +1281,12 @@ onMounted(() => {
   loadEmployees();
   loadPlants();
   loadDepartments();
+
+  // 监听排班页面的员工状态变更事件
+  eventBus.on('employee-roster-changed', () => {
+    clearRequestCache();
+    loadEmployees();
+  });
 });
 </script>
 

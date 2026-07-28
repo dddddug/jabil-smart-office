@@ -180,11 +180,12 @@
 
                     <!-- 提交部门操作 -->
                     <template v-if="activeTab === 'submit'">
+                      <button v-if="doc.status === 'submitted'" class="action-btn withdraw" @click="handleWithdraw(doc)">撤回</button>
                       <button v-if="doc.status === 'submitted'" class="action-btn rush" @click="handleRush(doc)">催单</button>
                       <button v-if="doc.status === 'submitted'" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
-                      <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn edit" @click="openEditDialog(doc)">编辑</button>
+                      <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn edit" @click="openEditDialog(doc)">重新提交</button>
                       <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
-                      <button v-if="doc.status === 'distribution_ended' && isDocumentOwner(doc)" class="action-btn complete" @click="handleConfirmComplete(doc)">确认完成</button>
+                      <button v-if="(doc.status === 'signed' || doc.status === 'distribution_ended' || doc.status === 'completed') && isDocumentOwner(doc)" class="action-btn complete" @click="handleConfirmComplete(doc)">确认完成</button>
                     </template>
 
                     <!-- 接收打印部门操作 -->
@@ -547,6 +548,7 @@ import {
 } from '../api/k045';
 import { getK045Configs, K045_CONFIG_KEYS } from '../api/k045Config';
 import { getUserInfo } from '../api/user';
+import { clearRequestCache } from '../utils/request';
 
 // 配送地点配置详情（包含允许签收的部门）
 const deliveryLocationDetails = ref<Array<{ location: string; departments: string }>>([]);
@@ -569,19 +571,19 @@ const loadCurrentUserInfo = async () => {
 
 // 检查用户是否有签收权限（基于配送地点和部门）
 const canSignForDocument = (doc: K045Document): boolean => {
-  // 如果用户没有部门信息，不允许签收
-  if (!currentUserDepartmentName.value) {
-    return false;
-  }
-
   // 查找该配送地点的配置
   const locationConfig = deliveryLocationDetails.value.find(
     (loc: any) => loc.location === doc.deliveryLocation
   );
 
-  // 如果没有配置该配送地点的权限列表，不允许签收
+  // 如果该配送地点没有配置权限列表，允许所有人签收
   if (!locationConfig || !locationConfig.departments) {
-    return false;
+    return true;
+  }
+
+  // 如果用户没有部门信息，检查是否在允许列表中（允许列表为空时允许所有人）
+  if (!currentUserDepartmentName.value) {
+    return true;
   }
 
   // 解析允许签收的部门列表
@@ -589,6 +591,11 @@ const canSignForDocument = (doc: K045Document): boolean => {
     .split(',')
     .map((d: string) => d.trim())
     .filter((d: string) => d);
+
+  // 如果允许列表为空，允许所有人
+  if (allowedDepartments.length === 0) {
+    return true;
+  }
 
   // 检查当前用户部门是否在允许列表中
   return allowedDepartments.includes(currentUserDepartmentName.value);
@@ -924,7 +931,7 @@ const handleReSubmit = async () => {
     });
     ElMessage.success('单据已重新提交');
     closeEditDialog();
-    loadDocuments();
+    clearRequestCache();
     loadStats();
   } catch (error: any) {
     console.error('重新提交失败:', error);
@@ -1067,6 +1074,7 @@ const handleSubmit = async () => {
     saveDeliveryLocationToHistory(submitForm.deliveryLocation);
     ElMessage.success('单据提交成功');
     closeSubmitDialog();
+    clearRequestCache();
     loadDocuments();
     loadStats();
   } catch (error) {
@@ -1109,7 +1117,7 @@ const handleWithdraw = (doc: K045Document) => {
     try {
       await withdrawK045Document(doc.id!);
       ElMessage.success('单据已撤回');
-      loadDocuments();
+      clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('撤回失败:', error);
@@ -1132,7 +1140,7 @@ const handleCancel = (doc: K045Document) => {
     try {
       await cancelK045Document(doc.id!);
       ElMessage.success('单据已取消');
-      loadDocuments();
+      clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('取消失败:', error);
@@ -1155,7 +1163,7 @@ const handleRush = (doc: K045Document) => {
     try {
       await rushK045Document(doc.id!);
       ElMessage.success('催单通知已发送');
-      loadDocuments();
+      clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('催单失败:', error);
@@ -1217,6 +1225,7 @@ const handleReceive = (doc: K045Document) => {
       // 打印附件
       printAttachment(doc);
 
+      clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1310,6 +1319,7 @@ const confirmReturn = async () => {
 
       ElMessage.success('单据已退回');
       closeReturnDialog();
+      clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1340,6 +1350,7 @@ const handleSign = (doc: K045Document) => {
     try {
       await signK045Document(doc.id!, signedBy);
       ElMessage.success('单据已签收');
+      clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1352,7 +1363,7 @@ const handleSign = (doc: K045Document) => {
 // 分料结束（同时发送邮件通知）
 const handleEndDistribution = (doc: K045Document) => {
   ElMessageBox.confirm(
-    `确定单据 ${doc.documentNo} 分料结束吗？\n\n系统将自动发送邮件通知给提交人 ${doc.submitterName}。`,
+    `确定单据 ${doc.documentNo} 分料结束吗？\n\n系统将自动打开邮件客户端发送给 ${doc.submitterName}。`,
     '提示',
     {
       confirmButtonText: '确定',
@@ -1362,9 +1373,17 @@ const handleEndDistribution = (doc: K045Document) => {
   ).then(async () => {
     try {
       await endDistributionK045Document(doc.id!);
-      // 分料结束后自动发送邮件通知
-      await sendK045Notification(doc.id!);
-      ElMessage.success('分料已结束，邮件已发送');
+      // 分料结束后自动打开邮件客户端
+      const notifyResult = await sendK045Notification(doc.id!);
+      const notifyData = notifyResult?.data || notifyResult;
+      if (notifyData?.mailtoUrl) {
+        // 直接设置 location 打开邮件客户端，避免被浏览器阻止
+        window.location.href = notifyData.mailtoUrl;
+      } else if (!notifyData?.submitterEmail) {
+        ElMessage.warning(`未找到 ${doc.submitterName} 的邮箱地址，请手动发送邮件通知`);
+      }
+      ElMessage.success('分料已结束');
+      clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
@@ -1391,7 +1410,7 @@ const handleConfirmComplete = (doc: K045Document) => {
     try {
       await confirmCompleteK045Document(doc.id!, completedBy);
       ElMessage.success('单据已完成');
-      loadDocuments();
+      clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('确认完成失败:', error);

@@ -134,9 +134,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
+interface TableRowItem {
+  level_counts?: Record<string, number>;
+  [key: string]: unknown;
+}
+
 const props = defineProps({
   tableData: {
-    type: Array,
+    type: Array as () => TableRowItem[],
     default: () => [],
   },
   total: {
@@ -179,16 +184,21 @@ const periodColumnLabel = computed(() => {
 });
 
 // 提取所有级别列配置（按级别名称排序）
+interface LevelEntry {
+  key: string;
+  label: string;
+}
+
 const uniqueLevels = computed(() => {
-  const levelSet = new Map();
-  for (const item of props.tableData) {
+  const levelSet = new Map<string, LevelEntry>();
+  for (const item of props.tableData as TableRowItem[]) {
     if (item.level_counts) {
       for (const [key, value] of Object.entries(item.level_counts)) {
-        if (value > 0) {
+        if ((value as number) > 0) {
           if (!levelSet.has(key)) {
             // 将 "level_6_level" 转换为 "6 Level" 等
             const match = key.match(/level_(\d+)_level/);
-            const levelNum = match ? match[1] : key.replace(/level_(\d+)_.*/, '$1');
+            const levelNum = match && match[1] ? match[1] : key.replace(/level_(\d+)_.*/, '$1');
             levelSet.set(key, { key, label: `${levelNum} Level` });
           }
         }

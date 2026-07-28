@@ -8,11 +8,12 @@ dayjs.locale('zh-cn');
 
 export function useSchedulePeriod(
   initialPeriodStart: string,
-  initialCustomRangeEnd: string
+  initialCustomRangeEnd: string,
+  scope?: string
 ) {
-  const scheduleViewMode = useLocalStorageState<'week' | 'month' | 'range'>('employeeScheduleViewMode', 'week');
-  const currentPeriodStart = useLocalStorageState<string>('employeeSchedulePeriodStart', initialPeriodStart);
-  const customRangeEnd = useLocalStorageState<string>('employeeScheduleCustomRangeEnd', initialCustomRangeEnd);
+  const scheduleViewMode = useLocalStorageState<'week' | 'month' | 'range'>('employeeScheduleViewMode', 'week', scope);
+  const currentPeriodStart = useLocalStorageState<string>('employeeSchedulePeriodStart', initialPeriodStart, scope);
+  const customRangeEnd = useLocalStorageState<string>('employeeScheduleCustomRangeEnd', initialCustomRangeEnd, scope);
 
   const todayJs = dayjs();
   const currentMonthStart = computed(() => dayjs(currentPeriodStart.value).startOf('month'));

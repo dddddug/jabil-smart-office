@@ -4,14 +4,15 @@ import pool from '../config/db.js';
 const SCHEDULE_TABLE = 'jso_hr_employee_schedule';
 
 /**
- * 检查员工在指定日期范围内的“破7休1”情况。
+ * 检查员工在指定日期范围内的”破7休1”情况。
  * @param {number} employeeId - 员工ID.
  * @param {string} queryStart - 查询开始日期 (YYYY-MM-DD).
  * @param {string} queryEnd - 查询结束日期 (YYYY-MM-DD).
  * @param {object} pool - PostgreSQL 连接池.
+ * @param {string|null} leaveDate - 员工离职日期 (YYYY-MM-DD), 如果有的话.
  * @returns {Promise<Array<{start: string, end: string, consecutiveDays: number}>>} - 破7休1违规列表.
  */
-export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool) => {
+export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool, leaveDate = null) => {
   const violations = [];
 
   // 为了检查连续性，需要查询比实际查询范围更广的排班数据
@@ -45,9 +46,16 @@ export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool) =
     const dateStr = currentDate.format('YYYY-MM-DD');
     const schedule = currentEmployeeScheduleMap[dateStr];
 
+    // 如果员工已离职，该日期视为休息日
+    const isAfterLeave = leaveDate && currentDate.isSameOrAfter(dayjs(leaveDate), 'day');
+
     // Determine if it's a workday based on the schedule
-    // 如果没有排班，默认不是工作日
-    const isWorkDay = schedule && !schedule.specialStatus && !['调休', '请假', '年假', '旷工', '离职', '休', '休息'].includes(schedule.shift);
+    // 如果没有排班、离职日期到期、特殊状态（非工作日）或班次为非工作类型，则不是工作日
+    const isRestStatus = schedule && (
+      schedule.specialStatus === '离职' ||
+      ['调休', '请假', '年假', '旷工', '离职', '休', '休息'].includes(schedule.shift)
+    );
+    const isWorkDay = !isAfterLeave && !isRestStatus && schedule;
 
     if (isWorkDay) {
       consecutiveCount++;
@@ -77,7 +85,7 @@ export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool) =
       consecutiveDays: consecutiveCount
     });
   }
-  
+
   // Filter violations to only include those that fall within or overlap with the original query range
   const filteredViolations = violations.filter(violation => {
     const vioStart = dayjs(violation.start);

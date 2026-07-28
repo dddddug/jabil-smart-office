@@ -716,7 +716,8 @@ const visiblePages = computed(() => {
 
 const schedulePeriodComposable = useSchedulePeriod(
   savedPeriodStart || dayjs().startOf('week').format('YYYY-MM-DD'),
-  savedCustomRangeEnd || dayjs().endOf('week').format('YYYY-MM-DD')
+  savedCustomRangeEnd || dayjs().endOf('week').format('YYYY-MM-DD'),
+  'schedule-view'  // scope 隔离，不同页面使用不同的 localStorage key
 );
 
 const {

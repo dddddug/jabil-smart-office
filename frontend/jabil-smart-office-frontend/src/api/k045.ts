@@ -179,9 +179,19 @@ export const cancelK045Document = (id: number, cancelledBy?: string) => {
   return request.post(`/k045/documents/${id}/cancel`, { cancelledBy });
 };
 
+// 邮件通知响应
+export interface K045NotificationResponse {
+  id: number;
+  documentNo: string;
+  submitterName: string;
+  submitterEmail: string;
+  mailtoUrl: string;
+  status: string;
+}
+
 // 发送邮件通知
 export const sendK045Notification = (id: number) => {
-  return request.post(`/k045/documents/${id}/notify`);
+  return request.post<K045NotificationResponse>(`/k045/documents/${id}/notify`);
 };
 
 // 删除单据

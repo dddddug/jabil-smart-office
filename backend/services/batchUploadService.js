@@ -63,16 +63,16 @@ export const handleTemporaryOvertimeUpload = async (rows, applicantId) => {
     if (!row?.[0] || !row[0].toString().trim()) continue;
 
     try {
-      const employeeName = row[0]?.toString().trim();
+      const employeeNumber = row[0]?.toString().trim();
       const overtimeType = row[1]?.toString().trim() || '临时加班';
       const overtimeDate = convertExcelDate(row[2]);
       const startTime = convertExcelTime(row[3]);
       const endTime = convertExcelTime(row[4]);
       const reason = row[5]?.toString().trim() || '';
 
-      const employee = userMap.get(employeeName);
+      const employee = userMap.get(employeeNumber);
       if (!employee) {
-        errors.push(`第${i + 1}行: 员工 "${employeeName}" 不存在`);
+        errors.push(`第${i + 1}行: 员工工号 "${employeeNumber}" 不存在`);
         continue;
       }
       if (!overtimeDate) {
@@ -91,7 +91,7 @@ export const handleTemporaryOvertimeUpload = async (rows, applicantId) => {
       }
 
       validData.push({
-        employeeName,
+        employeeNumber,
         overtimeType,
         overtimeDate,
         startTime,
@@ -139,9 +139,10 @@ export const handleTemporaryLeaveUpload = async (rows, applicantId) => {
     try {
       const employeeName = row[0]?.toString().trim();
       let leaveType = row[1]?.toString().trim() || '临时请假';
-      const startDate = convertExcelDate(row[2]);
-      const endDate = convertExcelDate(row[3]);
-      const reason = row[4]?.toString().trim() || '';
+      const leaveDate = convertExcelDate(row[2]);
+      const startTime = row[3]?.toString().trim() || '09:00';
+      const endTime = row[4]?.toString().trim() || '18:00';
+      const reason = row[5]?.toString().trim() || '';
 
       if (leaveType === '临时请假') leaveType = 'LEAVE';
       if (leaveType === '公差') leaveType = 'ERRAND';
@@ -151,27 +152,36 @@ export const handleTemporaryLeaveUpload = async (rows, applicantId) => {
         errors.push(`第${i + 1}行: 员工 "${employeeName}" 不存在`);
         continue;
       }
-      if (!startDate || !endDate) {
-        errors.push(`第${i + 1}行: 开始日期和结束日期不能为空`);
+      if (!leaveDate) {
+        errors.push(`第${i + 1}行: 请假日期不能为空`);
         continue;
       }
 
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      if (end < start) {
-        errors.push(`第${i + 1}行: 结束日期必须晚于开始日期`);
+      // 解析时间计算时长（使用本地时间避免时区偏移）
+      const [startHour, startMin] = startTime.split(':').map(Number);
+      const [endHour, endMin] = endTime.split(':').map(Number);
+
+      // 解析日期字符串获取年月日
+      const dateParts = leaveDate.split('T')[0].split('-').map(Number);
+      const startDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], startHour, startMin, 0, 0);
+      const endDateTime = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], endHour, endMin, 0, 0);
+
+      if (endDateTime <= startDateTime) {
+        errors.push(`第${i + 1}行: 结束时间必须晚于开始时间`);
         continue;
       }
 
-      const diffMs = end - start;
+      const diffMs = endDateTime - startDateTime;
       const hours = Math.max(0.5, Math.round((diffMs / (1000 * 60 * 60)) * 2) / 2);
       const days = Math.max(1, Math.ceil(hours / 8));
 
       validData.push({
         employeeName,
         leaveType,
-        startDate,
-        endDate,
+        startDate: `${dateParts[0]}-${String(dateParts[1]).padStart(2, '0')}-${String(dateParts[2]).padStart(2, '0')}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00`,
+        endDate: `${dateParts[0]}-${String(dateParts[1]).padStart(2, '0')}-${String(dateParts[2]).padStart(2, '0')}T${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00`,
+        startTime,
+        endTime,
         reason,
         days,
         hours,
@@ -189,8 +199,8 @@ export const handleTemporaryLeaveUpload = async (rows, applicantId) => {
     tableName: TEMPORARY_LEAVE_TABLE,
     uniqueCheckSql: `SELECT id FROM ${TEMPORARY_LEAVE_TABLE} WHERE employee_id = $1 AND leave_type = $2 AND start_date = $3 AND end_date = $4 LIMIT 1`,
     uniqueCheckValues: (data) => [data.employeeId, data.leaveType, data.startDate, data.endDate],
-    insertSql: `INSERT INTO ${TEMPORARY_LEAVE_TABLE} (employee_id, plant_id, department_id, leave_type, start_date, end_date, hours, reason, status, applicant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
-    insertValuesFn: (data) => [data.employeeId, data.plantId, data.departmentId, data.leaveType, data.startDate, data.endDate, data.hours, data.reason, data.status, applicantId],
+    insertSql: `INSERT INTO ${TEMPORARY_LEAVE_TABLE} (employee_id, plant_id, department_id, leave_type, start_date, end_date, start_time, end_time, hours, reason, status, applicant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+    insertValuesFn: (data) => [data.employeeId, data.plantId, data.departmentId, data.leaveType, data.startDate, data.endDate, data.startTime, data.endTime, data.hours, data.reason, data.status, applicantId],
     validData
   });
 

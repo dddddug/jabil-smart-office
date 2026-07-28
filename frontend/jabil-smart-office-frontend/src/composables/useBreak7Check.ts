@@ -69,68 +69,28 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
     overworkingEmployees.value = [];
     normalEmployees.value = [];
 
-    const periodStartDate = dayjs(periodStart);
-    const periodEndDate = dayjs(periodEnd);
-
     employeesToCheck.forEach((employee) => {
-      let consecutiveDays = 0;
-      let lastWorkDate: dayjs.Dayjs | null = null;
-      let overworkStart = '';
-      let isOverworking = false;
+      // 优先使用后端返回的 break7Rest1Violations 数据
+      const violations = employee.break7Rest1Violations || [];
 
-      // Iterate through the schedule for the defined period
-      let currentDate = periodStartDate;
-      while (currentDate.isBefore(periodEndDate) || currentDate.isSame(periodEndDate)) {
-        const dateStr = currentDate.format('YYYY-MM-DD');
-        const scheduleItem = employee.schedule ? employee.schedule[dateStr] : null;
-        const isWorkingDay = scheduleItem && scheduleItem.shift && scheduleItem.shift !== '休';
-
-        if (isWorkingDay) {
-          consecutiveDays++;
-          if (!overworkStart) {
-            overworkStart = dateStr;
-          }
-          lastWorkDate = currentDate;
-        } else {
-          // Not a working day or '休'
-          if (consecutiveDays >= 7) {
-            const overworkPeriodEnd = lastWorkDate ? lastWorkDate.format('YYYY-MM-DD') : dateStr;
-            const isIgnored = ignoredOverworkItems.value.some(
-              (item: IgnoredOverworkItem) => item.employeeId === employee.id && item.periodStart === overworkStart
-            );
-            overworkingEmployees.value.push({
-              ...employee,
-              consecutiveDays,
-              overworkPeriodStart: overworkStart,
-              overworkPeriodEnd: overworkPeriodEnd,
-              isIgnored,
-            });
-            isOverworking = true;
-          }
-          consecutiveDays = 0;
-          overworkStart = '';
-          lastWorkDate = null;
-        }
-        currentDate = currentDate.add(1, 'day');
-      }
-
-      // Handle case where overwork extends to the end of the period
-      if (consecutiveDays >= 7) {
-        const overworkPeriodEnd = lastWorkDate ? lastWorkDate.format('YYYY-MM-DD') : periodEndDate.format('YYYY-MM-DD');
-        const isIgnored = ignoredOverworkItems.value.some(
-          (item: IgnoredOverworkItem) => item.employeeId === employee.id && item.periodStart === overworkStart
-        );
-        overworkingEmployees.value.push({
-          ...employee,
-          consecutiveDays,
-          overworkPeriodStart: overworkStart,
-          overworkPeriodEnd: overworkPeriodEnd,
-          isIgnored,
+      if (violations.length > 0) {
+        // 有违规记录
+        violations.forEach((violation: any) => {
+          const isIgnored = ignoredOverworkItems.value.some(
+            (item: IgnoredOverworkItem) =>
+              item.employeeId === employee.id &&
+              item.periodStart === violation.start
+          );
+          overworkingEmployees.value.push({
+            ...employee,
+            consecutiveDays: violation.consecutiveDays,
+            overworkPeriodStart: violation.start,
+            overworkPeriodEnd: violation.end,
+            isIgnored,
+          });
         });
-        isOverworking = true;
-      }
-
-      if (!isOverworking) {
+      } else {
+        // 无违规，记录为正常员工
         normalEmployees.value.push({
           ...employee,
           consecutiveDays: 0,

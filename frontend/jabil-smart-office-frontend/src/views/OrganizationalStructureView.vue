@@ -170,6 +170,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
+import { getToken } from '@/utils/request'
 
 interface Employee {
   id: number;
@@ -215,6 +216,15 @@ const employees = ref<Employee[]>([]);
 const plants = ref<Plant[]>([]);
 const departments = ref<Department[]>([]);
 const isLoading = ref(false);
+
+// Helper function to get the authentication token
+const getAuthHeaders = (): Record<string, string> => {
+  const token = getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
 
 // 默认展开所有厂区和部门
 const expandedPlants = ref<Set<number>>(new Set());
@@ -302,7 +312,9 @@ const getStatusText = (status: string) => {
 
 const loadPlants = async () => {
   try {
-    const response = await fetch(`/api/plants`);
+    const response = await fetch(`/api/plants`, {
+      headers: getAuthHeaders()
+    });
     if (response.ok) {
       const data = await response.json();
       plants.value = data.data.items || data.data.plants || [];
@@ -329,7 +341,9 @@ const loadPlants = async () => {
 
 const loadDepartments = async () => {
   try {
-    const response = await fetch(`/api/departments`);
+    const response = await fetch(`/api/departments`, {
+      headers: getAuthHeaders()
+    });
     if (response.ok) {
       const data = await response.json();
       departments.value = data.data.items || data.data.departments || [];
@@ -348,7 +362,9 @@ const loadDepartments = async () => {
 const loadEmployees = async () => {
   isLoading.value = true;
   try {
-    const response = await fetch(`/api/users`);
+    const response = await fetch(`/api/users`, {
+      headers: getAuthHeaders()
+    });
     if (response.ok) {
       const data = await response.json();
       const userList = data.data.items || [];

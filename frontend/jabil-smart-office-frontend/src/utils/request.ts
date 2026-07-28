@@ -40,6 +40,15 @@ const pendingRequests = new Map<string, AbortController>();
 const requestCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
 
+// ========== 请求防抖 ==========
+const debounceMap = new Map<string, {
+  timer: NodeJS.Timeout | null;
+  resolve: ((value?: any) => void) | null;
+  reject: ((reason?: any) => void) | null;
+  config: AxiosRequestConfig | null;
+}>();
+const DEBOUNCE_DELAY = 100; // 防抖延迟 100ms
+
 // 生成请求唯一标识（排除 _t 参数，因为它只是用于防止缓存）
 // 这个函数应该只用于生成缓存键，不考虑 _t 参数
 const generateRequestKey = (url: string, params?: any, data?: any): string => {
@@ -78,11 +87,85 @@ const updateLoadingState = (isLoading: boolean): void => {
   loadingCallbacks.forEach(cb => cb(globalLoadingCount > 0));
 };
 
+// 防抖执行函数
+const executeDebouncedRequest = (key: string): void => {
+  const entry = debounceMap.get(key);
+  if (!entry || !entry.timer || !entry.config) return;
+
+  clearTimeout(entry.timer);
+  entry.timer = null;
+
+  // 实际执行请求
+  service(entry.config)
+    .then(result => {
+      entry.resolve?.(result);
+    })
+    .catch(error => {
+      entry.reject?.(error);
+    })
+    .finally(() => {
+      debounceMap.delete(key);
+    });
+};
+
 // 创建 axios 实例
 const service: CustomAxiosInstance = axios.create({
   baseURL: '/api', // 后端 API 的 base_url，通过 Vite 代理转发
   timeout: 60000, // 请求超时时间
 });
+
+// 存储原始请求方法（用于防抖后执行）
+const originalRequest = service.request.bind(service);
+
+// 自定义请求方法，添加防抖支持
+service.request = function <T = any, R = T, D = any>(
+  config: AxiosRequestConfig<D>
+): Promise<R> {
+  return new Promise((resolve, reject) => {
+    // 对于 GET 请求使用防抖
+    if (config.method === 'get') {
+      const requestKey = generateRequestKey(config.url!, config.params, config.data);
+
+      // 如果已有相同的请求在等待中，复用它
+      if (debounceMap.has(requestKey)) {
+        const entry = debounceMap.get(requestKey)!;
+        // 取消之前的定时器
+        if (entry.timer) {
+          clearTimeout(entry.timer);
+        }
+        // 设置新的回调
+        entry.resolve = resolve;
+        entry.reject = reject;
+        entry.config = config;
+        // 重新设置防抖定时器
+        entry.timer = setTimeout(() => {
+          executeDebouncedRequest(requestKey);
+        }, DEBOUNCE_DELAY);
+        return;
+      }
+
+      // 创建新的防抖条目
+      debounceMap.set(requestKey, {
+        timer: null,
+        resolve,
+        reject,
+        config
+      });
+
+      // 立即设置防抖定时器
+      const entry = debounceMap.get(requestKey)!;
+      entry.timer = setTimeout(() => {
+        executeDebouncedRequest(requestKey);
+      }, DEBOUNCE_DELAY);
+      return;
+    }
+
+    // 非 GET 请求直接执行
+    originalRequest(config as any)
+      .then(resolve)
+      .catch(reject);
+  });
+} as any;
 
 // request interceptor
 service.interceptors.request.use(
@@ -98,8 +181,28 @@ service.interceptors.request.use(
       // 关键：先生成缓存键（此时还没有 _t 参数）
       const requestKey = generateRequestKey(config.url!, config.params, config.data);
 
-      // 取消之前的相同请求（去重）
-      if (pendingRequests.has(requestKey)) {
+      // 检查缓存 - 但需要确保缓存的数据是最新的
+      // 策略：缓存中存储的数据如果在 5 分钟内，且用户没有主动刷新，则使用缓存
+      // 否则重新请求
+      if (requestCache.has(requestKey)) {
+        const cached = requestCache.get(requestKey)!;
+        // 如果缓存数据在 TTL 内，使用缓存
+        if (Date.now() - cached.timestamp < CACHE_TTL) {
+          console.log('[Request Interceptor] Using cached response for:', requestKey);
+          // 返回一个已解决状态的 Promise，拦截请求
+          return Promise.reject({
+            __CACHED__: true,
+            __CACHED_DATA__: cached.data,
+            config
+          });
+        } else {
+          // 缓存过期，删除旧缓存
+          requestCache.delete(requestKey);
+        }
+      }
+
+      // 取消之前的相同请求（去重）- 仅当不在防抖中时
+      if (pendingRequests.has(requestKey) && !debounceMap.has(requestKey)) {
         pendingRequests.get(requestKey)?.abort();
         pendingRequests.delete(requestKey);
       }
@@ -139,7 +242,11 @@ service.interceptors.response.use(
       const { code, message, data } = response.data;
       console.log('[Response Interceptor] Response code:', code, 'Message:', message);
       if (code !== 200 && code !== 201) {
-        return Promise.reject({ code, message: message || 'Error' });
+        return Promise.reject({
+          code,
+          message: message || 'Error',
+          details: response.data.details || []
+        });
       } else {
         // 缓存 GET 请求的响应数据（存储完整响应结构）
         if (response.config.method === 'get') {
@@ -158,6 +265,12 @@ service.interceptors.response.use(
     }
   },
   error => {
+    // 处理缓存命中 - 直接返回缓存数据
+    if (error.__CACHED__ && error.__CACHED_DATA__) {
+      console.log('[Response Interceptor] Returning cached data for:', error.config?.url);
+      return error.__CACHED_DATA__.data;
+    }
+
     // 清理 pending 请求 - 使用相同的缓存键生成方式（但要用没有 _t 的原始 params）
     if (error.config) {
       const originalParams = { ...error.config.params };
@@ -166,9 +279,10 @@ service.interceptors.response.use(
       pendingRequests.delete(requestKey);
     }
 
-    // 如果是被主动取消的请求，静默处理
+    // 如果是被主动取消的请求，静默处理（不显示错误）
     if (axios.isCancel(error)) {
-      return Promise.reject({ code: 'CANCELLED', message: '请求已取消', isCancelled: true });
+      console.log('[Response Interceptor] Request cancelled, ignoring silently');
+      return Promise.reject({ code: 'CANCELLED', message: '请求已取消', isCancelled: true, silent: true });
     }
 
     // If it's an Axios error, extract more details if available
@@ -211,6 +325,17 @@ export const clearRequestCache = (): void => {
 export const cancelAllPendingRequests = (): void => {
   pendingRequests.forEach(controller => controller.abort());
   pendingRequests.clear();
+};
+
+// 导出取消防抖请求的方法
+export const cancelDebouncedRequests = (): void => {
+  debounceMap.forEach((entry, key) => {
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+    }
+    entry.reject?.({ message: '请求已取消', __CANCELLED__: true });
+  });
+  debounceMap.clear();
 };
 
 export default service;

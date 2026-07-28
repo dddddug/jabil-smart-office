@@ -38,7 +38,7 @@
           </div>
           <div class="form-group">
             <label>班次:</label>
-            <el-select v-model="filterShift" placeholder="全部班次" clearable @change="onFilterChange">
+            <el-select v-model="filterShift" placeholder="全部班次" multiple collapse-tags collapse-tags-tooltip @change="onFilterChange">
               <el-option v-for="shift in shiftOptions" :key="shift.value" :label="shift.label" :value="shift.value" />
             </el-select>
           </div>
@@ -62,9 +62,10 @@
         <div v-if="filteredEmployees.length > 0" class="employee-list-section">
           <div class="section-title">
             📋 排班员工列表 ({{ filteredEmployees.length }}人)
+            <span class="page-info" v-if="totalPages > 1">（第 {{ currentPage }}/{{ totalPages }} 页）</span>
           </div>
           <div class="employee-table">
-            <el-table ref="employeeTableRef" :data="filteredEmployees" border style="width: 100%" @selection-change="handleSelectionChange">
+            <el-table ref="employeeTableRef" :data="paginatedEmployees" border style="width: 100%" size="small" @selection-change="handleSelectionChange">
               <el-table-column type="selection" width="50" />
               <el-table-column prop="realName" label="姓名" width="100" />
               <el-table-column prop="sapEmployeeId" label="SAP工号" width="100" />
@@ -106,6 +107,17 @@
                 </template>
               </el-table-column>
             </el-table>
+            <!-- 分页 -->
+            <div class="table-pagination" v-if="filteredEmployees.length > 0">
+              <el-pagination
+                v-model:current-page="currentPage"
+                :page-size="pageSize"
+                :total="filteredEmployees.length"
+                layout="total, prev, pager, next"
+                small
+                background
+              />
+            </div>
           </div>
         </div>
 
@@ -328,6 +340,7 @@ interface ScheduledEmployee {
   departmentName?: string;
   employeeType?: string;
   durationHours?: number;
+  position?: string;
 }
 
 interface AssignedEmployee {
@@ -349,7 +362,7 @@ interface WorkstationWithEmployees {
 
 // 选择条件
 const selectedDate = ref<string>(dayjs().format('YYYY-MM-DD'));
-const filterShift = ref<string>('');
+const filterShift = ref<string[]>([]);
 const filterPlantId = ref(0);
 const filterDepartmentId = ref(0);
 
@@ -388,6 +401,81 @@ const batchReason = ref<string>('');
 const isTimeRequiredWorkstation = (workstationName: string): boolean => {
   const name = workstationName?.trim() || '';
   return name.includes('前台') || name.includes('特殊工时');
+};
+
+// 根据员工职位获取默认工位ID
+const getDefaultWorkstationIdByPosition = (position?: string): number | null => {
+  if (!position) return null;
+  const pos = position.trim();
+
+  // 职位与工位名称匹配映射
+  const positionWorkstationMap: Record<string, string[]> = {
+    'Cycle Count': ['Cycle Count'],
+    'Spare part': ['Spare part'],
+    'MRB': ['MRB'],
+    'MRO': ['MRO'],
+  };
+
+  const targetNames = positionWorkstationMap[pos];
+  if (!targetNames) return null;
+
+  // 查找匹配的工位
+  const matchedWorkstation = workstations.value.find(ws =>
+    targetNames.some(name => ws.workstationName.trim() === name)
+  );
+
+  return matchedWorkstation?.workstationId || null;
+};
+
+// 根据职位自动分配工位
+const autoAssignByPosition = async () => {
+  if (workstations.value.length === 0 || scheduledEmployees.value.length === 0) return;
+
+  const specialPositions = ['Cycle Count', 'Spare part', 'MRB', 'MRO'];
+
+  for (const employee of scheduledEmployees.value) {
+    // 检查员工是否有特殊职位
+    if (!specialPositions.includes(employee.position)) continue;
+
+    // 检查是否已分配
+    const alreadyAssigned = workstations.value.some(ws =>
+      ws.employees.some(e => e.employeeId === employee.employeeId)
+    );
+    if (alreadyAssigned) continue;
+
+    // 获取对应的工位ID
+    const defaultWsId = getDefaultWorkstationIdByPosition(employee.position);
+    if (!defaultWsId) continue;
+
+    // 查找工位
+    const ws = workstations.value.find(w => w.workstationId === defaultWsId);
+    if (!ws) continue;
+
+    try {
+      // 调用API分配
+      await request.post('/workstations/arrangements', {
+        workstationId: defaultWsId,
+        arrangementDate: selectedDate.value,
+        shiftName: '',
+        employeeIds: [employee.employeeId],
+      });
+
+      // 更新本地数据
+      ws.employees.push({
+        arrangementId: 0,
+        employeeId: employee.employeeId,
+        employeeName: employee.realName,
+        sapEmployeeId: employee.sapEmployeeId,
+        startTime: null,
+        endTime: null,
+        reason: null,
+      });
+
+      console.log('自动分配: ' + employee.realName + '(' + employee.position + ') -> ' + ws.workstationName);
+    } catch (err) {
+      console.error('自动分配失败:', employee.realName, err);
+    }
+  }
 };
 
 // 根据选中的员工ID获取员工对象
@@ -452,8 +540,24 @@ const calculateNoProductionHours = (employeeId: number): number => {
 
 // 根据班次筛选员工
 const filteredEmployees = computed(() => {
-  if (!filterShift.value) return scheduledEmployees.value;
-  return scheduledEmployees.value.filter(e => e.shift === filterShift.value);
+  if (!filterShift.value || filterShift.value.length === 0) return scheduledEmployees.value;
+  return scheduledEmployees.value.filter(e => filterShift.value.includes(e.shift));
+});
+
+// 分页相关
+const currentPage = ref(1);
+const pageSize = ref(20);
+
+// 分页后的员工列表
+const paginatedEmployees = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
+  return filteredEmployees.value.slice(start, end);
+});
+
+// 总页数
+const totalPages = computed(() => {
+  return Math.ceil(filteredEmployees.value.length / pageSize.value);
 });
 
 // 获取厂区列表
@@ -511,9 +615,11 @@ const fetchScheduledEmployees = async () => {
         departmentName: s.department_name || '',
         employeeType: s.employee_type,
         durationHours: s.duration_hours || 0,
+        position: s.position || '',
       }));
 
-    console.log('排班员工列表:', scheduledEmployees.value);
+    console.log('排班员工列表: 共' + scheduledEmployees.value.length + '人');
+    console.log('员工职位示例:', scheduledEmployees.value.slice(0, 5).map(e => e.realName + ':' + e.position));
   } catch (error) {
     console.error('获取排班数据失败:', error);
     scheduledEmployees.value = [];
@@ -540,6 +646,8 @@ const fetchWorkstationsWithArrangements = async () => {
       wsData = (res as any).data;
     }
     workstations.value = Array.isArray(wsData) ? wsData : [];
+    console.log('工位数据已加载: 共' + workstations.value.length + '个');
+    console.log('工位名称:', workstations.value.map(w => w.workstationId + ':' + w.workstationName));
   } catch (error) {
     ElMessage.error('获取工位安排失败');
   } finally {
@@ -576,7 +684,21 @@ const getDepartmentName = (departmentId?: number) => {
 const openAssignDialog = (employee: ScheduledEmployee) => {
   currentEmployee.value = employee;
   // 回显已分配的工位
-  selectedWorkstationIds.value = getAssignedWorkstations(employee.employeeId).map(ws => ws.workstationId);
+  const assignedWsIds = getAssignedWorkstations(employee.employeeId).map(ws => ws.workstationId);
+
+  console.log('打开分配弹窗: 员工ID=' + employee.employeeId + ', 姓名=' + employee.realName + ', 职位=' + employee.position + ', 已分配工位数=' + assignedWsIds.length);
+  console.log('工位列表:', workstations.value.map(w => w.workstationId + ':' + w.workstationName));
+
+  // 如果没有已分配的工位，根据职位自动选中默认工位
+  if (assignedWsIds.length === 0) {
+    const defaultWsId = getDefaultWorkstationIdByPosition(employee.position);
+      console.log('根据职位获取默认工位: 职位=' + employee.position + ', 找到工位ID=' + defaultWsId);
+    if (defaultWsId) {
+      assignedWsIds.push(defaultWsId);
+    }
+  }
+
+  selectedWorkstationIds.value = assignedWsIds;
   // 清空时间选择器
   singleStartTime.value = '';
   singleEndTime.value = '';
@@ -870,22 +992,28 @@ const handleSelectionChange = (rows: ScheduledEmployee[]) => {
   tableSelectedEmployees.value = rows;
 };
 
-// 日期变化
-const onDateChange = () => {
-  fetchScheduledEmployees();
-  fetchWorkstationsWithArrangements();
-};
-
 // 筛选变化
 const onFilterChange = () => {
+  currentPage.value = 1; // 重置页码
   fetchWorkstationsWithArrangements();
 };
 
-onMounted(() => {
-  fetchPlants();
-  fetchDepartments();
+// 日期变化
+const onDateChange = () => {
+  currentPage.value = 1; // 重置页码
   fetchScheduledEmployees();
   fetchWorkstationsWithArrangements();
+};
+
+onMounted(async () => {
+  await Promise.all([
+    fetchPlants(),
+    fetchDepartments(),
+    fetchScheduledEmployees(),
+    fetchWorkstationsWithArrangements(),
+  ]);
+  // 自动为特殊职位员工分配工位
+  await autoAssignByPosition();
 
   // 监听特殊工时变化，刷新数据
   eventBus.on('special-working-hours-changed', () => {
@@ -1037,11 +1165,31 @@ onMounted(() => {
   font-weight: 600;
   color: #374151;
   margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-info {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6B7280;
 }
 
 .employee-table {
   border-radius: 8px;
   overflow: hidden;
+}
+
+.table-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding: 8px 0;
+}
+
+.table-pagination :deep(.el-pagination) {
+  font-weight: 400;
 }
 
 .assigned-workstations {

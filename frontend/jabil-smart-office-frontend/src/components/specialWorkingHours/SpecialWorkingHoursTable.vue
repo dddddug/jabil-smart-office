@@ -23,7 +23,7 @@
       @size-change="handleSizeChange"
       @current-change="handleCurrentChange"
       :current-page="pagination.pageNum"
-      :page-sizes="[10, 20, 50, 100]"
+      :page-sizes="[20, 50, 100]"
       :page-size="pagination.pageSize"
       layout="total, sizes, prev, pager, next, jumper"
       :total="total"
@@ -49,7 +49,7 @@ export default {
     },
     pagination: {
       type: Object,
-      default: () => ({ pageNum: 1, pageSize: 10 })
+      default: () => ({ pageNum: 1, pageSize: 20 })
     },
     startDate: {
       type: String,

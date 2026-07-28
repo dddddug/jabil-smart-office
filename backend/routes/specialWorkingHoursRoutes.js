@@ -290,9 +290,11 @@ router.post('/import', authenticateToken, memoryUpload.single('file'), async (re
     res.json({
       code: 200,
       message: `成功导入 ${result.insertedCount} 条特殊工时记录`,
-      insertedCount: result.insertedCount,
-      errors: result.errors,
-      ids: result.ids
+      data: {
+        insertedCount: result.insertedCount,
+        errors: result.errors,
+        ids: result.ids
+      }
     });
   } catch (error) {
     console.error('批量导入特殊工时失败:', error);
