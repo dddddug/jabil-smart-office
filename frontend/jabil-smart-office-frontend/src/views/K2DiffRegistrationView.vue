@@ -729,7 +729,7 @@ const focusNext = (field: string) => {
       focusMap[next]?.focus();
       focusMap[next]?.select();
     }
-  }, 200);
+  }, 300); // 增加延迟到300ms，确保扫码枪字符输入完成
 };
 
 // 选择问题描述后自动带出退料地点
@@ -791,7 +791,11 @@ const submitAddRow = async () => {
     ElMessage.success('登记成功');
     showAddRow.value = false;
     resetForm();
+    // 清除请求缓存并强制刷新列表
+    clearRequestCache();
     await loadRegistrations();
+    // 更新统计数据
+    loadStats();
   } catch (error) {
     console.error('登记失败:', error);
     ElMessage.error((error as Error)?.message || '登记失败');
@@ -829,7 +833,13 @@ const submitAndContinue = async () => {
     formData.grn = '';
     formData.qty = 0;
     formData.location = '';
+    // 清除请求缓存并强制刷新列表
+    clearRequestCache();
     await loadRegistrations();
+    // 重置到第一页以显示最新记录
+    pagination.page = 1;
+    // 更新统计数据
+    loadStats();
     // 聚焦到位置输入框
     locationInput.value?.focus();
   } catch (error) {
