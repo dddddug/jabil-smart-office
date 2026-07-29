@@ -6056,7 +6056,8 @@ const exportLeaveToExcel = async () => {
 
 .table-container {
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: calc(100vh - 320px);
   position: relative;
 }
 
@@ -7362,7 +7363,9 @@ const exportLeaveToExcel = async () => {
 .table-container {
   background: #FFFFFF;
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 320px);
   border: 1px solid #E2E8F0;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
   margin-bottom: 12px;
