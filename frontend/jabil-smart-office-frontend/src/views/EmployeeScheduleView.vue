@@ -5710,6 +5710,9 @@ const exportLeaveToExcel = async () => {
   background: #FFFFFF;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
 .view-mode-selector button,
@@ -6081,7 +6084,7 @@ const exportLeaveToExcel = async () => {
   color: #374151;
   font-size: 12px;
   position: sticky;
-  top: 100px;
+  top: 130px;
   z-index: 50;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
@@ -6094,8 +6097,9 @@ const exportLeaveToExcel = async () => {
   background-color: #FFFFFF;
 }
 
+/* 固定行和固定列交叉的单元格 - 需要最高层级 */
 .schedule-table th.sticky-col {
-  z-index: 30;
+  z-index: 60;
   background-color: #F9FAFB;
 }
 
@@ -6527,6 +6531,9 @@ const exportLeaveToExcel = async () => {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   margin-bottom: 24px;
+  position: sticky;
+  top: 85px;
+  z-index: 90;
 }
 
 .tab-item {
