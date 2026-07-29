@@ -95,7 +95,24 @@
       "Bash(curl -s http://localhost:3002/api/users/health)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4173/)",
       "Bash(ipconfig)",
-      "Bash(npm version *)"
+      "Bash(npm version *)",
+      "Bash(docker compose *)",
+      "Bash(docker-compose version *)",
+      "Bash(git commit -m 'fix: 修复排班总览自动刷新和转仓打印部门列表问题 *)",
+      "Read(//d//**)",
+      "Read(//c//**)",
+      "Bash(net use *)",
+      "Bash(ls -la /mnt/)",
+      "Bash(ls -la //cnhuawh710/Share* 2>/dev/null | head -20 || ls -la //HUAFILE01/WH 2>/dev/null | head -20)",
+      "Read(///cnhuawh710/Share\\\\*//**)",
+      "Read(///HUAFILE01/WH//**)",
+      "Bash(powershell.exe -Command \"Get-PSDrive -PSProvider FileSystem | Select-Object Name, Root, Used, Free | Format-Table -AutoSize\")",
+      "Bash(chmod +x c:/Users/1167023/Desktop/Jabil/.git/hooks/post-commit c:/Users/1167023/Desktop/Jabil/.git/hooks/pre-push)",
+      "Bash(powershell.exe -Command \"Get-Process -Id 56604 | Select-Object ProcessName, Path, CommandLine | Format-List\")",
+      "Bash(powershell.exe -Command \"Get-CimInstance Win32_Process -Filter \\\\\"ProcessId=56604\\\\\" | Select-Object CommandLine\")",
+      "Bash(powershell.exe -Command \"Get-Process nginx -ErrorAction SilentlyContinue | Select-Object Id, Path\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1/ --max-time 2)",
+      "Bash(curl -s http://127.0.0.1/)"
     ]
   }
 }

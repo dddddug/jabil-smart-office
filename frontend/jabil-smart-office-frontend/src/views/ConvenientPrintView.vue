@@ -999,11 +999,12 @@ const loadDepartments = async () => {
     const response = await getDepartmentList({});
     console.log('[loadDepartments] 响应:', response);
     // 响应拦截器已自动解包 data，直接使用 response.departments
-    if (response && Array.isArray(response.departments)) {
-      departmentList.value = response.departments;
+    const data = response as { departments?: Department[] };
+    if (data && Array.isArray(data.departments)) {
+      departmentList.value = data.departments;
     } else if (Array.isArray(response)) {
       // 兼容直接返回数组的情况
-      departmentList.value = response;
+      departmentList.value = response as Department[];
     }
     console.log('[loadDepartments] 部门列表:', departmentList.value);
   } catch (error) {
