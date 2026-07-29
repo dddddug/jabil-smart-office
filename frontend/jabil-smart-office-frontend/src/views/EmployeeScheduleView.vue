@@ -3378,6 +3378,9 @@ const saveShift = async () => {
           try {
             await request.post('/temporary-overtime', overtimeData);
             ElMessage.success('临时加班保存成功！');
+            // 刷新临时加班数据
+            const dateRange = getCurrentDateRange();
+            await fetchTemporaryData(dateRange.start, dateRange.end);
           } catch (error) {
             ElMessage.error('临时加班记录保存失败，请稍后重试！');
             return;
@@ -3402,6 +3405,9 @@ const saveShift = async () => {
           try {
             await request.post('/temporary-leave', leaveData);
             ElMessage.success('临时请假/公差保存成功！');
+            // 刷新临时请假数据
+            const dateRange = getCurrentDateRange();
+            await fetchTemporaryData(dateRange.start, dateRange.end);
           } catch (error) {
             ElMessage.error('临时请假/公差记录保存失败，请稍后重试！');
             return;
