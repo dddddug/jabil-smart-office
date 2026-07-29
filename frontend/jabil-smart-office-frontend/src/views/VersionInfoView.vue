@@ -54,7 +54,7 @@
         </div>
         <div class="env-item">
           <span class="env-label">Node.js</span>
-          <span class="env-value">{{ versionInfo.nodeVersion || process.env.NODE_VERSION || '未知' }}</span>
+          <span class="env-value">{{ nodeVersion }}</span>
         </div>
         <div class="env-item">
           <span class="env-label">浏览器</span>
@@ -163,6 +163,7 @@ interface VersionCommit {
   date: string;
   message: string;
   commits: CommitInfo[];
+  hash?: string;
 }
 
 interface VersionInfo {
@@ -171,6 +172,7 @@ interface VersionInfo {
   releaseDate?: string;
   buildTime?: string;
   description?: string;
+  nodeVersion?: string;
   versions?: Array<{
     version: string;
     date: string;
@@ -182,6 +184,7 @@ const versionInfo = ref<VersionInfo>({
   backendVersion: '未知',
   releaseDate: '-',
   buildTime: '-',
+  nodeVersion: '未知',
 });
 
 const commitHistory = ref<CommitInfo[]>([]);
@@ -199,6 +202,10 @@ const userAgent = computed(() => {
   if (ua.includes('Safari')) return 'Safari';
   if (ua.includes('Edge')) return 'Edge';
   return 'Unknown';
+});
+
+const nodeVersion = computed(() => {
+  return versionInfo.value.nodeVersion || '未知';
 });
 
 const apiBaseUrl = computed(() => {
@@ -276,7 +283,7 @@ const parseCommitMessage = (message: string): { type: string; message: string; v
     return {
       type: 'feat',
       version: versionMatch[1],
-      message: versionMatch[2] || message,
+      message: versionMatch[2] ?? message,
     };
   }
 
@@ -285,7 +292,7 @@ const parseCommitMessage = (message: string): { type: string; message: string; v
   if (conventionalMatch) {
     return {
       type: conventionalMatch[1],
-      message: conventionalMatch[3] || message,
+      message: conventionalMatch[3] ?? message,
     };
   }
 
