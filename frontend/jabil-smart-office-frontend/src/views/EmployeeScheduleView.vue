@@ -6098,6 +6098,7 @@ const exportLeaveToExcel = async () => {
 .schedule-table th.sticky-col {
   z-index: 60;
   background-color: #F9FAFB;
+  top: 0;
 }
 
 .schedule-table th.today {
