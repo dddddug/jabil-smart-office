@@ -156,6 +156,7 @@ interface CommitInfo {
   time: string;
   date?: string;
   version?: string;
+  refs?: string;
 }
 
 interface VersionCommit {
@@ -177,10 +178,11 @@ interface VersionInfo {
     version: string;
     date: string;
   }>;
+  gitHistory?: CommitInfo[];
 }
 
 const versionInfo = ref<VersionInfo>({
-  currentVersion: '1.1.3',
+  currentVersion: __APP_VERSION__ || '1.0.0',
   backendVersion: '未知',
   releaseDate: '-',
   buildTime: '-',
@@ -276,15 +278,22 @@ const getCommitTypeLabel = (type: string): string => {
   return labelMap[type] || type;
 };
 
-const parseCommitMessage = (message: string): { type: string; message: string; version?: string } => {
-  // 匹配版本标签
-  const versionMatch = message.match(/^v?(\d+\.\d+\.\d+):\s*(.*)/);
-  if (versionMatch) {
-    return {
-      type: 'feat',
-      version: versionMatch[1] || '1.0.0',
-      message: versionMatch[2] || message,
-    };
+const parseCommitMessage = (message: string, refs?: string): { type: string; message: string; version?: string; date?: string } => {
+  // 先检查 refs 中是否有 tag
+  let version: string | undefined;
+  if (refs) {
+    const tagMatch = refs.match(/tag:\s*v?(\d+\.\d+\.\d+)/i);
+    if (tagMatch) {
+      version = tagMatch[1];
+    }
+  }
+
+  // 如果 refs 没有版本，再从消息中匹配
+  if (!version) {
+    const versionMatch = message.match(/^v?(\d+\.\d+\.\d+):\s*(.*)/);
+    if (versionMatch) {
+      version = versionMatch[1];
+    }
   }
 
   // 匹配 conventional commit 格式
@@ -293,12 +302,14 @@ const parseCommitMessage = (message: string): { type: string; message: string; v
     return {
       type: conventionalMatch[1] || 'chore',
       message: conventionalMatch[3] || message,
+      version,
     };
   }
 
   return {
     type: 'chore',
     message: message,
+    version,
   };
 };
 
@@ -325,13 +336,29 @@ const formatTime = (dateStr: string): string => {
 const loadVersionInfo = async () => {
   try {
     const res = await request.get('/system/version');
-    if (res?.data) {
-      versionInfo.value = { ...versionInfo.value, ...res.data };
+    // API 直接返回数据对象（没有包装在 {data: ...} 中）
+    if (res && typeof res === 'object' && 'currentVersion' in res) {
+      versionInfo.value = { ...versionInfo.value, ...res };
+      // 如果 API 返回了 git 历史，直接使用
+      if (res.gitHistory && res.gitHistory.length > 0) {
+        commitHistory.value = res.gitHistory.map((commit: CommitInfo) => {
+          const parsed = parseCommitMessage(commit.message, commit.refs);
+          return {
+            ...commit,
+            type: parsed.type,
+            version: parsed.version,
+          };
+        });
+        // 不再调用 loadCommitHistory()
+        hasMore.value = false;
+      }
     }
   } catch (error) {
     console.log('无法获取后端版本信息，使用默认值');
-    // 使用前端 package.json 版本作为默认值
-    versionInfo.value.currentVersion = '1.1.3';
+    // 使用构建时注入的版本号作为默认值
+    versionInfo.value.currentVersion = __APP_VERSION__ || '1.0.0';
+    // 如果 API 调用失败，加载模拟数据
+    loadCommitHistory();
   }
 };
 

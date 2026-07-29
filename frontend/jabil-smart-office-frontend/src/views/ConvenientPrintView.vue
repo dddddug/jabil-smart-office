@@ -937,7 +937,7 @@ const handleScanInput = () => {
   // 根据当前聚焦字段填入对应位置
   switch (currentFocusField.value) {
     case 'partNumber':
-      currentItem.partNumber = value;
+      currentItem.partNumber = value.toUpperCase();
       lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 P/N` };
       break;
     case 'grn':
@@ -1087,6 +1087,8 @@ const executePrint = async () => {
     // 创建单据
     const response = await createDocument({
       configId: pncForm.configId as number,
+      departmentId: pncForm.departmentId as number,
+      departmentName: selectedDepartmentName.value,
       creatorName: pncForm.creatorName,
       items: pncForm.items.map((item, index) => ({
         sequenceNo: index + 1,

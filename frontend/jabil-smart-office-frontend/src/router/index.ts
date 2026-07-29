@@ -210,6 +210,12 @@ const router = createRouter({
           component: () => import('../views/VersionInfoView.vue'),
           meta: { requiresAuth: true, title: '版本信息' },
         },
+        {
+          path: 'api-docs',
+          name: 'api-docs',
+          component: () => import('../views/ApiDocsView.vue'),
+          meta: { requiresAuth: true, title: '接口文档' },
+        },
       ],
     },
     {

@@ -1,0 +1,1 @@
+import{i as e}from"./request-BnKLBhAq.js";var t=()=>e.get(`/da-material-config/configs`),n=t=>e.post(`/da-material-config/configs`,t),r={CONTROL_TYPES:`control_types`,RETURN_NOTIFICATION_EMAIL:`return_notification_email`,RETURN_NOTIFICATION_ENABLED:`return_notification_enabled`,AUTO_NOTIFY_ON_RETURN:`auto_notify_on_return`};export{t as n,n as r,r as t};

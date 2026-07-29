@@ -11,7 +11,7 @@ const USER_TABLE = 'jso_system_user_management';
 // ========== 通知管理 API ==========
 
 // 获取当前用户的通知列表
-router.get('/notifications', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { read } = req.query;
     const userId = req.user.id; // 从 JWT token 获取用户ID
@@ -55,7 +55,7 @@ router.get('/notifications', authenticateToken, async (req, res) => {
 });
 
 // 获取未读通知数量
-router.get('/notifications/unread-count', authenticateToken, async (req, res) => {
+router.get('/unread-count', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id; // 从 JWT token 获取用户ID
 
@@ -71,7 +71,7 @@ router.get('/notifications/unread-count', authenticateToken, async (req, res) =>
 });
 
 // 标记通知为已读
-router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
+router.put('/:id/read', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id; // 从 JWT token 获取用户ID
@@ -93,7 +93,7 @@ router.put('/notifications/:id/read', authenticateToken, async (req, res) => {
 });
 
 // 标记所有通知为已读
-router.put('/notifications/read-all', authenticateToken, async (req, res) => {
+router.put('/read-all', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id; // 从 JWT token 获取用户ID
 
@@ -108,7 +108,7 @@ router.put('/notifications/read-all', authenticateToken, async (req, res) => {
 });
 
 // 创建通知
-router.post('/notifications', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { userId, icon, title, message, detail, type, relatedData } = req.body;
     
@@ -142,7 +142,7 @@ router.post('/notifications', authenticateToken, async (req, res) => {
 });
 
 // 删除通知
-router.delete('/notifications/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id; // 从 JWT token 获取用户ID

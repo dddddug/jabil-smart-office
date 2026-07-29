@@ -62,6 +62,8 @@ export const getDocumentById = (id: number) => {
 // 创建单据
 export const createDocument = (data: {
   configId: number;
+  departmentId: number;
+  departmentName: string;
   items: PncTransferDocumentItem[];
   creatorName: string;
 }) => {

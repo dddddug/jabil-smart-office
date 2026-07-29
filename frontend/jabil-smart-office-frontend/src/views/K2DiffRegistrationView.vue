@@ -758,6 +758,8 @@ const onTableProblemDescriptionChange = async (id: number) => {
       returnLocation: returnLocation || undefined
     });
     ElMessage.success('更新成功');
+    // 清除请求缓存并刷新列表
+    clearRequestCache();
     await loadRegistrations();
   } catch (error) {
     console.error('更新失败:', error);

@@ -352,6 +352,7 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', parent: '规则配置', expanded: false },
   { name: '其他', isHeader: true, label: '其他', expanded: false, icon: '📌' },
   { name: '版本信息', icon: '📋', routeName: 'version-info', parent: '其他', expanded: false },
+  { name: '接口文档', icon: '📡', routeName: 'api-docs', parent: '其他', expanded: false },
 ]);
 
 const toggleMenuGroup = (item: MenuItem) => {

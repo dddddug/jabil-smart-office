@@ -94,7 +94,6 @@ export const getDocuments = async (req, res, next) => {
       pageSize = 10
     } = req.query;
 
-    const offset = (parseInt(page) - 1) * parseInt(pageSize);
     const params = [];
     let whereClause = 'WHERE 1=1';
 
@@ -130,8 +129,11 @@ export const getDocuments = async (req, res, next) => {
     }
 
     // 查询列表（使用 JOIN 一次性获取所有数据）
-    const listParams = [...params, parseInt(pageSize), offset];
-    const listResult = await pool.query(`
+    const pageSizeNum = parseInt(pageSize, 10);
+    const offsetNum = (parseInt(page, 10) - 1) * pageSizeNum;
+    const listParams = [...params, pageSizeNum, offsetNum];
+
+    const listSql = `
       SELECT
         d.id,
         d.transfer_no,
@@ -161,7 +163,10 @@ export const getDocuments = async (req, res, next) => {
       LEFT JOIN ${ITEM_TABLE} i ON d.id = i.document_id
       ${whereClause}
       ORDER BY d.created_at DESC
-    `, listParams);
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
+
+    const listResult = await pool.query(listSql, listParams);
 
     // 查询总数
     const countResult = await pool.query(`
@@ -347,7 +352,7 @@ export const createDocument = async (req, res, next) => {
         document.id,
         i + 1,
         item.batch || null,
-        item.partNumber,
+        item.partNumber.toUpperCase(), // 自动转为大写
         item.grn || null,
         item.quantity
       ]);
@@ -513,28 +518,28 @@ export const sendEmail = async (req, res, next) => {
       ORDER BY sequence_no
     `, [id]);
 
-    // 构建邮件内容
+    // 构建邮件内容（使用兼容性更好的字符，避免乱码）
     const subject = `PNC转仓单 - ${doc.transfer_no}`;
 
     let emailBody = `PNC转仓单详情\n`;
-    emailBody += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    emailBody += `================================\n`;
     emailBody += `转仓单号：${doc.transfer_no}\n`;
     emailBody += `转仓部门：${doc.department_name || '-'}\n`;
     emailBody += `接收人：${doc.recipient_name || '-'}\n`;
     emailBody += `联系电话：${doc.contact_phone || '-'}\n`;
     emailBody += `接收地址：${doc.receiving_address || '-'}\n`;
     emailBody += `系统位置：${doc.system_location || '-'}\n`;
-    emailBody += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    emailBody += `================================\n`;
     emailBody += `明细列表：\n`;
-    emailBody += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    emailBody += `序号\tBatch\t\tP/N\t\tGRN\t\t数量\n`;
-    emailBody += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    emailBody += `================================\n`;
+    emailBody += `序号    Batch      P/N           GRN           数量\n`;
+    emailBody += `----------------------------------------\n`;
 
     itemsResult.rows.forEach(item => {
-      emailBody += `${item.sequence_no}\t${item.batch || '-'}\t${item.part_number}\t${item.grn || '-'}\t${item.quantity}\n`;
+      emailBody += `${String(item.sequence_no).padEnd(4)}    ${(item.batch || '-').padEnd(8)}    ${item.part_number.padEnd(11)}    ${(item.grn || '-').padEnd(11)}    ${item.quantity}\n`;
     });
 
-    emailBody += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    emailBody += `================================\n`;
     emailBody += `创建人：${doc.creator_name}\n`;
     emailBody += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
 
@@ -591,39 +596,55 @@ export const sendEmail = async (req, res, next) => {
 };
 
 /**
+ * 使用 RFC 2047 Base64 编码邮件主题
+ * 兼容所有邮件客户端
+ */
+const encodeSubject = (text) => {
+  const encoded = Buffer.from(text, 'utf8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+};
+
+/**
  * 构建 mailto 链接
  */
 const buildMailtoLink = (doc, items) => {
   const to = doc.recipient_email;
   const cc = doc.cc_email;
 
-  let subject = encodeURIComponent(`PNC转仓单 - ${doc.transfer_no}`);
+  const subject = encodeSubject(`PNC转仓单 - ${doc.transfer_no}`);
 
+  // 使用兼容性更好的字符，避免邮件正文乱码
   let body = `PNC转仓单详情\n`;
-  body += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  body += `================================\n`;
   body += `转仓单号：${doc.transfer_no}\n`;
   body += `转仓部门：${doc.department_name || '-'}\n`;
   body += `接收人：${doc.recipient_name || '-'}\n`;
   body += `联系电话：${doc.contact_phone || '-'}\n`;
   body += `接收地址：${doc.receiving_address || '-'}\n`;
   body += `系统位置：${doc.system_location || '-'}\n`;
-  body += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  body += `================================\n`;
   body += `明细列表：\n`;
-  body += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-  body += `序号\tBatch\t\tP/N\t\tGRN\t\t数量\n`;
-  body += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  body += `================================\n`;
+  body += `序号    Batch      P/N           GRN           数量\n`;
+  body += `----------------------------------------\n`;
 
   items.forEach(item => {
-    body += `${item.sequence_no}\t${item.batch || '-'}\t${item.part_number}\t${item.grn || '-'}\t${item.quantity}\n`;
+    body += `${String(item.sequence_no).padEnd(4)}    ${(item.batch || '-').padEnd(8)}    ${item.part_number.padEnd(11)}    ${(item.grn || '-').padEnd(11)}    ${item.quantity}\n`;
   });
 
-  body += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  body += `================================\n`;
   body += `创建人：${doc.creator_name}\n`;
   body += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
 
-  body = encodeURIComponent(body);
+  // mailto 链接构建
+  // 方案：不使用 percent-encoding，直接使用 UTF-8 字符串
+  // 让浏览器/邮件客户端自己处理编码
+  // 换行符用 %0A 表示（RFC 6068 标准）
 
-  let mailto = `mailto:${to}?subject=${subject}&body=${body}`;
+  // 将换行符替换为 %0A，但不编码其他字符
+  const bodyWithNewlines = body.replace(/\n/g, '%0A');
+
+  let mailto = `mailto:${to}?subject=${subject}&body=${bodyWithNewlines}`;
   if (cc) {
     mailto += `&cc=${encodeURIComponent(cc)}`;
   }
