@@ -3160,6 +3160,23 @@ const levelHoursSummary = computed(() => {
   } } = {};
 
   filteredEmployees.value.forEach(emp => {
+    // 获取当前视图的日期范围
+    let currentDays: any[] = [];
+    if (scheduleViewMode.value === 'week') {
+      currentDays = weekDays.value;
+    } else if (scheduleViewMode.value === 'month') {
+      currentDays = monthDays.value;
+    } else {
+      currentDays = customRangeDays.value;
+    }
+
+    // 排除离职员工：检查当前日期范围内是否有离职标记
+    const isResigned = currentDays.some(day => {
+      const schedule = emp.schedule[day.date];
+      return schedule && schedule.specialStatus === '离职';
+    });
+    if (isResigned) return;
+
     const level = emp.level || '未设置';
     if (!summary[level]) {
       summary[level] = {
