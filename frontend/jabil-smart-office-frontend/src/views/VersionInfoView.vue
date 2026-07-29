@@ -282,8 +282,8 @@ const parseCommitMessage = (message: string): { type: string; message: string; v
   if (versionMatch) {
     return {
       type: 'feat',
-      version: versionMatch[1],
-      message: versionMatch[2] ?? message,
+      version: versionMatch[1] || '1.0.0',
+      message: versionMatch[2] || message,
     };
   }
 
@@ -291,8 +291,8 @@ const parseCommitMessage = (message: string): { type: string; message: string; v
   const conventionalMatch = message.match(/^(\w+)(\([^)]+\))?:\s*(.*)/);
   if (conventionalMatch) {
     return {
-      type: conventionalMatch[1],
-      message: conventionalMatch[3] ?? message,
+      type: conventionalMatch[1] || 'chore',
+      message: conventionalMatch[3] || message,
     };
   }
 
