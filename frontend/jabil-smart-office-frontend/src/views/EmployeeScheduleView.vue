@@ -160,7 +160,14 @@
               <thead>
                 <tr>
                   <th class="sticky-col">员工 / 日期</th>
-                  <th v-for="day in weekDays" :key="day.date" :class="{ 'today': day.isToday, 'header-single-selected': day.date === selectedDateForButtons }" @click="handleDateHeaderClick(day.date)">
+                  <th v-for="day in weekDays" :key="day.date"
+                      :class="{
+                        'today': day.isToday,
+                        'header-single-selected': day.date === selectedDateForButtons,
+                        'weekend-header': day.isWeekend,
+                        'weekday-header-cell': !day.isWeekend
+                      }"
+                      @click="handleDateHeaderClick(day.date)">
                     <div class="day-header">{{ day.monthDay }}</div>
                     <div class="weekday-header">{{ day.weekday }}</div>
                   </th>
@@ -222,7 +229,14 @@
               <thead>
                 <tr>
                   <th class="sticky-col">员工 / 日期</th>
-                  <th v-for="day in monthDays" :key="day.date" :class="{ 'today': day.isToday, 'header-single-selected': day.date === selectedDateForButtons }" @click="handleDateHeaderClick(day.date)">
+                  <th v-for="day in monthDays" :key="day.date"
+                      :class="{
+                        'today': day.isToday,
+                        'header-single-selected': day.date === selectedDateForButtons,
+                        'weekend-header': day.isWeekend,
+                        'weekday-header-cell': !day.isWeekend
+                      }"
+                      @click="handleDateHeaderClick(day.date)">
                     <div class="day-header">{{ day.monthDay }}</div>
                     <div class="weekday-header">{{ day.weekday }}</div>
                   </th>
@@ -287,7 +301,14 @@
               <thead>
                 <tr>
                   <th class="sticky-col">员工 / 日期</th>
-                  <th v-for="day in customRangeDays" :key="day.date" :class="{ 'today': day.isToday, 'header-single-selected': day.date === selectedDateForButtons }" @click="handleDateHeaderClick(day.date)">
+                  <th v-for="day in customRangeDays" :key="day.date"
+                      :class="{
+                        'today': day.isToday,
+                        'header-single-selected': day.date === selectedDateForButtons,
+                        'weekend-header': day.isWeekend,
+                        'weekday-header-cell': !day.isWeekend
+                      }"
+                      @click="handleDateHeaderClick(day.date)">
                     <div class="day-header">{{ day.monthDay }}</div>
                     <div class="weekday-header">{{ day.weekday }}</div>
                   </th>
@@ -1026,6 +1047,7 @@ interface Day {
   weekday: string;
   isToday: boolean;
   isCurrentMonth?: boolean; // For month view, indicates if the day belongs to the current displayed month
+  isWeekend?: boolean; // Indicates if the day is Saturday or Sunday
 }
 
 
@@ -2186,8 +2208,9 @@ const weekDays = computed(() => {
     days.push({
       date: day.format('YYYY-MM-DD'),
       monthDay: day.format('MM/DD'),
-      weekday: day.format('dddd'),
+      weekday: day.format('dd'),
       isToday: day.isSame(dayjs(), 'day'),
+      isWeekend: day.day() === 0 || day.day() === 6,
     });
   }
   return days;
@@ -2211,15 +2234,16 @@ const monthDays = computed(() => {
   }
   // 到次月23号结束
   const endDate = startDate.add(1, 'month').date(23);
-  
+
   let current = startDate;
   while (current.isBefore(endDate) || current.isSame(endDate)) {
     days.push({
       date: current.format('YYYY-MM-DD'),
       monthDay: current.format('MM/DD'),
-      weekday: current.format('dddd'),
+      weekday: current.format('dd'),
       isToday: current.isSame(today, 'day'),
       isCurrentMonth: current.month() === selectedMonth,
+      isWeekend: current.day() === 0 || current.day() === 6,
     });
     current = current.add(1, 'day');
   }
@@ -2232,14 +2256,15 @@ const customRangeDays = computed(() => {
   const start = dayjs(currentPeriodStart.value);
   const end = dayjs(customRangeEnd.value);
   const totalDays = end.diff(start, 'day') + 1;
-  
+
   for (let i = 0; i < totalDays; i++) {
     const day = start.add(i, 'day');
     days.push({
       date: day.format('YYYY-MM-DD'),
       monthDay: day.format('MM/DD'),
-      weekday: day.format('dddd'),
+      weekday: day.format('dd'),
       isToday: day.isSame(dayjs(), 'day'),
+      isWeekend: day.day() === 0 || day.day() === 6,
     });
   }
   return days;
@@ -6138,6 +6163,48 @@ const exportLeaveToExcel = async () => {
   box-shadow: inset 0 0 0 2px #0052A3;
 }
 
+/* 周末表头样式 */
+.schedule-table th.weekend-header {
+  background-color: #FEF2F2 !important; /* Light red background for weekends */
+  color: #991B1B !important; /* Dark red text */
+  border-left: 1px solid #FECACA;
+  border-right: 1px solid #FECACA;
+}
+
+.schedule-table th.weekend-header .day-header {
+  color: #991B1B;
+}
+
+.schedule-table th.weekend-header .weekday-header {
+  color: #DC2626;
+}
+
+/* 工作日表头样式 */
+.schedule-table th.weekday-header-cell {
+  background-color: #F9FAFB;
+}
+
+/* 表头悬停效果 */
+.schedule-table th:not(.sticky-col):hover {
+  background-color: #E5E7EB !important;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.schedule-table th.weekend-header:hover {
+  background-color: #FEE2E2 !important;
+}
+
+/* 表头内边距优化 */
+.schedule-table th:not(.sticky-col) {
+  padding: 8px 4px;
+  min-width: 40px;
+}
+
+.schedule-table th:not(.sticky-col) .day-header {
+  margin-bottom: 2px;
+}
+
 /* 右键菜单样式 */
 .context-menu {
   position: fixed;
@@ -6176,8 +6243,11 @@ const exportLeaveToExcel = async () => {
 }
 
 .weekday-header {
-  font-size: 12px;
+  font-size: 11px;
   color: #6B7280;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .schedule-table tbody tr:hover {
