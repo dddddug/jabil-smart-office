@@ -350,6 +350,8 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '工位配置', icon: '🏭', routeName: 'workstation-config', parent: '规则配置', expanded: false },
   { name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', parent: '规则配置', expanded: false },
   { name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', parent: '规则配置', expanded: false },
+  { name: '其他', isHeader: true, label: '其他', expanded: false, icon: '📌' },
+  { name: '版本信息', icon: '📋', routeName: 'version-info', parent: '其他', expanded: false },
 ]);
 
 const toggleMenuGroup = (item: MenuItem) => {

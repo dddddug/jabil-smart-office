@@ -204,6 +204,12 @@ const router = createRouter({
           component: () => import('../views/K2DiffConfigView.vue'),
           meta: { requiresAuth: true, title: 'K**差异登记 规则配置' },
         },
+        {
+          path: 'version-info',
+          name: 'version-info',
+          component: () => import('../views/VersionInfoView.vue'),
+          meta: { requiresAuth: true, title: '版本信息' },
+        },
       ],
     },
     {
