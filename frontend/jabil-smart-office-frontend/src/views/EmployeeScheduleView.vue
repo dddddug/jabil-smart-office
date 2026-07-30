@@ -3927,8 +3927,8 @@ const exportSchedule = async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const excelData: any[][] = [];
 
-  // 表头：工号、姓名、部门、岗位，然后是每个日期
-  const header: string[] = ['工号', '姓名', '部门', '岗位'];
+  // 表头：姓名、部门，然后是每个日期
+  const header: string[] = ['姓名', '部门'];
   dateList.forEach(d => {
     header.push(`${d.monthDay} (${d.weekday})`);
   });
@@ -3937,13 +3937,9 @@ const exportSchedule = async () => {
 
   // 遍历员工
   filteredEmployees.value.forEach(emp => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const empData = emp as any;
     const row: (string | number)[] = [
-      empData.oldEmployeeId || emp.sap,
       emp.name,
-      emp.department || '',
-      emp.position || ''
+      emp.department || ''
     ];
 
     let totalHours = 0;
