@@ -206,7 +206,24 @@
       "Bash(node ../update_nginx.cjs)",
       "Bash(node \"c:\\\\Users\\\\1167023\\\\Desktop\\\\Jabil\\\\update_nginx.cjs\")",
       "Bash(node update_nginx.cjs)",
-      "Bash(cd c:/Users/1167023/Desktop/Jabil/frontend/jabil-smart-office-frontend && npm run build 2>&1 | tail -3 && cd .. && node update_nginx.cjs 2>&1)"
+      "Bash(cd c:/Users/1167023/Desktop/Jabil/frontend/jabil-smart-office-frontend && npm run build 2>&1 | tail -3 && cd .. && node update_nginx.cjs 2>&1)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Git history:'\\); [print\\(f\\\\\"  - {c['message']}\\\\\"\\) for c in d['gitHistory'][:5]]\")",
+      "Bash(curl -s http://localhost)",
+      "Bash(tasklist /FI \"PID eq 4\")",
+      "Bash(iisreset /stop)",
+      "Bash(cmd //c \"iisreset /stop\")",
+      "Bash(cmd //c \"netstat -ano | findstr :80\")",
+      "Bash(cmd //c \"netsh http show urlacl\")",
+      "Bash(cmd //c \"sc query http\")",
+      "Bash(cmd //c \"sc queryex type= service state= all\")",
+      "Bash(./nginx.exe -t)",
+      "Bash(cmd //c \"for /f \\\\\"tokens=5\\\\\" %a in \\('netstat -ano ^| findstr :80 ^| findstr LISTENING'\\) do taskkill /F /PID %a\")",
+      "Bash(cmd //c \"netstat -abno\")",
+      "Bash(powershell -Command \"Get-NetHttpUrlReservation | Format-List\")",
+      "Bash(curl -s http://localhost:8080)",
+      "Bash(cmd //c \"netstat -ano\")",
+      "Bash(cmd //c \"netsh http delete urlacl url=http://+:80/\")",
+      "Bash(cmd //c \"netsh http delete urlacl url=http://+:80/Temporary_Listen_Addresses/\")"
     ]
   }
 }

@@ -274,6 +274,7 @@
               <button @click="importSchedule">📤 导入排班</button>
               <button @click="exportAttendance">📥 考勤导出</button>
               <button @click="printSchedule">🖨️ 排班打印</button>
+              <button @click="exportSchedule">📤 排班导出</button>
             </div>
           </div>
           <div class="table-container">
@@ -3866,6 +3867,111 @@ const exportAttendance = () => {
   // 下载文件
   XLSX.writeFile(wb, `考勤导出_${startDate.format('YYYYMMDD')}_${endDate.format('YYYYMMDD')}.xlsx`);
   console.log('✅ 考勤导出完成！');
+};
+
+// 排班导出
+const exportSchedule = async () => {
+  console.log('📤 开始导出排班...');
+
+  // 获取当前视图的日期范围
+  let startDate: dayjs.Dayjs;
+  let endDate: dayjs.Dayjs;
+  let dateList: {date: string, monthDay: string, weekday: string}[] = [];
+
+  if (scheduleViewMode.value === 'week') {
+    // 周视图
+    startDate = dayjs(currentPeriodStart.value);
+    endDate = startDate.clone().add(6, 'day');
+    dateList = weekDays.value.map(d => ({
+      date: d.date,
+      monthDay: d.monthDay,
+      weekday: d.weekday
+    }));
+  } else if (scheduleViewMode.value === 'range') {
+    // 自定义范围视图
+    startDate = dayjs(currentPeriodStart.value);
+    endDate = dayjs(customRangeEnd.value);
+    dateList = customRangeDays.value.map(d => ({
+      date: d.date,
+      monthDay: d.monthDay,
+      weekday: d.weekday
+    }));
+  } else {
+    // 月视图 - 导出整个月周期
+    const refDate = dayjs(currentPeriodStart.value);
+    let monthStart, monthEnd;
+    if (refDate.date() >= 24) {
+      monthStart = refDate.date(24);
+      monthEnd = monthStart.clone().add(1, 'month').date(23);
+    } else {
+      monthStart = refDate.subtract(1, 'month').date(24);
+      monthEnd = monthStart.clone().add(1, 'month').date(23);
+    }
+    startDate = monthStart;
+    endDate = monthEnd;
+
+    // 生成月周期的日期列表
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    let current = monthStart.clone();
+    while (current.isBefore(monthEnd) || current.isSame(monthEnd)) {
+      dateList.push({
+        date: current.format('YYYY-MM-DD'),
+        monthDay: current.format('M/D'),
+        weekday: weekdays[current.day()] || ''
+      });
+      current = current.add(1, 'day');
+    }
+  }
+
+  // 构建Excel数据
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const excelData: any[][] = [];
+
+  // 表头：工号、姓名、部门、岗位，然后是每个日期
+  const header: string[] = ['工号', '姓名', '部门', '岗位'];
+  dateList.forEach(d => {
+    header.push(`${d.monthDay} (${d.weekday})`);
+  });
+  header.push('总工时');
+  excelData.push(header);
+
+  // 遍历员工
+  filteredEmployees.value.forEach(emp => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const empData = emp as any;
+    const row: (string | number)[] = [
+      empData.oldEmployeeId || emp.sap,
+      emp.name,
+      emp.department || '',
+      emp.position || ''
+    ];
+
+    let totalHours = 0;
+
+    // 添加每天的班次
+    dateList.forEach(d => {
+      const schedule = emp.schedule[d.date];
+      if (schedule) {
+        const shift = schedule.shift;
+        row.push(shift);
+        // 计算工时
+        const hours = getWorkHours(shift);
+        if (hours > 0) totalHours += hours;
+      } else {
+        row.push('');
+      }
+    });
+
+    row.push(totalHours.toFixed(1));
+    excelData.push(row);
+  });
+
+  // 创建工作簿并下载
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(excelData);
+  XLSX.utils.book_append_sheet(wb, ws, '排班数据');
+  XLSX.writeFile(wb, `排班导出_${startDate.format('YYYYMMDD')}_${endDate.format('YYYYMMDD')}.xlsx`);
+  console.log('✅ 排班导出完成！');
 };
 
 // 关闭导入排班对话框
