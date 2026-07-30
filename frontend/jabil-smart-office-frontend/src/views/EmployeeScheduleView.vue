@@ -194,17 +194,7 @@
                       @click="handleSingleDateSelect(day.date)"
                       :class="{ 'cell-selected': isCellSelected(employee.id, day.date) }">
                     <div :class="['shift-cell', getShiftClass(employee.schedule[day.date]?.shift || '')]" v-if="employee.schedule[day.date]">
-                      <template v-if="(employee.schedule[day.date] as any).specialStatus">
-                        <div 
-                          class="special-status"
-                          :data-status="(employee.schedule[day.date] as any).specialStatus"
-                        >
-                          {{ (employee.schedule[day.date] as any).specialStatus }}
-                        </div>
-                      </template>
-                      <template v-else>
-                        {{ (employee.schedule[day.date] as any).shift }}
-                      </template>
+                      {{ employee.schedule[day.date]?.shift }}
                     </div>
                     <div v-else class="shift-cell shift-empty">-</div>
                   </td>
@@ -265,17 +255,7 @@
                                 'other-month': !day.isCurrentMonth,
                                 'today': day.isToday }">
                     <div :class="['shift-cell', getShiftClass(employee.schedule[day.date]?.shift || '')]" v-if="employee.schedule[day.date]">
-                      <template v-if="(employee.schedule[day.date] as any).specialStatus">
-                        <div 
-                          class="special-status"
-                          :data-status="(employee.schedule[day.date] as any).specialStatus"
-                        >
-                          {{ (employee.schedule[day.date] as any).specialStatus }}
-                        </div>
-                      </template>
-                      <template v-else>
-                        {{ (employee.schedule[day.date] as any).shift }}
-                      </template>
+                      {{ employee.schedule[day.date]?.shift }}
                     </div>
                     <div v-else class="shift-cell shift-empty">-</div>
                   </td>
@@ -335,17 +315,7 @@
                       @click="handleSingleDateSelect(day.date)"
                       :class="{ 'cell-selected': isCellSelected(employee.id, day.date) }">
                     <div :class="['shift-cell', getShiftClass(employee.schedule[day.date]?.shift || '')]" v-if="employee.schedule[day.date]">
-                      <template v-if="(employee.schedule[day.date] as any).specialStatus">
-                        <div 
-                          class="special-status"
-                          :data-status="(employee.schedule[day.date] as any).specialStatus"
-                        >
-                          {{ (employee.schedule[day.date] as any).specialStatus }}
-                        </div>
-                      </template>
-                      <template v-else>
-                        {{ (employee.schedule[day.date] as any).shift }}
-                      </template>
+                      {{ employee.schedule[day.date]?.shift }}
                     </div>
                     <div v-else class="shift-cell shift-empty">-</div>
                   </td>
@@ -416,28 +386,28 @@
         <table class="data-table with-border enhanced compact-table">
           <thead>
             <tr>
-              <th rowspan="2" style="width: 100px;">申请部门</th>
-              <th rowspan="2" style="width: 80px;">申请人</th>
-              <th style="width: 80px;">打破7休1</th>
-              <th colspan="2" style="width: 160px;">周工时&gt;63.75</th>
-              <th rowspan="2" style="width: 80px;">实施周期</th>
-              <th rowspan="2" style="width: 200px;">原因说明</th>
+              <th rowspan="2" style="width: 30px;">申请部门</th>
+              <th rowspan="2" style="width: 40px;">申请人</th>
+              <th style="width: 60px;">打破7休1</th>
+              <th colspan="2" style="width: 100px;">周工时&gt;63.75</th>
+              <th rowspan="2" style="width: 30px;">实施周期</th>
+              <th rowspan="2" style="width: 140px;">原因说明</th>
             </tr>
             <tr>
-              <th style="width: 80px;">申请人数</th>
-              <th style="width: 80px;">申请人数</th>
-              <th style="width: 80px;">超出总工时</th>
+              <th style="width: 50px;">申请人数</th>
+              <th style="width: 50px;">申请人数</th>
+              <th style="width: 50px;">超出总工时</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(dept, index) in summaryData" :key="index">
-              <td style="width: 100px; text-align: left;">{{ dept.department }}</td>
-              <td style="width: 80px;">{{ dept.applicant }}</td>
-              <td style="width: 80px;" class="text-warning">{{ dept.overworkCount }}</td>
-              <td style="width: 80px;" class="text-danger">{{ dept.overLimitCount }}</td>
-              <td style="width: 80px;" class="text-danger">{{ dept.totalOverHours }}H</td>
-              <td style="width: 80px;">{{ dept.period }}</td>
-              <td style="width: 200px; text-align: left;"><input type="text" :value="dept.reason" @input="setSummaryReason(dept.department, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因说明" /></td>
+              <td style="width: 70px; text-align: left;">{{ dept.department }}</td>
+              <td style="width: 50px;">{{ dept.applicant }}</td>
+              <td style="width: 60px;" class="text-warning">{{ dept.overworkCount }}</td>
+              <td style="width: 60px;" class="text-danger">{{ dept.overLimitCount }}</td>
+              <td style="width: 60px;" class="text-danger">{{ dept.totalOverHours }}H</td>
+              <td style="width: 70px;">{{ dept.period }}</td>
+              <td style="width: 140px; text-align: left;"><input type="text" :value="dept.reason" @input="setSummaryReason(dept.department, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因说明" /></td>
             </tr>
             <tr v-if="summaryData.length === 0">
               <td colspan="7" style="text-align: center; color: #6B7280; padding: 40px;">
@@ -459,34 +429,34 @@
             <span class="count-badge">{{ overworkingEmployees.length }}</span>
           </div>
         </div>
-        <table class="data-table with-border enhanced">
+        <table class="data-table with-border enhanced compact-table">
           <thead>
             <tr>
-              <th style="width: 50px;">序号</th>
-              <th style="width: 70px;">区域</th>
-              <th style="width: 100px;">部门</th>
-              <th style="width: 70px;">级别</th>
-              <th style="width: 100px;">工号</th>
-              <th style="width: 80px;">姓名</th>
-              <th style="width: 100px;">开始日期</th>
-              <th style="width: 100px;">结束日期</th>
-              <th style="width: 100px;">连续工作天数</th>
-              <th style="width: 200px;">原因说明</th>
-              <th style="width: 80px;">操作</th>
+              <th style="width: 30px;">序号</th>
+              <th style="width: 40px;">区域</th>
+              <th style="width: 30px;">部门</th>
+              <th style="width: 30px;">级别</th>
+              <th style="width: 50px;">工号</th>
+              <th style="width: 40px;">姓名</th>
+              <th style="width: 60px;">开始日期</th>
+              <th style="width: 60px;">结束日期</th>
+              <th style="width: 60px;">天数</th>
+              <th style="width: 120px;">原因说明</th>
+              <th style="width: 30px;">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(emp, index) in paginatedOverworkEmployees" :key="emp.id" :class="{'ignored-row': emp.isIgnored}">
-              <td style="width: 50px;">{{ (overworkCurrentPage - 1) * break7PageSize + index + 1 }}</td>
-              <td style="width: 70px;">{{ emp.plantName || emp.plant || '-' }}</td>
-              <td style="width: 100px;">{{ emp.departmentName || emp.department }}</td>
-              <td style="width: 70px;">{{ emp.level || '-' }}</td>
-              <td style="width: 100px;">{{ emp.oldEmployeeId || emp.sap }}</td>
-              <td style="width: 80px;">{{ emp.name }}</td>
-              <td style="width: 100px;">{{ emp.startDate }}</td>
-              <td style="width: 100px;">{{ emp.endDate }}</td>
-              <td style="width: 100px;" class="text-warning">{{ emp.consecutiveDays }}天</td>
-              <td style="width: 200px;"><input type="text" :value="emp.reason" @input="setOverworkReason(emp.id, emp.startDate, emp.endDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
+              <td style="width: 40px;">{{ (overworkCurrentPage - 1) * break7PageSize + index + 1 }}</td>
+              <td style="width: 60px;">{{ emp.plantName || emp.plant || '-' }}</td>
+              <td style="width: 70px;">{{ emp.departmentName || emp.department }}</td>
+              <td style="width: 50px;">{{ emp.level || '-' }}</td>
+              <td style="width: 70px;">{{ emp.oldEmployeeId || emp.sap }}</td>
+              <td style="width: 60px;">{{ emp.name }}</td>
+              <td style="width: 80px;">{{ emp.startDate }}</td>
+              <td style="width: 80px;">{{ emp.endDate }}</td>
+              <td style="width: 60px;" class="text-warning">{{ emp.consecutiveDays }}天</td>
+              <td style="width: 120px;"><input type="text" :value="emp.reason" @input="setOverworkReason(emp.id, emp.startDate, emp.endDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
               <td style="width: 80px;">
                 <button class="btn btn-sm" :class="emp.isIgnored ? 'btn-success' : 'btn-danger'" @click="toggleIgnoreOverwork(emp)">
                   {{ emp.isIgnored ? '取消忽略' : '忽略' }}
@@ -541,35 +511,35 @@
             <span class="count-badge">{{ weeklyLimitEmployees.length }}</span>
           </div>
         </div>
-        <table class="data-table with-border enhanced">
+        <table class="data-table with-border enhanced compact-table">
           <thead>
             <tr>
-              <th style="width: 50px;">序号</th>
-              <th style="width: 70px;">区域</th>
-              <th style="width: 100px;">部门</th>
-              <th style="width: 70px;">级别</th>
-              <th style="width: 100px;">工号</th>
-              <th style="width: 80px;">姓名</th>
-              <th style="width: 100px;">日期</th>
-              <th style="width: 90px;">周工时</th>
-              <th style="width: 70px;">周数</th>
-              <th style="width: 90px;">超出工时</th>
-              <th style="width: 200px;">原因说明</th>
+              <th style="width: 25px;">序号</th>
+              <th style="width: 30px;">区域</th>
+              <th style="width: 45px;">部门</th>
+              <th style="width: 30px;">级别</th>
+              <th style="width: 30px;">工号</th>
+              <th style="width: 45px;">姓名</th>
+              <th style="width: 60px;">日期</th>
+              <th style="width: 40px;">周工时</th>
+              <th style="width: 30px;">周数</th>
+              <th style="width: 40px;">超出工时</th>
+              <th style="width: 100px;">原因说明</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(emp, index) in paginatedWeeklyLimitEmployees" :key="emp.id">
-              <td style="width: 50px;">{{ (weeklyLimitCurrentPage - 1) * weeklyPageSize + index + 1 }}</td>
-              <td style="width: 70px;">{{ emp.plantName || emp.plant || '-' }}</td>
-              <td style="width: 100px;">{{ emp.departmentName || emp.department }}</td>
-              <td style="width: 70px;">{{ emp.level || '-' }}</td>
-              <td style="width: 100px;">{{ emp.oldEmployeeId || emp.sap }}</td>
-              <td style="width: 80px;">{{ emp.name }}</td>
-              <td style="width: 100px;">{{ emp.weekDate }}</td>
-              <td style="width: 90px;" class="text-danger">{{ emp.totalHours }}H</td>
-              <td style="width: 70px;">{{ emp.weekNumber }}</td>
-              <td style="width: 90px;" class="text-danger">{{ emp.overLimitHours }}H</td>
-              <td style="width: 200px;"><input type="text" :value="emp.reason" @input="setWeeklyLimitReason(emp.id, emp.weekDate, emp.weekEndDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
+              <td style="width: 25px;">{{ (weeklyLimitCurrentPage - 1) * weeklyPageSize + index + 1 }}</td>
+              <td style="width: 30px;">{{ emp.plantName || emp.plant || '-' }}</td>
+              <td style="width: 45px;">{{ emp.departmentName || emp.department }}</td>
+              <td style="width: 30px;">{{ emp.level || '-' }}</td>
+              <td style="width: 30px;">{{ emp.oldEmployeeId || emp.sap }}</td>
+              <td style="width: 45px;">{{ emp.name }}</td>
+              <td style="width: 60px;">{{ emp.weekDate }}</td>
+              <td style="width: 40px;" class="text-danger">{{ emp.totalHours }}H</td>
+              <td style="width: 30px;">{{ emp.weekNumber }}</td>
+              <td style="width: 40px;" class="text-danger">{{ emp.overLimitHours }}H</td>
+              <td style="width: 100px;"><input type="text" :value="emp.reason" @input="setWeeklyLimitReason(emp.id, emp.weekDate, emp.weekEndDate, ($event.target as HTMLInputElement).value)" class="inline-input" placeholder="填写原因" /></td>
             </tr>
             <tr v-if="weeklyLimitEmployees.length === 0">
               <td colspan="11" style="text-align: center; color: #6B7280; padding: 40px;">
@@ -635,7 +605,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(item, index) in errandFixList" :key="item.id">
+            <tr v-for="item in errandFixList" :key="item.id">
               <td style="width: 70px;">{{ item.plant || '-' }}</td>
               <td style="width: 100px;">{{ item.department }}</td>
               <td style="width: 100px;">{{ item.sap }}</td>
@@ -854,16 +824,6 @@
             </div>
           </div>
 
-          <!-- 特殊状态 -->
-          <div class="form-group">
-            <label>特殊状态：</label>
-            <div class="special-status-options">
-              <label v-for="status in specialStatuses" :key="status">
-                <input type="checkbox" :value="status" v-model="editingData.specialStatusList" /> {{ status }}
-              </label>
-            </div>
-          </div>
-
           <!-- 临时事项 -->
           <div class="form-group">
             <label>临时事项：</label>
@@ -871,9 +831,9 @@
               <div class="matter-row">
                 <select v-model="editingData.tempMatter.type">
                   <option value="">请选择类型</option>
-                  <option value="加班">加班</option>
+                  <option value="临时加班">临时加班</option>
                   <option value="公差">公差</option>
-                  <option value="请假">请假</option>
+                  <option value="临时请假">临时请假</option>
                 </select>
                 <input type="time" v-model="editingData.tempMatter.startTime" placeholder="开始时间" />
                 <span>至</span>
@@ -941,17 +901,7 @@
             <label>选择班次</label>
             <select v-model="batchShiftValue" style="width: 100%; padding: 10px; border: 1px solid #D1D5DB; border-radius: 6px;">
               <option value="">请选择</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-              <option value="N">N</option>
-              <option value="A+">A+</option>
-              <option value="B+">B+</option>
-              <option value="C+">C+</option>
-              <option value="N+">N+</option>
-              <option value="A2">A2</option>
-              <option value="休息">休息</option>
-              <option value="调休">调休</option>
+              <option v-for="shift in availableShifts" :key="shift.value" :value="shift.value">{{ shift.label }}</option>
             </select>
           </div>
           <p style="color: #6B7280; font-size: 12px; margin-top: 10px;">
@@ -1059,6 +1009,12 @@ const openLink = (url: string) => {
   window.open(url, '_blank');
 };
 
+interface BatchUploadResponse {
+  insertedCount?: number;
+  updatedCount?: number;
+  errors?: string[];
+}
+
 interface ScheduleItem {
   shift: string;
   specialStatus?: string;
@@ -1091,6 +1047,7 @@ interface Employee {
   employee_type?: string;
   realName?: string;
   oldEmployeeId?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any; // 允许任意属性
 }
 
@@ -1123,6 +1080,10 @@ interface Plant {
   id: number;
   name: string;
 }
+
+// 员工相关记录通用接口（用于 formalLeaves, resignationTransfers 等）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface EmployeeRecord { [key: string]: any; }
 
 // 从 localStorage 恢复所有状态
 const savedSubTab = localStorage.getItem('employeeScheduleSubTab');
@@ -1229,7 +1190,7 @@ const loadOverworkReasons = () => {
   try {
     const saved = localStorage.getItem('employeeScheduleOverworkReasons');
     overworkReasons.value = saved ? JSON.parse(saved) : [];
-  } catch (e) {
+  } catch {
     overworkReasons.value = [];
   }
 };
@@ -1271,7 +1232,7 @@ const loadWeeklyLimitReasons = () => {
   try {
     const saved = localStorage.getItem('employeeScheduleWeeklyLimitReasons');
     weeklyLimitReasons.value = saved ? JSON.parse(saved) : [];
-  } catch (e) {
+  } catch {
     weeklyLimitReasons.value = [];
   }
 };
@@ -1313,7 +1274,7 @@ const loadSummaryReasons = () => {
   try {
     const saved = localStorage.getItem('employeeScheduleSummaryReasons');
     summaryReasons.value = saved ? JSON.parse(saved) : [];
-  } catch (e) {
+  } catch {
     summaryReasons.value = [];
   }
 };
@@ -1355,7 +1316,7 @@ const loadIgnoredItems = () => {
   try {
     const saved = localStorage.getItem('ignoredOverworkItems');
     ignoredOverworkItems.value = saved ? JSON.parse(saved) : [];
-  } catch (e) {
+  } catch {
     ignoredOverworkItems.value = [];
   }
 };
@@ -1364,7 +1325,7 @@ const saveIgnoredItems = () => {
   localStorage.setItem('ignoredOverworkItems', JSON.stringify(ignoredOverworkItems.value));
 };
 
-const toggleIgnoreOverwork = (emp: any) => {
+const toggleIgnoreOverwork = (emp: Employee) => {
   const itemIdentifier = {
     employeeId: emp.id,
     startDate: emp.startDate,
@@ -1417,17 +1378,6 @@ const saveReportedRecord = (record: ReportedRecord) => {
   localStorage.setItem('reportedRecords', JSON.stringify(records));
 };
 
-// 检查记录是否已上报（相同的员工、类型、日期范围都不重复显示）
-const isRecordReported = (employeeId: number, type: 'overwork' | 'overlimit', startDate: string, endDate: string): boolean => {
-  const records = getReportedRecords();
-  return records.some(r => 
-    r.employeeId === employeeId && 
-    r.type === type && 
-    r.startDate === startDate && 
-    r.endDate === endDate
-  );
-};
-
 // ==================== 批量选择排班相关 ====================
 interface SelectedCell {
   employeeId: number;
@@ -1438,8 +1388,6 @@ const isSelecting = ref(false); // 是否正在框选
 const selectionStart = ref<SelectedCell | null>(null); // 框选起始单元格
 const copiedCells = ref<{ shift: string; specialStatus?: string }[]>([]); // 复制的排班
 const hasDragged = ref(false); // 是否有拖动
-const currentEditingEmployee = ref<any>(null); // 记录当前要编辑的员工
-const currentEditingDate = ref<string>(''); // 记录当前要编辑的日期
 const selectedDateForButtons = ref<string | null>(null); // 单选日期，用于控制岗位/班次按钮激活
 
 const handleSingleDateSelect = (date: string) => {
@@ -1499,7 +1447,7 @@ const loadAvailableShifts = async () => {
       }
     });
     shiftDurationMap.value = durationMap;
-  } catch (error) {
+  } catch {
     ElMessage.error('加载可用班次失败！');
   }
 };
@@ -1588,14 +1536,13 @@ const submitErrandFix = async () => {
 };
 
 // 破7休1相关 - 使用排班总览的筛选条件
-const overworkingEmployees = ref<any[]>([]);
-const normalEmployees = ref<any[]>([]);
-const totalCheckedEmployees = computed(() => employees.value.length);
+const overworkingEmployees = ref<Employee[]>([]);
+const normalEmployees = ref<Employee[]>([]);
 
 // 周工时上限相关
 const weeklyLimitSetting = ref(63.75);
-const weeklyLimitEmployees = ref<any[]>([]);
-const weeklyNormalEmployees = ref<any[]>([]);
+const weeklyLimitEmployees = ref<Employee[]>([]);
+const weeklyNormalEmployees = ref<Employee[]>([]);
 
 // 考勤汇总相关
 interface OvertimeItem {
@@ -1612,6 +1559,17 @@ interface LeaveItem {
   endTime: string;
   leaveType: string;
   remark?: string;
+}
+
+interface DepartmentSummary {
+  department: string;
+  plant: string;
+  applicant: string;
+  overworkCount: number;
+  overLimitCount: number;
+  totalOverHours: number;
+  period: string;
+  reason: string;
 }
 
 const overtimeList = ref<OvertimeItem[]>([]);
@@ -2067,7 +2025,7 @@ const refreshAttendanceData = () => {
 
 // 汇总数据
 const summaryData = computed(() => {
-  const deptMap = new Map<string, any>();
+  const deptMap = new Map<string, DepartmentSummary>();
 
   // 统计破7休1，忽略被标记的项
   overworkingEmployees.value.forEach(emp => {
@@ -2087,7 +2045,7 @@ const summaryData = computed(() => {
         reason: getSummaryReason(key) // 从持久化存储恢复原因
       });
     }
-    const dept = deptMap.get(key);
+    const dept = deptMap.get(key)!;
     dept.overworkCount++;
   });
 
@@ -2106,7 +2064,7 @@ const summaryData = computed(() => {
         reason: getSummaryReason(key) // 从持久化存储恢复原因
       });
     }
-    const dept = deptMap.get(key);
+    const dept = deptMap.get(key)!;
     dept.overLimitCount++;
     dept.totalOverHours += emp.overLimitHours;
   });
@@ -2324,8 +2282,8 @@ const currentFilterDays = computed(() => {
 const employees = ref<Employee[]>([]);
 const temporaryOvertimes = ref<TemporaryOvertimeItem[]>([]);
 const temporaryLeaves = ref<TemporaryLeaveItem[]>([]);
-const formalLeaves = ref<any[]>([]);
-const resignationTransfers = ref<any[]>([]);
+const formalLeaves = ref<EmployeeRecord[]>([]);
+const resignationTransfers = ref<EmployeeRecord[]>([]);
 const plants = ref<Plant[]>([]);
 const departments = ref<Department[]>([]);
 
@@ -2342,21 +2300,25 @@ const loadPlants = async () => {
       if (Array.isArray(response)) {
         plantsData = response;
       } else if ('plants' in response) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         plantsData = (response as any).plants || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } else if ('data' in response && Array.isArray((response as any).data)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         plantsData = (response as any).data;
       }
     }
 
     plants.value = plantsData;
     console.log('[DEBUG] plants.value 设置完成，数量:', plants.value.length);
-  } catch (error: any) {
-    // 检查是否是取消的请求（路由切换时会发生）
-    if (error?.code === 'CANCELLED' || error?.isCancelled) {
+  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
       return;
     }
     console.error('加载厂区失败:', error);
-    console.error('错误详情:', error?.stack || new Error().stack);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('错误详情:', (error as any)?.stack || new Error().stack);
     ElMessage.error('加载厂区失败！');
   }
 };
@@ -2381,8 +2343,11 @@ const loadDepartments = async () => {
       if (Array.isArray(response)) {
         departmentsData = response;
       } else if ('departments' in response) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         departmentsData = (response as any).departments || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } else if ('data' in response && Array.isArray((response as any).data)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         departmentsData = (response as any).data;
       } else {
         console.warn('[WARN] loadDepartments: 响应格式未知', response);
@@ -2393,15 +2358,18 @@ const loadDepartments = async () => {
 
     departments.value = departmentsData;
     console.log('[DEBUG] departments.value 设置完成，数量:', departments.value.length);
-  } catch (error: any) {
-    // 检查是否是取消的请求（路由切换时会发生）
-    if (error?.code === 'CANCELLED' || error?.isCancelled) {
+  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
       return;
     }
     console.error('加载部门失败:', error);
-    console.error('错误详情:', error);
-    console.error('错误消息:', error?.message);
-    console.error('错误堆栈:', error?.stack);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('错误详情:', (error as any));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('错误消息:', (error as any)?.message);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.error('错误堆栈:', (error as any)?.stack);
     ElMessage.error('加载部门失败！');
   }
 };
@@ -2497,9 +2465,9 @@ const loadEmployeesAndSchedules = async () => {
       leaveList.value = [];
     }
 
-  } catch (error: any) {
-    // 检查是否是取消的请求（路由切换时会发生）
-    if (error?.code === 'CANCELLED' || error?.isCancelled) {
+  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
       console.log('请求被取消（路由切换），忽略此错误');
       return;
     }
@@ -2508,11 +2476,16 @@ const loadEmployeesAndSchedules = async () => {
     // 增强错误信息输出
     if (error) {
       console.error('Error type:', typeof error);
-      console.error('Error message:', error?.message);
-      console.error('Error code:', error?.code);
-      console.error('Error response:', error?.response?.data);
-      if (error.response) {
-        console.error('Error response status:', error.response.status);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      console.error('Error message:', (error as any)?.message);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      console.error('Error code:', (error as any)?.code);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      console.error('Error response:', (error as any)?.response?.data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((error as any)?.response) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.error('Error response status:', (error as any)?.response.status);
       }
     }
     ElMessage.error('加载员工和排班数据失败！');
@@ -2524,6 +2497,7 @@ const loadEmployeesAndSchedules = async () => {
 
 const fetchTemporaryData = async (startDate: string, endDate: string) => {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const overtimeRes = await request.get<any>('/temporary-overtime', {
       params: {
         startDate,
@@ -2534,6 +2508,7 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
     // 拦截器已提取 data，直接使用
     temporaryOvertimes.value = Array.isArray(overtimeRes) ? overtimeRes : (overtimeRes?.items || []);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const leaveRes = await request.get<any>('/temporary-leave', {
       params: {
         startDate,
@@ -2544,6 +2519,7 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
     temporaryLeaves.value = Array.isArray(leaveRes) ? leaveRes : (leaveRes?.items || []);
 
     // 获取年假/请假数据（formal-leave）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const formalLeaveRes = await request.get<any>('/formal-leave', {
       params: {
         startDate,
@@ -2556,6 +2532,7 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
     console.log('[DEBUG] formal-leave API 返回:', JSON.stringify(formalLeaves.value));
 
     // 获取离职/转岗数据
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resignationRes = await request.get<any>('/resignation-transfer', {
       params: {
         startDate,
@@ -2566,9 +2543,9 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
     resignationTransfers.value = Array.isArray(resignationRes) ? resignationRes : (resignationRes?.items || []);
     console.log('[DEBUG] resignation-transfer API 返回:', JSON.stringify(resignationTransfers.value));
 
-  } catch (error: any) {
-    // 检查是否是取消的请求（路由切换时会发生）
-    if (error?.code === 'CANCELLED' || error?.isCancelled) {
+  } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
       console.log('获取临时数据请求被取消（路由切换），忽略此错误');
       return;
     }
@@ -2582,38 +2559,34 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
 
 const calculateEmployeeOvertimeHours = (employeeId: number, startDate: string, endDate: string): number => {
   let total = 0;
-  try {
-    if (!temporaryOvertimes.value || !Array.isArray(temporaryOvertimes.value)) {
-      return 0;
-    }
-    
-    temporaryOvertimes.value.forEach((item) => {
-      if (!item) {
-        return;
-      }
-      
-      if (item.employeeId === employeeId && item.overtimeDate) {
-        try {
-          const overtimeDate = dayjs(item.overtimeDate);
-          const rangeStart = dayjs(startDate);
-          const rangeEnd = dayjs(endDate);
-          
-          if (!overtimeDate.isValid()) {
-            return;
-          }
-          const overtimeDateStr = overtimeDate.format('YYYY-MM-DD');
-          const isInRange = overtimeDateStr >= startDate && overtimeDateStr <= endDate;
-          
-          if (isInRange) {
-            const hours = Number(item.hours) || 0;
-            total += hours;
-          }
-        } catch (dateError) {
-        }
-      }
-    });
-  } catch (error) {
+  if (!temporaryOvertimes.value || !Array.isArray(temporaryOvertimes.value)) {
+    return 0;
   }
+
+  temporaryOvertimes.value.forEach((item) => {
+    if (!item) {
+      return;
+    }
+
+    if (item.employeeId === employeeId && item.overtimeDate) {
+      try {
+        const overtimeDate = dayjs(item.overtimeDate);
+
+        if (!overtimeDate.isValid()) {
+          return;
+        }
+        const overtimeDateStr = overtimeDate.format('YYYY-MM-DD');
+        const isInRange = overtimeDateStr >= startDate && overtimeDateStr <= endDate;
+
+        if (isInRange) {
+          const hours = Number(item.hours) || 0;
+          total += hours;
+        }
+      } catch {
+        // 忽略日期解析错误
+      }
+    }
+  });
   return total;
 };
 
@@ -2672,10 +2645,10 @@ const fetchEmployees = async () => {
     
     try {
       await fetchTemporaryData(startDate, endDate);
-    } catch (tempError) {
+    } catch {
       ElMessage.warning('获取临时数据失败，继续加载排班数据！');
     }
-    
+
     const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
       params: { startDate, endDate }
     });
@@ -2684,6 +2657,7 @@ const fetchEmployees = async () => {
 
     if (data?.employees) {
     const viewStartDate = dayjs(startDate);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const filteredEmployees = data.employees.filter((emp: any) => {
       if (!emp.leaveDate) {
         return true;
@@ -2703,8 +2677,10 @@ const fetchEmployees = async () => {
       return viewStartDate.isBefore(firstHiddenCycleStart);
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     employees.value = filteredEmployees.map((emp: any) => {
       let scheduleHours = 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       Object.values(emp.schedule || {}).forEach((scheduleInfo: any) => {
         const shift = scheduleInfo?.shift || '';
         scheduleHours += getWorkHours(shift);
@@ -2715,7 +2691,7 @@ const fetchEmployees = async () => {
       try {
         overtimeHours = calculateEmployeeOvertimeHours(emp.id, startDate, endDate);
         leaveHours = calculateEmployeeLeaveHours(emp.id, startDate, endDate);
-      } catch (e) {
+      } catch {
         ElMessage.warning('计算临时工时失败！');
       }
       
@@ -2736,7 +2712,7 @@ const fetchEmployees = async () => {
   } else {
     employees.value = [];
   }
-  } catch (error) {
+  } catch {
     ElMessage.error('获取员工数据失败！');
   } finally {
     isLoading.value = false;
@@ -2807,7 +2783,7 @@ onMounted(async () => {
     }
   });
   
-  document.addEventListener('mouseup', (e) => {
+  document.addEventListener('mouseup', () => {
     // 如果是右键，不执行 endSelection
     if (lastMouseButton.value === 2) {
       console.log('右键松开，不执行 endSelection');
@@ -2997,10 +2973,6 @@ const applyShiftFilter = () => {
 
 // 班次定义
 
-const specialStatuses = ['年假', '请假', '旷工', '离职'];
-
-
-
 const filteredEmployees = computed(() => {
   return employees.value.filter(emp => {
     // 排班总览不过滤 employeeType，只进行岗位和班次过滤
@@ -3018,6 +2990,7 @@ const filteredEmployees = computed(() => {
     if (scheduleShiftFilter.value.length === 0) return true;
     
     // 获取当前视图的日期
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let currentDays: any[] = [];
     if (scheduleViewMode.value === 'week') {
       currentDays = weekDays.value;
@@ -3046,62 +3019,32 @@ watch(filteredEmployees, () => {
   }
 });
 
-const totalPages = computed(() => {
-  return Math.ceil(filteredEmployees.value.length / pageSize.value);
-});
-
 const paginatedEmployees = computed(() => {
   const start = (currentPage.value - 1) * pageSize.value;
   const end = start + pageSize.value;
   return filteredEmployees.value.slice(start, end);
 });
 
-const visiblePages = computed(() => {
-  const pages = [];
-  const total = totalPages.value;
-  const current = currentPage.value;
-  
-  // 显示的页码范围
-  let start = Math.max(1, current - 2);
-  let end = Math.min(total, current + 2);
-  
-  // 确保至少显示5个页码
-  if (end - start < 4) {
-    if (start === 1) {
-      end = Math.min(5, total);
-    } else if (end === total) {
-      start = Math.max(1, total - 4);
-    }
-  }
-  
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-  
-  return pages;
-});
-
 // 汇总数据计算
-const shiftCount = computed(() => {
-  const counts: { [key: string]: number } = { 'A班': 0, 'B班': 0, 'C班': 0, 'N班': 0, 'A+': 0, 'B+': 0, 'C+': 0, 'N+': 0, 'A2': 0, '休': 0 };
-  weekDays.value.forEach(day => {
-    filteredEmployees.value.forEach(emp => {
-      const shift = emp.schedule[day.date]?.shift;
-      if (shift && counts.hasOwnProperty(shift)) {
-        counts[shift] = (counts[shift] || 0) + 1;
-      }
-    });
-  });
-  return counts;
-});
-
-const totalScheduledCount = computed(() => {
-  return Object.values(shiftCount.value).reduce((a, b) => a + b, 0);
-});
+// 注意: shiftCount 未使用，已注释保留以便将来启用
+// const shiftCount = computed(() => {
+//   const counts: { [key: string]: number } = { 'A班': 0, 'B班': 0, 'C班': 0, 'N班': 0, 'A+': 0, 'B+': 0, 'C+': 0, 'N+': 0, 'A2': 0, '休': 0 };
+//   weekDays.value.forEach(day => {
+//     filteredEmployees.value.forEach(emp => {
+//       const shift = emp.schedule[day.date]?.shift;
+//       if (shift && counts.hasOwnProperty(shift)) {
+//         counts[shift] = (counts[shift] || 0) + 1;
+//       }
+//     });
+//   });
+//   return counts;
+// });
 
 // 计算单个员工在当前筛选日期范围内的工时
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getEmployeeHours = (emp: any) => {
   // 获取当前视图的日期范围
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let currentDays: any[] = [];
   let startDate = '';
   let endDate = '';
@@ -3161,6 +3104,7 @@ const levelHoursSummary = computed(() => {
 
   filteredEmployees.value.forEach(emp => {
     // 获取当前视图的日期范围
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let currentDays: any[] = [];
     if (scheduleViewMode.value === 'week') {
       currentDays = weekDays.value;
@@ -3233,50 +3177,43 @@ const getWorkHours = (shift: string): number => {
       return 12;
     case 'A2':
       return 10.5;
-    case '休':
-    case '休息':
-    case '年假':
-    case '调休':
-    case '请假':
-    case '离职':
-      return 0;
     default:
       return 0;
   }
 };
 
 const getShiftClass = (shift: string) => {
-  switch (shift) {
-    case 'A班':
-    case 'A':
-      return 'shift-a';
-    case 'B班':
-    case 'B':
-      return 'shift-b';
-    case 'C班':
-    case 'C':
-      return 'shift-c';
-    case 'N班':
-    case 'N':
-      return 'shift-n';
-    case 'A+':
-      return 'shift-a-plus';
-    case 'B+':
-      return 'shift-b-plus';
-    case 'C+':
-      return 'shift-c-plus';
-    case 'N+':
-      return 'shift-n-plus';
-    case 'A2':
-      return 'shift-a2';
-    case '休':
-    case '休息':
-      return 'shift-rest';
-    case '调休':
-      return 'shift-day-off';
-    default:
-      return '';
+  if (!shift) return '';
+
+  // 其他班次类型
+  if (shift.includes('调休')) return 'shift-overtime';
+  if (shift.includes('请假')) return 'shift-leave';
+  if (shift.includes('年假')) return 'shift-annual';
+  if (shift.includes('离职')) return 'shift-resign';
+  if (shift.includes('旷工')) return 'shift-absent';
+
+  // 获取班次前缀（A, B, C, N）
+  const prefix = shift.charAt(0).toUpperCase();
+
+  if (prefix === 'A') {
+    if (shift.includes('+')) return 'shift-a-plus';
+    if (shift.includes('2') || shift.includes('晚')) return 'shift-a2';
+    return 'shift-a';
   }
+  if (prefix === 'B') {
+    if (shift.includes('+')) return 'shift-b-plus';
+    return 'shift-b';
+  }
+  if (prefix === 'C') {
+    if (shift.includes('+')) return 'shift-c-plus';
+    return 'shift-c';
+  }
+  if (prefix === 'N') {
+    if (shift.includes('+')) return 'shift-n-plus';
+    return 'shift-n';
+  }
+
+  return '';
 };
 
 // 排班编辑弹窗
@@ -3354,12 +3291,8 @@ const saveShift = async () => {
       // 如果有临时事项，先保存临时事项
       if (tempMatter.type && tempMatter.startTime && tempMatter.endTime && tempMatter.reason) {
         const hours = calculateTempMatterDurationAsNumber();
-        
-        // 构建完整的时间字符串 (YYYY-MM-DD HH:mm:ss)
-        const fullStartTime = `${editingDate.value} ${tempMatter.startTime}:00`;
-        const fullEndTime = `${editingDate.value} ${tempMatter.endTime}:00`;
-        
-        if (tempMatter.type === '加班') {
+
+        if (tempMatter.type === '临时加班') {
           // 保存到临时加班
           const overtimeData = {
             employeeId: editingEmployee.value.id,
@@ -3380,7 +3313,7 @@ const saveShift = async () => {
             ElMessage.success('临时加班保存成功！');
             // 刷新临时加班数据
             await fetchTemporaryData(editingDate.value, editingDate.value);
-          } catch (error) {
+          } catch {
             ElMessage.error('临时加班记录保存失败，请稍后重试！');
             return;
           }
@@ -3390,7 +3323,7 @@ const saveShift = async () => {
             employeeId: editingEmployee.value.id,
             plantId: editingEmployee.value.plantId || 0,
             departmentId: editingEmployee.value.departmentId || 0,
-            leaveType: tempMatter.type === '请假' ? 'LEAVE' : 'ERRAND',
+            leaveType: tempMatter.type === '临时请假' ? 'LEAVE' : 'ERRAND',
             startDate: editingDate.value,
             endDate: editingDate.value,
             startTime: tempMatter.startTime,
@@ -3406,7 +3339,7 @@ const saveShift = async () => {
             ElMessage.success('临时请假/公差保存成功！');
             // 刷新临时请假数据
             await fetchTemporaryData(editingDate.value, editingDate.value);
-          } catch (error) {
+          } catch {
             ElMessage.error('临时请假/公差记录保存失败，请稍后重试！');
             return;
           }
@@ -3451,10 +3384,10 @@ const saveShift = async () => {
 
         // 保存成功后，重新获取数据
         await fetchEmployees();
-      } catch (error) {
+      } catch {
         ElMessage.error('排班保存失败，请稍后重试！');
       }
-    } catch (error) {
+    } catch {
       ElMessage.error('保存失败，请重试！');
     }
   }
@@ -3475,7 +3408,7 @@ const deleteShift = async () => {
       // 删除成功后，重新获取数据
       await fetchEmployees();
       ElMessage.success('排班删除成功！');
-    } catch (error) {
+    } catch {
       ElMessage.error('删除排班失败！');
     }
   }
@@ -3531,6 +3464,7 @@ const oneClickSchedule = () => {
 
 const printSchedule = () => {
   // 确定要打印的日期范围
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let daysToPrint: any[] = [];
   let headerTitle = '';
   
@@ -3643,6 +3577,7 @@ const printSchedule = () => {
   `;
 
   // 添加员工排班数据
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   filteredEmployees.value.forEach((employee: any, index: number) => {
     printContent += `
       <tr>
@@ -3732,7 +3667,7 @@ const downloadScheduleTemplate = async () => {
     a.click();
     window.URL.revokeObjectURL(url);
     ElMessage.success('排班模板下载成功！');
-  } catch (error) {
+  } catch {
     ElMessage.error('下载模板失败！');
   }
 };
@@ -3860,8 +3795,9 @@ const exportAttendance = () => {
   }
   
   console.log('📅 导出日期范围:', startDate.format('YYYY-MM-DD'), '至', endDate.format('YYYY-MM-DD'));
-  
+
   // 生成Excel数据
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const excelData: any[][] = [];
   
   // 表头
@@ -3874,11 +3810,13 @@ const exportAttendance = () => {
   // 遍历员工（过滤掉 employee_type 等于 "jabil" 的）
   filteredEmployees.value.forEach(emp => {
     // 检查 employee_type 字段
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const employeeType = (emp as any).employee_type;
     if (employeeType && String(employeeType).toLowerCase() === 'jabil') {
       return; // 跳过
     }
-    
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row: any[] = [(emp as any).oldEmployeeId || emp.sap, emp.name];
     // 遍历日期
     dateRangeList.forEach(d => {
@@ -3886,7 +3824,7 @@ const exportAttendance = () => {
       let code = '';
       if (schedule) {
         const shift = schedule.shift;
-        const specialStatus = (schedule as any).specialStatus;
+        const specialStatus = (schedule as ScheduleItem).specialStatus;
         
         // 检查是否是周一到周五的请假/调休
         if (d.dayOfWeek >= 1 && d.dayOfWeek <= 5) {
@@ -3957,7 +3895,7 @@ const handleScheduleFileUpload = async (e: Event) => {
     formData.append('file', file as Blob);
 
     try {
-      const result = await request.post<any>('/batch/schedule/batch-upload', formData);
+      const result = await request.post<BatchUploadResponse>('/batch/schedule/batch-upload', formData);
 
       if (!result || typeof result !== 'object') {
         throw new Error(`服务器返回数据格式异常`);
@@ -3970,15 +3908,19 @@ const handleScheduleFileUpload = async (e: Event) => {
       if (result.errors && result.errors.length > 0) {
         ElMessage.warning(`文件 "${file.name}" 导入存在部分错误，请查看控制台！`);
       }
-    } catch (error: any) {
+    } catch (error) {
       anyError = true;
       let errorMsg = `文件 "${file.name}" 导入失败`;
-      if (error.response && error.response.data && error.response.data.details && error.response.data.details.length > 0) {
-        errorMsg += ':\n' + error.response.data.details.slice(0, 3).map((err: any) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((error as any)?.response?.data?.details && (error as any)?.response?.data?.details?.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        errorMsg += ':\n' + (error as any).response.data.details.slice(0, 3).map((err: any) =>
           typeof err === 'object' ? `第${err.row}行: ${err.error}` : String(err)
         ).join('\n');
-      } else if (error.message) {
-        errorMsg += ':\n' + error.message;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } else if ((error as any)?.message) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        errorMsg += ':\n' + (error as any).message;
       }
       ElMessage.error(errorMsg);
     }
@@ -4012,11 +3954,9 @@ const handleRightClick = (e: MouseEvent, employeeId: number, date: string) => {
   // Clear any existing single date selection if a batch operation is initiated
   selectedDateForButtons.value = null; 
   
-  // 先取消正在进行的框选，并清空编辑状态
+  // 先取消正在进行的框选
   isSelecting.value = false;
   hasDragged.value = true; // 标记为有拖动，防止 endSelection 打开对话框
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
   
   // 如果点击的单元格不在选中列表中，就只选中这一个
   if (!isCellSelected(employeeId, date)) {
@@ -4035,11 +3975,7 @@ const startSelection = (employeeId: number, date: string, e: MouseEvent) => {
   isSelecting.value = true;
   hasDragged.value = false;
   selectionStart.value = { employeeId, date };
-  
-  // 不再保存编辑状态，因为现在是双击才打开编辑
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
-  
+
   selectedCells.value = [{ employeeId, date }];
   e.preventDefault();
   // Clear any existing single date selection if a batch operation is initiated
@@ -4143,7 +4079,7 @@ const pasteSelection = async () => {
             shift: copiedData.shift,
             specialStatus: copiedData.specialStatus
           });
-        } catch (error) {
+        } catch {
           ElMessage.error(`保存排班失败: ${cell.date}`);
         }
       }
@@ -4164,8 +4100,6 @@ const clearSelection = () => {
   selectedCells.value = [];
   isSelecting.value = false;
   selectionStart.value = null;
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
   hasDragged.value = true;
 };
 
@@ -4178,10 +4112,8 @@ const handleClearSelection = () => {
 // 清空选中单元格的排班
 const handleClearSchedule = async () => {
   if (selectedCells.value.length === 0) return;
-  
+
   // 提前设置状态，防止误触发
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
   hasDragged.value = true;
   
   try {
@@ -4219,7 +4151,7 @@ const handleClearSchedule = async () => {
           await request.delete('/formal-leave/by-employee-date', {
             params: { employeeId: cell.employeeId, date: cell.date }
           });
-        } catch (e) {
+        } catch {
           // 忽略删除请假/年假记录的错误（可能没有记录）
         }
 
@@ -4228,15 +4160,15 @@ const handleClearSchedule = async () => {
           await request.delete('/formal-leave/resignation/by-employee-date', {
             params: { employeeId: cell.employeeId, date: cell.date }
           });
-        } catch (e) {
+        } catch {
           // 忽略删除离职/转岗记录的错误（可能没有记录）
         }
-      } catch (error) {
+      } catch {
         ElMessage.error(`删除排班失败: ${cell.date}`);
       }
     }
   }
-  
+
   clearSelection();
   await fetchEmployees();
 };
@@ -4259,9 +4191,7 @@ const openBatchShiftEdit = () => {
   isContextMenuOpen.value = false;
   isBatchShiftEditOpen.value = true;
   batchShiftValue.value = '';
-  // 关键：提前设置这些状态，防止后续 endSelection 打开单日编辑
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
+  // 关键：提前设置状态，防止后续 endSelection 打开单日编辑
   hasDragged.value = true;
 };
 
@@ -4274,9 +4204,7 @@ const saveBatchShift = async () => {
 
   // 先关闭对话框
   isBatchShiftEditOpen.value = false;
-  // 清空编辑相关状态，防止后续触发打开
-  currentEditingEmployee.value = null;
-  currentEditingDate.value = '';
+  // 清空状态，防止后续触发打开
   hasDragged.value = true;
   
   // 批量保存
@@ -4293,8 +4221,7 @@ const saveBatchShift = async () => {
           ...emp.schedule,
           [cell.date]: {
             ...emp.schedule[cell.date],
-            shift: batchShiftValue.value,
-            specialStatus: batchShiftValue.value === '休息' || batchShiftValue.value === '调休' ? batchShiftValue.value : undefined
+            shift: batchShiftValue.value
           }
         };
       }
@@ -4304,10 +4231,9 @@ const saveBatchShift = async () => {
         await request.post('/schedule/save', {
           employeeId: cell.employeeId,
           scheduleDate: cell.date,
-          shift: batchShiftValue.value === '休息' || batchShiftValue.value === '调休' ? '休息' : batchShiftValue.value,
-          specialStatus: batchShiftValue.value === '休息' || batchShiftValue.value === '调休' ? batchShiftValue.value : null
+          shift: batchShiftValue.value
         });
-      } catch (error) {
+      } catch {
         ElMessage.error(`保存排班失败: ${cell.date}`);
       }
     }
@@ -4374,7 +4300,7 @@ onMounted(async () => {
   });
   
   // 鼠标松开时结束框选（全局）
-  document.addEventListener('mouseup', (e) => {
+  document.addEventListener('mouseup', () => {
     // 如果是右键，不执行 endSelection
     if (lastMouseButton.value === 2) {
       return;
@@ -4395,25 +4321,6 @@ onMounted(async () => {
     }
   });
 });
-
-// 分页方法
-const goToPage = (page: number) => {
-  if (page >= 1 && page <= totalPages.value) {
-    currentPage.value = page;
-  }
-};
-
-const prevPage = () => {
-  if (currentPage.value > 1) {
-    currentPage.value--;
-  }
-};
-
-const nextPage = () => {
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++;
-  }
-};
 
 // 监听筛选变化时重置页码
 watch(filteredEmployees, () => {
@@ -4477,7 +4384,6 @@ const checkOverworking = () => {
     let consecutiveDays = 0;
     let startDate = null;
     let lastWorkDate = null;
-    const overworkRecordFound = false;
     // 用于保存最终的记录，确保取的是与视图重叠的那一段
     let finalConsecutiveDays = 0;
     let finalStartDate = null;
@@ -4493,68 +4399,59 @@ const checkOverworking = () => {
     while (currentDate.isBefore(checkEnd) || currentDate.isSame(checkEnd)) {
       const dateStr = currentDate.format('YYYY-MM-DD');
       const schedule = emp.schedule[dateStr];
-      
-      // 检查是否是工作日（非休息、非调休、非请假、非离职、非年假、非旷工，或特殊状态为离职）
-      const isRestStatus = schedule && (
+
+      // 检查是否是工作日（有班次安排）
+      const isWorkDay = schedule && schedule.shift;
+
+      // 检查是否是休息类班次（调休、请假、年假、离职、旷工）
+      // 这些班次会中断连续工作天数计数
+      const isRestShift = schedule && (
         schedule.specialStatus === '离职' ||
-        ['调休', '请假', '年假', '旷工', '离职', '休', '休息'].includes(schedule.shift)
+        ['调休', '请假', '年假', '旷工', '离职'].includes(schedule.shift)
       );
-      const isWorkDay = schedule && !isRestStatus && schedule.shift;
-      
+
       // 如果是工作日
-      if (isWorkDay) {
+      if (isWorkDay && !isRestShift) {
         if (consecutiveDays === 0) {
           startDate = dateStr;
         }
         consecutiveDays++;
         lastWorkDate = dateStr;
-        
+
         if (isTargetEmployee) {
           console.log(`🔍 [${index}] ${empName} - ${dateStr}: shift=${schedule?.shift}, 工作日, 连续${consecutiveDays}天`);
         }
-        
+
         // 如果连续工作≥7天，检查这个时间段是否与视图范围有重叠
         if (consecutiveDays >= 7) {
           const checkOverlapStart = dayjs(startDate);
           const checkOverlapEnd = dayjs(lastWorkDate);
           let hasOverlapWithView = false;
-          
+
           // 正确的重叠判断：start <= viewEnd AND end >= viewStart
           if ((checkOverlapStart.isBefore(viewEnd) || checkOverlapStart.isSame(viewEnd)) &&
               (checkOverlapEnd.isAfter(viewStart) || checkOverlapEnd.isSame(viewStart))) {
             hasOverlapWithView = true;
           }
-          
+
           if (hasOverlapWithView) {
             // 更新最终记录，取最后一个符合条件的
             finalConsecutiveDays = consecutiveDays;
             finalStartDate = startDate;
             finalEndDate = lastWorkDate;
-            
+
             if (isTargetEmployee) {
               console.log(`🔍 [${index}] ${empName}: 找到符合条件的记录: 连续${finalConsecutiveDays}天 (${finalStartDate} 至 ${finalEndDate})`);
             }
           }
         }
       } else {
-        // 只有调休和请假才会中断连续工作
-        const isInterruptDay = schedule && (
-          schedule.shift === '调休' || 
-          schedule.shift === '请假'
-        );
-        
-        if (isInterruptDay) {
-          if (isTargetEmployee) {
-            console.log(`🔍 [${index}] ${empName} - ${dateStr}: shift=${schedule?.shift}, 中断连续工作！`);
-          }
-          consecutiveDays = 0;
-          startDate = null;
-          lastWorkDate = null;
-        } else if (isTargetEmployee) {
-          console.log(`🔍 [${index}] ${empName} - ${dateStr}: shift=${schedule?.shift}, 不中断`);
-        }
+        // 非工作日或休息类班次，重置连续计数
+        consecutiveDays = 0;
+        startDate = null;
+        lastWorkDate = null;
       }
-      
+
       currentDate = currentDate.add(1, 'day');
     }
     
@@ -4797,10 +4694,8 @@ const exportToExcel = async () => {
   summarySheet.addRow(['李志', 'MPL/Phase V/OOCL/YL']);
   
   // 只给表格部分应用样式：边框和居中
-  // @ts-ignore
   summarySheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber <= tableRowCount) {
-      // @ts-ignore
       row.eachCell((cell) => {
         cell.border = {
           top: { style: 'thin' },
@@ -5526,9 +5421,7 @@ const exportOvertimeToExcel = async () => {
     });
     
     // 应用样式
-    // @ts-ignore
     overtimeSheet.eachRow({ includeEmpty: false }, (row) => {
-      // @ts-ignore
       row.eachCell((cell) => {
         cell.border = {
           top: { style: 'thin' },
@@ -5544,19 +5437,22 @@ const exportOvertimeToExcel = async () => {
     });
     
     // 适配列宽
-    // @ts-ignore
-    overtimeSheet.columns!.forEach(column => {
-      let maxLength = 10;
-      // @ts-ignore
-      column.eachCell({ includeEmpty: true }, cell => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxLength) {
-          maxLength = columnLength;
+    if (overtimeSheet.columns) {
+      overtimeSheet.columns.forEach(column => {
+        if (!column) return;
+        let maxLength = 10;
+        if (column.eachCell) {
+          column.eachCell({ includeEmpty: true }, cell => {
+            const columnLength = cell.value ? cell.value.toString().length : 10;
+            if (columnLength > maxLength) {
+              maxLength = columnLength;
+            }
+          });
         }
+        column.width = maxLength < 10 ? 10 : maxLength;
       });
-      column.width = maxLength < 10 ? 10 : maxLength;
-    });
-    
+    }
+
     // 生成Excel
     const excelBuffer = await workbook.xlsx.writeBuffer();
     const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -5594,9 +5490,7 @@ const exportLeaveToExcel = async () => {
     });
     
     // 应用样式
-    // @ts-ignore
     leaveSheet.eachRow({ includeEmpty: false }, (row) => {
-      // @ts-ignore
       row.eachCell((cell) => {
         cell.border = {
           top: { style: 'thin' },
@@ -5610,21 +5504,24 @@ const exportLeaveToExcel = async () => {
         };
       });
     });
-    
+
     // 适配列宽
-    // @ts-ignore
-    leaveSheet.columns!.forEach(column => {
-      let maxLength = 10;
-      // @ts-ignore
-      column.eachCell({ includeEmpty: true }, cell => {
-        const columnLength = cell.value ? cell.value.toString().length : 10;
-        if (columnLength > maxLength) {
-          maxLength = columnLength;
+    if (leaveSheet.columns) {
+      leaveSheet.columns.forEach(column => {
+        if (!column) return;
+        let maxLength = 10;
+        if (column.eachCell) {
+          column.eachCell({ includeEmpty: true }, cell => {
+            const columnLength = cell.value ? cell.value.toString().length : 10;
+            if (columnLength > maxLength) {
+              maxLength = columnLength;
+            }
+          });
         }
+        column.width = maxLength < 10 ? 10 : maxLength;
       });
-      column.width = maxLength < 10 ? 10 : maxLength;
-    });
-    
+    }
+
     // 生成Excel
     const excelBuffer = await workbook.xlsx.writeBuffer();
     const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -6091,7 +5988,7 @@ const exportLeaveToExcel = async () => {
 .schedule-table th,
 .schedule-table td {
   border: 1px solid #E5E7EB;
-  padding: 4px 6px;
+  padding: 2px 3px;
   text-align: center;
   vertical-align: middle;
   font-size: 12px;
@@ -6114,6 +6011,8 @@ const exportLeaveToExcel = async () => {
   left: 0;
   z-index: 20;
   background-color: #FFFFFF;
+  min-width: 120px;
+  max-width: 120px;
 }
 
 /* 固定行和固定列交叉的单元格 - 需要最高层级 */
@@ -6121,6 +6020,8 @@ const exportLeaveToExcel = async () => {
   z-index: 60;
   background-color: #F9FAFB;
   top: 0;
+  min-width: 120px;
+  max-width: 120px;
 }
 
 .schedule-table th.today {
@@ -6221,8 +6122,8 @@ const exportLeaveToExcel = async () => {
 
 /* 表头内边距优化 */
 .schedule-table th:not(.sticky-col) {
-  padding: 8px 4px;
-  min-width: 40px;
+  padding: 4px 2px;
+  min-width: 24px;
 }
 
 .schedule-table th:not(.sticky-col) .day-header {
@@ -6281,12 +6182,12 @@ const exportLeaveToExcel = async () => {
 .employee-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .employee-avatar {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0066CC 0%, #0052A3 100%);
   color: #FFFFFF;
@@ -6294,7 +6195,7 @@ const exportLeaveToExcel = async () => {
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   flex-shrink: 0;
 }
 
@@ -6338,6 +6239,7 @@ const exportLeaveToExcel = async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .shift-cell:hover {
@@ -6409,138 +6311,173 @@ const exportLeaveToExcel = async () => {
   padding: 12px 4px;
 }
 
-/* 班次选择弹窗里的颜色 - 更美观协调的配色 */
-.shift-option.shift-a { 
-  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%); 
-  color: #1E293B; 
-  border: 1px solid #94A3B8; 
+/* ========== 班次颜色 - 统一渐变配色方案 ========== */
+
+/* 班次选择弹窗里的颜色 */
+.shift-option {
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
-.shift-option.shift-b { 
-  background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 100%); 
-  color: white; 
-  border: 1px solid #2563EB; 
-}
-.shift-option.shift-c { 
-  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%); 
-  color: #065F46; 
-  border: 1px solid #10B981; 
-}
-.shift-option.shift-n { 
-  background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); 
-  color: white; 
-  border: 1px solid #7C3AED; 
-}
-.shift-option.shift-a-plus { 
-  background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); 
-  color: #92400E; 
-  border: 1px solid #D97706; 
-}
-.shift-option.shift-b-plus { 
-  background: linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%); 
-  color: white; 
-  border: 1px solid #DC2626; 
-}
-.shift-option.shift-c-plus { 
-  background: linear-gradient(135deg, #67E8F9 0%, #06B6D4 100%); 
-  color: white; 
-  border: 1px solid #0891B2; 
-}
-.shift-option.shift-n-plus { 
-  background: linear-gradient(135deg, #FBCFE8 0%, #EC4899 100%); 
-  color: white; 
-  border: 1px solid #DB2777; 
-}
-.shift-option.shift-a2 { 
-  background: linear-gradient(135deg, #818CF8 0%, #6366F1 100%); 
-  color: white; 
-  border: 1px solid #4F46E5; 
-}
-.shift-option.shift-rest { 
-  background: linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%); 
-  color: #4B5563; 
-  border: 1px solid #9CA3AF; 
-}
-.shift-option.shift-day-off { 
-  background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%); 
-  color: #4338CA; 
-  border: 1px solid #818CF8; 
+.shift-option:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
-/* 排班表格里的颜色 - 更美观协调的配色 */
-.shift-cell.shift-a { 
-  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%) !important; 
-  color: #1E293B !important; 
-  border: 1px solid #94A3B8 !important; 
+.shift-option.shift-a {
+  background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-b {
+  background: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-c {
+  background: linear-gradient(135deg, #14B8A6 0%, #2DD4BF 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-n {
+  background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-a-plus {
+  background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-b-plus {
+  background: linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-c-plus {
+  background: linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-n-plus {
+  background: linear-gradient(135deg, #A855F7 0%, #C084FC 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-a2 {
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
+  color: white;
+  border: none;
 }
 
-.shift-cell.shift-b { 
-  background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 100%) !important; 
-  color: white !important; 
-  border: 1px solid #2563EB !important; 
+/* 其他班次类型 - 渐变色 */
+.shift-option.shift-overtime {
+  background: linear-gradient(135deg, #10B981 0%, #34D399 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-leave {
+  background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-annual {
+  background: linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-resign {
+  background: linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%);
+  color: white;
+  border: none;
+}
+.shift-option.shift-absent {
+  background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+  color: white;
+  border: none;
 }
 
-.shift-cell.shift-c { 
-  background: linear-gradient(135deg, #6EE7B7 0%, #34D399 100%) !important; 
-  color: #065F46 !important; 
-  border: 1px solid #10B981 !important; 
+/* 排班表格里的颜色 - 渐变 */
+.shift-cell {
+  border-radius: 6px;
+  font-weight: 500;
+  text-align: center;
+  padding: 4px 2px;
+}
+.shift-cell.shift-a {
+  background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-b {
+  background: linear-gradient(135deg, #F97316 0%, #FB923C 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-c {
+  background: linear-gradient(135deg, #14B8A6 0%, #2DD4BF 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-n {
+  background: linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-a-plus {
+  background: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-b-plus {
+  background: linear-gradient(135deg, #EC4899 0%, #F472B6 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-c-plus {
+  background: linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-n-plus {
+  background: linear-gradient(135deg, #A855F7 0%, #C084FC 100%) !important;
+  color: white !important;
+  border: none !important;
+}
+.shift-cell.shift-a2 {
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%) !important;
+  color: white !important;
+  border: none !important;
 }
 
-.shift-cell.shift-n { 
-  background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%) !important; 
-  color: white !important; 
-  border: 1px solid #7C3AED !important; 
+/* 其他班次类型 - 渐变色 */
+.shift-cell.shift-overtime {
+  background: linear-gradient(135deg, #10B981 0%, #34D399 100%) !important;
+  color: white !important;
+  border: none !important;
 }
-
-.shift-cell.shift-a-plus { 
-  background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%) !important; 
-  color: #92400E !important; 
-  border: 1px solid #D97706 !important; 
+.shift-cell.shift-leave {
+  background: linear-gradient(135deg, #6366F1 0%, #818CF8 100%) !important;
+  color: white !important;
+  border: none !important;
 }
-
-.shift-cell.shift-b-plus { 
-  background: linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%) !important; 
-  color: white !important; 
-  border: 1px solid #DC2626 !important; 
+.shift-cell.shift-annual {
+  background: linear-gradient(135deg, #0EA5E9 0%, #38BDF8 100%) !important;
+  color: white !important;
+  border: none !important;
 }
-
-.shift-cell.shift-c-plus { 
-  background: linear-gradient(135deg, #67E8F9 0%, #06B6D4 100%) !important; 
-  color: white !important; 
-  border: 1px solid #0891B2 !important; 
+.shift-cell.shift-resign {
+  background: linear-gradient(135deg, #6B7280 0%, #9CA3AF 100%) !important;
+  color: white !important;
+  border: none !important;
 }
-
-.shift-cell.shift-n-plus { 
-  background: linear-gradient(135deg, #FBCFE8 0%, #EC4899 100%) !important; 
-  color: white !important; 
-  border: 1px solid #DB2777 !important; 
+.shift-cell.shift-absent {
+  background: linear-gradient(135deg, #EF4444 0%, #F87171 100%) !important;
+  color: white !important;
+  border: none !important;
 }
-
-.shift-cell.shift-a2 { 
-  background: linear-gradient(135deg, #818CF8 0%, #6366F1 100%) !important; 
-  color: white !important; 
-  border: 1px solid #4F46E5 !important; 
-}
-
-.shift-cell.shift-rest { 
-  background: linear-gradient(135deg, #E5E7EB 0%, #D1D5DB 100%) !important; 
-  color: #4B5563 !important; 
-  border: 1px solid #9CA3AF !important; 
-}
-
-/* 特殊状态样式 */
-.special-status {
-  font-weight: 600;
-  font-size: 16px;
-  margin-top: 2px;
-  border: 1px solid;
-  border-radius: 4px;
-  padding: 12px 4px;
-}
-.special-status[data-status="休息"] { color: #EF4444; border-color: #EF4444; }
-.special-status[data-status="年假"] { color: #F59E0B; border-color: #F59E0B; }
-.special-status[data-status="请假"] { color: #F59E0B; border-color: #F59E0B; }
-.special-status[data-status="旷工"] { color: #DC2626; border-color: #DC2626; }
-.special-status[data-status="离职"] { color: #6B7280; border-color: #6B7280; }
 
 
 /* 子页面Tab */
@@ -6936,48 +6873,6 @@ const exportLeaveToExcel = async () => {
   height: 14px;
 }
 
-/* 给特殊状态不同的颜色 */
-.special-status-options label:has(input[value="调休"]) {
-  color: #8B5CF6;
-  border: 1px solid #DDD6FE;
-  background-color: #FAF5FF;
-}
-.special-status-options label:has(input[value="调休"]):hover {
-  background-color: #EDE9FE;
-}
-.special-status-options label:has(input[value="年假"]) {
-  color: #0891B2;
-  border: 1px solid #A5F3FC;
-  background-color: #ECFEFF;
-}
-.special-status-options label:has(input[value="年假"]):hover {
-  background-color: #CFFAFE;
-}
-.special-status-options label:has(input[value="请假"]) {
-  color: #EA580C;
-  border: 1px solid #FED7AA;
-  background-color: #FFF7ED;
-}
-.special-status-options label:has(input[value="请假"]):hover {
-  background-color: #FFEDD5;
-}
-.special-status-options label:has(input[value="旷工"]) {
-  color: #DC2626;
-  border: 1px solid #FECACA;
-  background-color: #FEF2F2;
-}
-.special-status-options label:has(input[value="旷工"]):hover {
-  background-color: #FEE2E2;
-}
-.special-status-options label:has(input[value="离职"]) {
-  color: #6B7280;
-  border: 1px solid #E5E7EB;
-  background-color: #F9FAFB;
-}
-.special-status-options label:has(input[value="离职"]):hover {
-  background-color: #F3F4F6;
-}
-
 .temporary-matter {
   display: flex;
   flex-direction: column;
@@ -7105,11 +7000,6 @@ const exportLeaveToExcel = async () => {
   padding: 4px;
   font-size: 11px;
   min-height: 30px;
-}
-
-.month-table .special-status,
-.range-table .special-status {
-  font-size: 8px;
 }
 
 /* 子页签内容样式 */

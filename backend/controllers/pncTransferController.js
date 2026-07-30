@@ -611,9 +611,10 @@ const buildMailtoLink = (doc, items) => {
   const to = doc.recipient_email;
   const cc = doc.cc_email;
 
-  const subject = encodeSubject(`PNC转仓单 - ${doc.transfer_no}`);
+  // 使用 encodeURIComponent 编码主题
+  const subject = encodeURIComponent(`PNC转仓单 - ${doc.transfer_no}`);
 
-  // 使用兼容性更好的字符，避免邮件正文乱码
+  // 构建邮件正文（使用中文）
   let body = `PNC转仓单详情\n`;
   body += `================================\n`;
   body += `转仓单号：${doc.transfer_no}\n`;
@@ -637,14 +638,11 @@ const buildMailtoLink = (doc, items) => {
   body += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
 
   // mailto 链接构建
-  // 方案：不使用 percent-encoding，直接使用 UTF-8 字符串
-  // 让浏览器/邮件客户端自己处理编码
-  // 换行符用 %0A 表示（RFC 6068 标准）
+  // 1. 主题使用 RFC 2047 Base64 编码（已处理）
+  // 2. 正文必须使用 encodeURIComponent 编码以正确处理所有中文字符
+  const encodedBody = encodeURIComponent(body);
 
-  // 将换行符替换为 %0A，但不编码其他字符
-  const bodyWithNewlines = body.replace(/\n/g, '%0A');
-
-  let mailto = `mailto:${to}?subject=${subject}&body=${bodyWithNewlines}`;
+  let mailto = `mailto:${to}?subject=${subject}&body=${encodedBody}`;
   if (cc) {
     mailto += `&cc=${encodeURIComponent(cc)}`;
   }

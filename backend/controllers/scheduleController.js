@@ -4,6 +4,8 @@
  */
 import pool from '../config/db.js';
 import dayjs from 'dayjs';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
+dayjs.extend(isSameOrBefore);
 import XLSX from 'xlsx';
 import { USER_TABLE, PLANT_TABLE, DEPT_TABLE, TEMPORARY_OVERTIME_TABLE, TEMPORARY_LEAVE_TABLE, SHIFT_DURATION_RULES_TABLE, SCHEDULE_TABLE } from '../config/db_constants.js';
 import { checkBreak7Rest1 } from '../utils/scheduleUtils.js';

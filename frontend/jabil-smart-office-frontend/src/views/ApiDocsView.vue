@@ -791,24 +791,24 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 
 <style scoped>
 .api-docs-container {
-  padding: 24px;
+  padding: 16px;
   max-width: 1200px;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .page-title {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
 }
 
 .page-desc {
-  font-size: 14px;
+  font-size: 13px;
   color: #6B7280;
   margin: 0;
 }
@@ -816,23 +816,23 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 /* 统计卡片 */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .stat-card {
   background: white;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .stat-icon {
-  font-size: 32px;
+  font-size: 24px;
 }
 
 .stat-info {
@@ -840,42 +840,42 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: #111827;
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: 12px;
   color: #6B7280;
 }
 
 /* 筛选区域 */
 .filter-section {
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .search-input {
   flex: 1;
-  max-width: 400px;
+  max-width: 300px;
 }
 
 .method-filter {
-  width: 150px;
+  width: 130px;
 }
 
 /* 接口分组 */
 .api-groups {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .api-group {
   background: white;
-  border-radius: 12px;
+  border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
@@ -884,7 +884,7 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 16px;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -896,26 +896,26 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 .group-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .group-icon {
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .group-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #111827;
 }
 
 .group-count {
-  font-size: 14px;
+  font-size: 12px;
   color: #6B7280;
 }
 
 .expand-icon {
-  font-size: 12px;
+  font-size: 11px;
   color: #9CA3AF;
 }
 
@@ -925,7 +925,7 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 }
 
 .endpoint-item {
-  padding: 16px 20px;
+  padding: 10px 16px;
   border-bottom: 1px solid #F3F4F6;
   cursor: pointer;
   transition: background 0.2s;
@@ -942,15 +942,15 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 .endpoint-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 4px;
 }
 
 .method-badge {
   display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
   font-weight: 600;
   font-family: monospace;
 }
@@ -982,85 +982,85 @@ const selectEndpoint = (endpoint: ApiEndpoint) => {
 
 .endpoint-path {
   font-family: monospace;
-  font-size: 14px;
+  font-size: 13px;
   color: #111827;
 }
 
 .auth-badge {
-  font-size: 12px;
+  font-size: 11px;
   color: #F59E0B;
   background: #FEF3C7;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
 }
 
 .endpoint-desc {
-  font-size: 14px;
+  font-size: 13px;
   color: #6B7280;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .endpoint-params {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .params-label {
-  font-size: 12px;
+  font-size: 11px;
   color: #9CA3AF;
 }
 
 .param-tag {
-  font-size: 12px;
+  font-size: 11px;
   background: #E5E7EB;
   color: #374151;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
   font-family: monospace;
 }
 
 /* 空状态 */
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
+  padding: 40px 20px;
   color: #9CA3AF;
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
+  font-size: 36px;
+  margin-bottom: 12px;
 }
 
 .empty-text {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 /* 详情弹窗 */
 .detail-section {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .detail-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .detail-content {
-  font-size: 14px;
+  font-size: 13px;
   color: #6B7280;
 }
 
 .code-block {
   background: #1F2937;
   color: #E5E7EB;
-  padding: 16px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 6px;
   font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
+  font-size: 12px;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;

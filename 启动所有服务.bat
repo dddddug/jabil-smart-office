@@ -19,13 +19,20 @@ cscript //nologo "%TEMP%\run_hidden.vbs"
 del "%TEMP%\run_hidden.vbs"
 cd ..
 
-echo [3/3] Waiting...
+echo [3/3] Starting Frontend (Vite)...
+cd frontend\jabil-smart-office-frontend
+start "" cmd /c "npm run dev &"
+cd ..\..
+
+echo [4/4] Waiting...
 timeout /t 2 >nul
 
 echo.
 echo ========================================
 echo   Services started! (running in background)
-echo   http://localhost
+echo   Frontend: http://localhost:5173/
+echo   Backend:  http://localhost:3000/
+echo   Website:  http://localhost
 echo ========================================
 echo.
 pause

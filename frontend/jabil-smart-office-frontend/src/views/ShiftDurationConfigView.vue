@@ -339,30 +339,36 @@ watch(() => currentRule.value.plantId, (newPlantId, oldPlantId) => {
 const saveRule = async () => {
   try {
     if (isEditMode.value) {
-      const response = await request.put(`/config/shift-duration-rules/${currentRule.value.id}`, {
+      await request.put(`/config/shift-duration-rules/${currentRule.value.id}`, {
         shiftName: currentRule.value.shiftName,
         durationHours: currentRule.value.durationHours,
         description: currentRule.value.description,
       });
-      fetchRules();
       closeDialog();
-      ElMessage.success('规则更新成功！');
+      // 关闭弹窗后再刷新，确保UI更新
+      setTimeout(() => {
+        fetchRules();
+        ElMessage.success('规则更新成功！');
+      }, 100);
     } else {
-      const response = await request.post('/config/shift-duration-rules', {
+      await request.post('/config/shift-duration-rules', {
         plantId: currentRule.value.plantId,
         departmentId: currentRule.value.departmentId,
         shiftName: currentRule.value.shiftName,
         durationHours: currentRule.value.durationHours,
         description: currentRule.value.description,
       });
-      currentPage.value = 1;
-      filterPlantId.value = 0;
-      filterDepartmentId.value = 0;
-      filterShiftName.value = '';
-      filterStatus.value = '';
-      fetchRules();
       closeDialog();
-      ElMessage.success('规则创建成功！');
+      // 关闭弹窗后再刷新，确保UI更新
+      setTimeout(() => {
+        currentPage.value = 1;
+        filterPlantId.value = 0;
+        filterDepartmentId.value = 0;
+        filterShiftName.value = '';
+        filterStatus.value = '';
+        fetchRules();
+        ElMessage.success('规则创建成功！');
+      }, 100);
     }
   } catch (error: any) {
     ElMessage.error('保存规则异常: ' + (error.message || '未知错误'));

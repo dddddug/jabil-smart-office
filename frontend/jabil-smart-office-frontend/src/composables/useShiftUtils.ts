@@ -8,7 +8,6 @@ const SHIFT_HOURS_MAP: Record<string, number> = {
   '中班': 8,
   '晚班': 8,
   '夜班': 12,
-  '休': 0,
   '班1': 8,
   '班2': 10,
   '班3': 12,
@@ -61,7 +60,6 @@ export const SHIFT_OPTIONS = [
   { value: '中班', label: '中班 (8H)', hours: 8 },
   { value: '晚班', label: '晚班 (8H)', hours: 8 },
   { value: '夜班', label: '夜班 (12H)', hours: 12 },
-  { value: '休', label: '休息', hours: 0 },
 ];
 
 // 缓存从后端获取的班次配置

@@ -79,7 +79,7 @@
         <el-tab-pane label="全部版本" name="all">
           <div class="changelog-list">
             <div
-              v-for="(commit, index) in commitHistory"
+              v-for="(commit, index) in visibleCommitHistory"
               :key="commit.hash"
               class="changelog-item"
               :class="{ 'latest': index === 0 && !commit.version }"
@@ -102,8 +102,10 @@
             <el-icon class="is-loading"><Loading /></el-icon>
             加载中...
           </div>
-          <div v-if="hasMore && !loading" class="load-more-btn">
-            <el-button @click="loadMore" :loading="loadingMore">加载更多</el-button>
+          <div v-if="hasMoreCommits && !loading" class="load-more-btn">
+            <el-button @click="toggleShowAllCommits" :icon="showAllCommits ? ArrowUp : ArrowDown">
+              {{ showAllCommits ? '收起' : `显示更多 (${commitHistory.length - initialCommitCount} 条)` }}
+            </el-button>
           </div>
           <div v-if="!loading && commitHistory.length === 0" class="empty-history">
             暂无更新记录
@@ -111,28 +113,36 @@
         </el-tab-pane>
 
         <el-tab-pane label="版本更新" name="versions">
-          <div class="version-list">
+          <div class="version-list compact">
             <div
-              v-for="commit in versionCommits"
+              v-for="commit in visibleVersionCommits"
               :key="commit.hash"
-              class="version-item"
+              class="version-item compact"
             >
               <div class="version-header">
-                <span class="version-tag-large">{{ commit.version }}</span>
-                <span class="version-date">{{ commit.date }}</span>
+                <span class="version-tag-large">v{{ commit.version }}</span>
+                <span class="version-date-inline">{{ commit.date }}</span>
               </div>
-              <div class="version-message">{{ commit.message }}</div>
-              <div class="version-commits">
+              <div class="version-message compact">{{ commit.message }}</div>
+              <div class="version-commits compact" v-if="commit.commits.length > 0">
                 <span
-                  v-for="c in commit.commits"
+                  v-for="c in commit.commits.slice(0, 5)"
                   :key="c.hash"
-                  class="version-commit"
+                  class="version-commit compact"
                   :class="getCommitTypeClass(c.type)"
                 >
                   {{ c.message }}
                 </span>
+                <span v-if="commit.commits.length > 5" class="more-commits">
+                  +{{ commit.commits.length - 5 }} 条更新
+                </span>
               </div>
             </div>
+          </div>
+          <div v-if="hasMoreVersions && !loading" class="show-more-btn">
+            <el-button @click="toggleShowAll" :icon="showAllVersions ? 'ArrowUp' : 'ArrowDown'">
+              {{ showAllVersions ? '收起' : `显示更多 (${versionCommits.length - initialVersionCount} 条)` }}
+            </el-button>
           </div>
           <div v-if="!loading && versionCommits.length === 0" class="empty-history">
             暂无版本记录
@@ -145,7 +155,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { Loading } from '@element-plus/icons-vue';
+import { Loading, ArrowUp, ArrowDown } from '@element-plus/icons-vue';
 import request from '../utils/request';
 
 interface CommitInfo {
@@ -190,6 +200,11 @@ const versionInfo = ref<VersionInfo>({
 });
 
 const commitHistory = ref<CommitInfo[]>([]);
+const versionCommits = ref<VersionCommit[]>([]);
+const showAllVersions = ref(false);
+const showAllCommits = ref(false);
+const initialVersionCount = 2;
+const initialCommitCount = 2;
 const loading = ref(false);
 const loadingMore = ref(false);
 const hasMore = ref(true);
@@ -219,32 +234,35 @@ const isUpToDate = computed(() => {
   return versionInfo.value.currentVersion === versionInfo.value.versions[0]?.version;
 });
 
-const versionCommits = computed(() => {
-  const versions: VersionCommit[] = [];
-  let currentVersion: VersionCommit | null = null;
-
-  for (const commit of commitHistory.value) {
-    if (commit.version) {
-      if (currentVersion) {
-        versions.push(currentVersion);
-      }
-      currentVersion = {
-        version: commit.version,
-        date: commit.date || '',
-        message: commit.message,
-        commits: [],
-      };
-    } else if (currentVersion) {
-      currentVersion.commits.push(commit);
-    }
+const visibleVersionCommits = computed(() => {
+  if (showAllVersions.value) {
+    return versionCommits.value;
   }
-
-  if (currentVersion) {
-    versions.push(currentVersion);
-  }
-
-  return versions;
+  return versionCommits.value.slice(0, initialVersionCount);
 });
+
+const hasMoreVersions = computed(() => {
+  return versionCommits.value.length > initialVersionCount;
+});
+
+const visibleCommitHistory = computed(() => {
+  if (showAllCommits.value) {
+    return commitHistory.value;
+  }
+  return commitHistory.value.slice(0, initialCommitCount);
+});
+
+const hasMoreCommits = computed(() => {
+  return commitHistory.value.length > initialCommitCount;
+});
+
+const toggleShowAll = () => {
+  showAllVersions.value = !showAllVersions.value;
+};
+
+const toggleShowAllCommits = () => {
+  showAllCommits.value = !showAllCommits.value;
+};
 
 const getCommitTypeClass = (type: string): string => {
   const typeMap: Record<string, string> = {
@@ -276,6 +294,33 @@ const getCommitTypeLabel = (type: string): string => {
     ci: 'CI/CD',
   };
   return labelMap[type] || type;
+};
+
+const buildVersionCommits = (commits: CommitInfo[]): VersionCommit[] => {
+  const versions: VersionCommit[] = [];
+  let currentVersion: VersionCommit | null = null;
+
+  for (const commit of commits) {
+    if (commit.version) {
+      if (currentVersion) {
+        versions.push(currentVersion);
+      }
+      currentVersion = {
+        version: commit.version,
+        date: commit.date || '',
+        message: commit.message,
+        commits: [],
+      };
+    } else if (currentVersion) {
+      currentVersion.commits.push(commit);
+    }
+  }
+
+  if (currentVersion) {
+    versions.push(currentVersion);
+  }
+
+  return versions;
 };
 
 const parseCommitMessage = (message: string, refs?: string): { type: string; message: string; version?: string; date?: string } => {
@@ -349,6 +394,8 @@ const loadVersionInfo = async () => {
             version: parsed.version,
           };
         });
+        // 构建版本提交列表
+        versionCommits.value = buildVersionCommits(commitHistory.value);
         // 不再调用 loadCommitHistory()
         hasMore.value = false;
       }
@@ -410,6 +457,9 @@ const loadCommitHistory = async (append = false) => {
       commitHistory.value = parsedCommits;
     }
 
+    // 构建版本提交列表
+    versionCommits.value = buildVersionCommits(commitHistory.value);
+
     hasMore.value = (currentPage.value + 1) * pageSize < mockCommits.length;
   } catch (error) {
     console.error('加载更新历史失败:', error);
@@ -426,7 +476,6 @@ const loadMore = () => {
 
 onMounted(() => {
   loadVersionInfo();
-  loadCommitHistory();
 });
 </script>
 
@@ -458,22 +507,11 @@ onMounted(() => {
 .version-card {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 16px;
-  padding: 32px;
+  padding: 20px 24px;
   color: white;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   position: relative;
   overflow: hidden;
-}
-
-.version-card::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 100%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
-  pointer-events: none;
 }
 
 .version-card.current-version {
@@ -483,53 +521,53 @@ onMounted(() => {
 .version-badge {
   display: inline-block;
   background: rgba(255, 255, 255, 0.2);
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 500;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .version-number {
-  font-size: 48px;
+  font-size: 32px;
   font-weight: 700;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   letter-spacing: -1px;
 }
 
 .version-meta {
   display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 8px;
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 12px;
   opacity: 0.9;
 }
 
 .meta-icon {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .version-desc {
-  font-size: 14px;
+  font-size: 13px;
   opacity: 0.9;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 /* 版本对比 */
 .version-comparison {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .comparison-card {
   background: white;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 14px 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   display: flex;
   align-items: center;
@@ -539,25 +577,25 @@ onMounted(() => {
 .comparison-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 16px;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .comparison-icon {
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .comparison-version {
   background: #E5E7EB;
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 14px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 12px;
   color: #374151;
 }
 
 .comparison-status {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -572,20 +610,20 @@ onMounted(() => {
 /* 环境信息 */
 .env-info-section {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
-  margin-bottom: 24px;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: #111827;
-  margin: 0 0 20px 0;
+  margin: 0 0 12px 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .env-grid {
@@ -622,29 +660,30 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-/* 更新日志 */
 .changelog-section {
   background: white;
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 10px;
+  padding: 16px 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .changelog-tabs {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .changelog-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
+  max-height: 500px;
+  overflow-y: auto;
 }
 
 .changelog-item {
-  padding: 16px;
+  padding: 10px 12px;
   background: #F9FAFB;
-  border-radius: 8px;
-  border-left: 4px solid #E5E7EB;
+  border-radius: 6px;
+  border-left: 3px solid #E5E7EB;
   transition: all 0.2s ease;
 }
 
@@ -661,24 +700,24 @@ onMounted(() => {
 .commit-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .commit-hash {
   font-family: monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: #9CA3AF;
   background: #E5E7EB;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
 }
 
 .commit-type {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 2px 10px;
-  border-radius: 4px;
+  padding: 1px 8px;
+  border-radius: 3px;
 }
 
 .type-feat {
@@ -717,23 +756,23 @@ onMounted(() => {
 }
 
 .commit-time {
-  font-size: 12px;
+  font-size: 11px;
   color: #9CA3AF;
   margin-left: auto;
 }
 
 .commit-message {
-  font-size: 14px;
+  font-size: 13px;
   color: #111827;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .commit-version-badge {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
   border-top: 1px dashed #E5E7EB;
 }
 
@@ -741,10 +780,10 @@ onMounted(() => {
   display: inline-block;
   background: linear-gradient(135deg, #0066CC 0%, #004999 100%);
   color: white;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
 }
 
 .version-date {
@@ -756,7 +795,7 @@ onMounted(() => {
 .version-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .version-item {
@@ -764,6 +803,10 @@ onMounted(() => {
   background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
   border-radius: 12px;
   border: 1px solid #E5E7EB;
+}
+
+.version-item.compact {
+  padding: 12px 16px;
 }
 
 .version-header {
@@ -779,11 +822,26 @@ onMounted(() => {
   color: #0066CC;
 }
 
+.version-item.compact .version-tag-large {
+  font-size: 18px;
+  margin-bottom: 0;
+}
+
+.version-date-inline {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
 .version-message {
   font-size: 14px;
   color: #374151;
   margin-bottom: 12px;
   line-height: 1.5;
+}
+
+.version-message.compact {
+  font-size: 13px;
+  margin-bottom: 8px;
 }
 
 .version-commits {
@@ -794,10 +852,26 @@ onMounted(() => {
   border-left: 2px solid #D1D5DB;
 }
 
+.version-commits.compact {
+  gap: 4px;
+  padding-left: 12px;
+}
+
 .version-commit {
   font-size: 13px;
   color: #6B7280;
   padding: 4px 0;
+}
+
+.version-commit.compact {
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.more-commits {
+  font-size: 12px;
+  color: #9CA3AF;
+  font-style: italic;
 }
 
 /* 加载状态 */
@@ -818,6 +892,24 @@ onMounted(() => {
 .load-more-btn :deep(.el-button:hover) {
   background: #E5E7EB;
   border-color: #D1D5DB;
+}
+
+.show-more-btn {
+  text-align: center;
+  padding: 16px 0 8px 0;
+}
+
+.show-more-btn :deep(.el-button) {
+  background: #F3F4F6;
+  border-color: #E5E7EB;
+  color: #374151;
+  font-size: 13px;
+}
+
+.show-more-btn :deep(.el-button:hover) {
+  background: #E5E7EB;
+  border-color: #D1D5DB;
+  color: #0066CC;
 }
 
 .empty-history {

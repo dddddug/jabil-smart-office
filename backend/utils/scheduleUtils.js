@@ -1,4 +1,6 @@
 import dayjs from 'dayjs';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter.js';
+dayjs.extend(isSameOrAfter);
 import pool from '../config/db.js';
 
 const SCHEDULE_TABLE = 'jso_hr_employee_schedule';
@@ -49,13 +51,16 @@ export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool, l
     // 如果员工已离职，该日期视为休息日
     const isAfterLeave = leaveDate && currentDate.isSameOrAfter(dayjs(leaveDate), 'day');
 
-    // Determine if it's a workday based on the schedule
-    // 如果没有排班、离职日期到期、特殊状态（非工作日）或班次为非工作类型，则不是工作日
-    const isRestStatus = schedule && (
+    // 检查是否是休息类班次（调休、请假、年假、离职、旷工、休息）
+    // 这些班次会中断连续工作天数计数
+    const isRestShift = schedule && (
       schedule.specialStatus === '离职' ||
       ['调休', '请假', '年假', '旷工', '离职', '休', '休息'].includes(schedule.shift)
     );
-    const isWorkDay = !isAfterLeave && !isRestStatus && schedule;
+
+    // Determine if it's a workday based on the schedule
+    // 如果没有排班、离职日期到期、休息类班次，则不是工作日
+    const isWorkDay = !isAfterLeave && !isRestShift && schedule;
 
     if (isWorkDay) {
       consecutiveCount++;
@@ -63,11 +68,11 @@ export const checkBreak7Rest1 = async (employeeId, queryStart, queryEnd, pool, l
         startConsecDate = currentDate;
       }
     } else {
-      // If it's a rest day, check for violations
+      // 如果是休息类班次或离职日期到期，检查是否有违规
       if (consecutiveCount >= 7) {
         violations.push({
           start: startConsecDate.format('YYYY-MM-DD'),
-          end: currentDate.subtract(1, 'day').format('YYYY-MM-DD'), // End date is the day before the rest day
+          end: currentDate.subtract(1, 'day').format('YYYY-MM-DD'),
           consecutiveDays: consecutiveCount
         });
       }
