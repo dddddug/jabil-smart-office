@@ -1,6 +1,6 @@
 {
   "name": "jabil-smart-office-backend",
-  "version": "1.1.6",
+  "version": "1.1.9",
   "description": "Jabil Smart Office Backend API",
   "main": "server.js",
   "type": "module",
