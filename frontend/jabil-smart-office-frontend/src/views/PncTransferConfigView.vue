@@ -63,11 +63,11 @@
     </div>
 
     <!-- 添加/编辑配置弹窗 -->
-    <div v-if="dialogVisible" class="dialog-overlay" @click.self="dialogVisible = false">
+    <div v-if="dialogVisible" class="dialog-overlay" @click.self="closeDialog">
       <div class="dialog">
         <div class="dialog-header">
           <div class="dialog-title">{{ isEdit ? '编辑配置' : '添加配置' }}</div>
-          <button type="button" class="dialog-close" @click="dialogVisible = false">✕</button>
+          <button type="button" class="dialog-close" @click="closeDialog">✕</button>
         </div>
         <div class="dialog-body">
           <form @submit.prevent="handleSubmit">
@@ -151,7 +151,7 @@
           </form>
         </div>
         <div class="dialog-footer">
-          <button type="button" class="btn btn-secondary" @click="dialogVisible = false">取消</button>
+          <button type="button" class="btn btn-secondary" @click="closeDialog">取消</button>
           <button type="button" class="btn btn-primary" @click="handleSubmit" :disabled="submitting">
             {{ submitting ? '保存中...' : '保存' }}
           </button>
@@ -215,6 +215,12 @@ const openEditDialog = (item: PncTransferConfig) => {
   form.systemLocation = item.systemLocation || '';
   form.isActive = item.isActive !== false;
   dialogVisible.value = true;
+};
+
+// 关闭弹窗并刷新
+const closeDialog = () => {
+  dialogVisible.value = false;
+  loadConfigs();
 };
 
 // 重置表单

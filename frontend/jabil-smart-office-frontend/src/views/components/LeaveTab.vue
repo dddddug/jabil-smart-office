@@ -68,79 +68,98 @@
         clearable
         class="filter-input"
       />
-      <el-button 
-        type="primary" 
-        @click="handleAdd" 
+      <el-button
+        type="primary"
+        @click="handleAdd"
         :icon="Plus"
         :disabled="!hasAddPermission()"
       >
         新增申请
       </el-button>
-      <el-button 
-        type="success" 
-        @click="handleBatchUpload" 
+      <el-button
+        type="success"
+        @click="handleBatchUpload"
         :icon="Upload"
         :disabled="!hasAddPermission()"
       >
         批量上传
       </el-button>
+      <el-button
+        type="warning"
+        @click="handleExport"
+        :icon="Download"
+      >
+        导出
+      </el-button>
     </div>
 
-    <el-table 
-  :data="filteredData" 
-  stripe 
-  class="data-table" 
+    <!-- 批量操作栏 -->
+    <div v-if="selectedRows.length > 0" class="batch-action-bar">
+      <span>已选择 {{ selectedRows.length }} 条</span>
+      <el-button type="success" size="small" @click="handleBatchSubmit" :disabled="!hasBatchSubmitPermission()">
+        批量提交
+      </el-button>
+      <el-button size="small" @click="clearSelection">取消选择</el-button>
+    </div>
+
+    <el-table
+  :data="filteredData"
+  stripe
+  class="data-table"
   border
   :row-key="(row: LeaveRequest) => row.id"
   :row-class-name="getRowClassName"
+  @selection-change="handleSelectionChange"
 >
+    <!-- 多选列 -->
+    <el-table-column type="selection" width="40" :selectable="checkSelectable" />
     <!-- 通用信息列 -->
-    <el-table-column prop="employeeName" label="员工姓名" width="90" fixed="left" />
+    <el-table-column prop="employeeName" label="姓名" width="80" fixed="left" />
     <el-table-column prop="departmentName" label="部门" width="140" />
-    <el-table-column prop="type" label="类型" width="100">
+    <el-table-column prop="type" label="类型" width="80">
       <template #default="{ row }">
         <el-tag :type="getTypeTagType(row.type)" size="small">{{ row.type }}</el-tag>
       </template>
     </el-table-column>
 
       <!-- 临时加班、临时请假&公差的时间列 -->
-      <el-table-column label="开始时间" width="180" v-if="tabType === 'overtime' || tabType === 'temporary'">
+      <el-table-column label="开始时间" width="150" v-if="tabType === 'overtime' || tabType === 'temporary'">
         <template #default="{ row }">
           <span>{{ formatTemporaryTime(row.startDate, row.startTime) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="结束时间" width="180" v-if="tabType === 'overtime' || tabType === 'temporary'">
+      <el-table-column label="结束时间" width="150" v-if="tabType === 'overtime' || tabType === 'temporary'">
         <template #default="{ row }">
           <span>{{ formatTemporaryTime(row.endDate, row.endTime) }}</span>
         </template>
       </el-table-column>
-      
+
       <!-- 请假&年假的日期列 -->
-      <el-table-column prop="startDate" label="开始日期" width="110" v-if="tabType === 'annual'" />
-      <el-table-column prop="endDate" label="结束日期" width="110" v-if="tabType === 'annual'" />
-      
+      <el-table-column prop="startDate" label="开始日期" width="120" v-if="tabType === 'annual'" />
+      <el-table-column prop="endDate" label="结束日期" width="120" v-if="tabType === 'annual'" />
+
       <!-- 时长/天数（离职&转岗显示转入时间） -->
-      <el-table-column v-if="tabType !== 'resignation'" prop="duration" label="时长" width="100">
+      <el-table-column v-if="tabType !== 'resignation'" prop="duration" label="时长" width="80">
         <template #default="{ row }">
           <span class="duration-text">{{ row.duration }}{{ durationUnit }}</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="tabType === 'resignation'" prop="transferDate" label="转入时间" width="110">
+      <el-table-column v-if="tabType === 'resignation'" prop="transferDate" label="转入时间" width="100">
         <template #default="{ row }">
           <span>{{ (row.transferDate || row.transfer_date) ? (row.transferDate || row.transfer_date).split('T')[0] : '-' }}</span>
         </template>
       </el-table-column>
-      
+
       <!-- 状态列 -->
-      <el-table-column prop="status" label="状态" width="85">
+      <el-table-column prop="status" label="状态" width="80">
         <template #default="{ row }">
           <el-tag :type="getStatusTagType(row.status)" size="small">{{ getStatusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      
+
       <!-- 转岗审批状态列 -->
       <template v-if="tabType === 'resignation'">
-        <el-table-column label="转出审批" width="85">
+        <el-table-column label="转出审批" width="80">
           <template #default="{ row }">
             <el-tag v-if="row.type === '转岗'" :type="getApprovalStatusTagType(row.transferOutApprovalStatus)" size="small">
               {{ getApprovalStatusText(row.transferOutApprovalStatus) }}
@@ -148,7 +167,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="转入审批" width="85">
+        <el-table-column label="转入审批" width="80">
           <template #default="{ row }">
             <el-tag v-if="row.type === '转岗'" :type="getApprovalStatusTagType(row.transferInApprovalStatus)" size="small">
               {{ getApprovalStatusText(row.transferInApprovalStatus) }}
@@ -157,9 +176,9 @@
           </template>
         </el-table-column>
       </template>
-      
+
       <!-- 审批人列 -->
-      <el-table-column label="审批人" width="80" v-if="tabType === 'annual' || tabType === 'resignation'">
+      <el-table-column label="审批人" width="75" v-if="tabType === 'annual' || tabType === 'resignation'">
         <template #default="{ row }">
           <span v-if="row.type === '转岗'">
             {{ (row.transferOutApproverName || '-') + ' / ' + (row.transferInApproverName || '-') }}
@@ -167,10 +186,10 @@
           <span v-else>{{ row.approverName || '-' }}</span>
         </template>
       </el-table-column>
-      
+
       <!-- 原因和申请日期 -->
-      <el-table-column prop="reason" label="原因" min-width="150" show-overflow-tooltip />
-      <el-table-column label="证明文件" width="150" v-if="tabType === 'temporary'">
+      <el-table-column prop="reason" label="原因" width="200" show-overflow-tooltip />
+      <el-table-column label="证明文件" width="100" v-if="tabType === 'temporary'">
         <template #default="{ row }">
           <div v-if="row.proofFile" class="proof-file-container">
             <!-- 图片预览 -->
@@ -178,38 +197,38 @@
               v-if="isImageFile(row.proofFile)"
               :src="getImageUrl(row.proofFile)"
               fit="cover"
-              style="width: 100px; height: 100px; border-radius: 4px; cursor: pointer;"
+              style="width: 80px; height: 60px; border-radius: 4px; cursor: pointer;"
               :preview-src-list="[getImageUrl(row.proofFile)]"
               preview-teleported
             >
               <template #error>
-                <div style="width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; background: #f5f7fa; color: #909399; font-size: 12px;">
-                  图片加载失败
+                <div style="width: 80px; height: 60px; display: flex; align-items: center; justify-content: center; background: #f5f7fa; color: #909399; font-size: 12px;">
+                  失败
                 </div>
               </template>
             </el-image>
             <!-- 非图片文件显示查看链接 -->
-            <span 
+            <span
               v-else
               class="proof-file-link"
               @click="handleViewProof(row)"
             >
               <el-icon><Document /></el-icon>
-              查看附件
+              查看
             </span>
           </div>
           <span v-else style="color: #909399;">-</span>
         </template>
       </el-table-column>
-      <el-table-column label="申请日期" width="110">
+      <el-table-column label="申请日期" width="120">
         <template #default="{ row }">
           <span>{{ row.applyDate ? row.applyDate.split(' ')[0] : '-' }}</span>
         </template>
       </el-table-column>
-      
-      <el-table-column label="操作" :width="tabType === 'resignation' ? 420 : 280" fixed="right">
+
+      <el-table-column label="操作" :width="tabType === 'resignation' ? 420 : (tabType === 'temporary' ? 300 : 380)" fixed="right">
         <template #default="{ row }">
-          <div class="action-buttons">
+          <div class="action-buttons" style="gap: 4px;">
             <el-button 
               text
               type="primary" 
@@ -638,13 +657,14 @@
 </template>
 
 <script setup lang="ts">
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 
 // 错误信息处理辅助函数
-const getErrorMessage = (error: any): string => {
+const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) return error.message;
   if (typeof error === 'object' && error !== null) {
-    return error.message || error.msg || JSON.stringify(error);
+    return (error as { message?: string; msg?: string }).message || (error as { msg?: string }).msg || JSON.stringify(error);
   }
   return String(error);
 }
@@ -698,7 +718,7 @@ const getRowClassName = ({ row }: { row: LeaveRequest }) => {
 }
 
 // 高亮指定行
-const highlightRow = (id: number) => {
+const highlightRow = (_id: number | null) => {
   // 滚动到对应的行（简单实现）
   nextTick(() => {
     const row = document.querySelector('.highlight-row')
@@ -794,6 +814,9 @@ const batchUploadFileList = ref<any[]>([])
 const batchUploadLoading = ref(false)
 const batchUploadErrors = ref<string[]>([])
 const batchUploadSuccess = ref<any>(null)
+
+// 批量提交相关状态
+const selectedRows = ref<LeaveRequest[]>([])
 
 // 生成状态存储的key
 const getStorageKey = (suffix: string) => {
@@ -1867,40 +1890,75 @@ const handleEdit = (row: LeaveRequest) => {
   dialogVisible.value = true
 }
 
-const handleSubmitStatus = (row: LeaveRequest) => {
+const handleSubmitStatus = async (row: LeaveRequest) => {
   if (!hasEditPermission(row)) {
     ElMessage.warning('您没有提交此申请的权限，只有对应的厂区管理员和部门管理员可以提交')
     return
   }
-  ElMessageBox.confirm(`确定要提交 "${row.employeeName}" 的申请吗？`, {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'success',
-  }).then(() => {
-    const index = requests.value.findIndex(r => r.id === row.id)
-    if (index !== -1) {
-      requests.value[index]!.status = 'approved'
+  try {
+    await ElMessageBox.confirm(`确定要提交 "${row.employeeName}" 的申请吗？`, {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'success',
+    })
+
+    const apiPath = getApiType();
+    const res = await fetch(`/api/${apiPath}/${row.id}/submit`, {
+      method: 'PUT',
+      headers: getAuthHeaders()
+    })
+
+    if (res.ok) {
+      const index = requests.value.findIndex(r => r.id === row.id)
+      if (index !== -1) {
+        requests.value[index]!.status = 'approved'
+      }
       ElMessage.success('提交成功')
+      loadData()
+    } else {
+      const data = await res.json()
+      ElMessage.error(data.error || '提交失败')
     }
-  }).catch(() => {});
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error('提交失败')
+    }
+  }
 };
 
-const handleUnsubmit = (row: LeaveRequest) => {
+const handleUnsubmit = async (row: LeaveRequest) => {
   if (!hasEditPermission(row)) {
     ElMessage.warning('您没有撤回此申请的权限，只有对应的厂区管理员和部门管理员可以撤回')
     return
   }
-  ElMessageBox.confirm(`确定要撤回 "${row.employeeName}" 的申请吗？撤回后状态将变为待提交。`, {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  }).then(() => {
-    const index = requests.value.findIndex(r => r.id === row.id)
-    if (index !== -1) {
-      requests.value[index]!.status = 'pending'
+  try {
+    await ElMessageBox.confirm(`确定要撤回 "${row.employeeName}" 的申请吗？撤回后状态将变为待提交。`, {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+
+    const apiPath = getApiType();
+    const res = await fetch(`/api/${apiPath}/${row.id}/withdraw`, {
+      method: 'PUT',
+      headers: getAuthHeaders()
+    })
+
+    if (res.ok) {
+      const index = requests.value.findIndex(r => r.id === row.id)
+      if (index !== -1) {
+        requests.value[index]!.status = 'pending'
+      }
       ElMessage.success('撤回成功')
+    } else {
+      const data = await res.json()
+      ElMessage.error(data.error || '撤回失败')
     }
-  }).catch(() => {})
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error('撤回失败')
+    }
+  }
 }
 
 // Helper to get correct API path for approval/rejection/transfer actions
@@ -2439,79 +2497,382 @@ const confirmBatchUpload = async () => {
   }
 }
 
+// ==================== 批量选择和提交相关 ====================
+
+// 处理表格选择变化
+const handleSelectionChange = (selection: LeaveRequest[]) => {
+  selectedRows.value = selection
+}
+
+// 检查行是否可选（只有pending状态且有权限的行可选）
+const checkSelectable = (row: LeaveRequest) => {
+  return row.status === 'pending' && hasAddPermission()
+}
+
+// 清空选择
+const clearSelection = () => {
+  selectedRows.value = []
+}
+
+// 检查是否有批量提交权限（与新增权限相同）
+const hasBatchSubmitPermission = () => {
+  return hasAddPermission()
+}
+
+// 批量提交
+const handleBatchSubmit = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要提交的记录')
+    return
+  }
+
+  // 检查是否有非pending状态的记录
+  const nonPendingRows = selectedRows.value.filter(row => row.status !== 'pending')
+  if (nonPendingRows.length > 0) {
+    ElMessage.warning('只能提交待提交状态的记录')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要提交选中的 ${selectedRows.value.length} 条申请吗？`,
+      '批量提交确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const apiType = getApiType()
+    let successCount = 0
+    let failCount = 0
+    const errors: string[] = []
+
+    for (const row of selectedRows.value) {
+      try {
+        const token = getToken()
+        const response = await fetch(`/api/${apiType}/${row.id}/submit`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (response.ok) {
+          successCount++
+        } else {
+          failCount++
+          const errorData = await response.json()
+          errors.push(`${row.employeeName}: ${errorData.error || '提交失败'}`)
+        }
+      } catch (error) {
+        failCount++
+        errors.push(`${row.employeeName}: 提交失败`)
+      }
+    }
+
+    // 清空选择
+    clearSelection()
+
+    // 显示结果
+    if (failCount === 0) {
+      ElMessage.success(`成功提交 ${successCount} 条申请`)
+    } else {
+      ElMessage.warning(`成功 ${successCount} 条，失败 ${failCount} 条`)
+      if (errors.length > 0) {
+        console.error('提交失败详情:', errors)
+      }
+    }
+
+    // 刷新数据
+    loadData()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      console.error('批量提交失败:', error)
+      ElMessage.error('批量提交失败')
+    }
+  }
+}
+
+// ==================== 导出功能 ====================
+
+const handleExport = async () => {
+  try {
+    ElMessage.info('正在准备导出数据...')
+
+    // 动态导入ExcelJS
+    const ExcelJS = await import('exceljs')
+    const workbook = new ExcelJS.Workbook()
+
+    // 根据tab类型设置工作表名称和标题
+    let sheetName = '请假记录'
+    let titleText = '请假记录'
+
+    if (props.tabType === 'overtime') {
+      sheetName = '临时加班'
+      titleText = '临时加班记录'
+    } else if (props.tabType === 'temporary') {
+      sheetName = '临时请假公差'
+      titleText = '临时请假&公差记录'
+    } else if (props.tabType === 'annual') {
+      sheetName = '请假年假'
+      titleText = '请假&年假记录'
+    } else if (props.tabType === 'resignation') {
+      sheetName = '离职转岗'
+      titleText = '离职&转岗记录'
+    }
+
+    const worksheet = workbook.addWorksheet(sheetName)
+
+    // 添加标题行
+    worksheet.mergeCells('A1:H1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = titleText
+    titleCell.font = { size: 16, bold: true }
+    titleCell.alignment = { horizontal: 'center' }
+
+    // 添加导出时间
+    worksheet.mergeCells('A2:H2')
+    const exportTimeCell = worksheet.getCell('A2')
+    exportTimeCell.value = `导出时间: ${new Date().toLocaleString('zh-CN')}`
+    exportTimeCell.font = { size: 10, color: { argb: 'FF666666' } }
+    exportTimeCell.alignment = { horizontal: 'right' }
+
+    // 定义表头
+    const headers: string[] = []
+    const columnWidths: number[] = []
+
+    // 通用列
+    headers.push('员工姓名', '部门')
+    columnWidths.push(12, 15)
+
+    // 根据tab类型添加不同列
+    if (props.tabType === 'overtime' || props.tabType === 'temporary') {
+      headers.push('类型', '开始时间', '结束时间', '时长(小时)', '状态', '原因')
+      columnWidths.push(10, 20, 20, 12, 10, 30)
+    } else if (props.tabType === 'annual') {
+      headers.push('类型', '开始日期', '结束日期', '天数', '状态', '审批人', '原因')
+      columnWidths.push(10, 12, 12, 8, 10, 12, 30)
+    } else if (props.tabType === 'resignation') {
+      headers.push('类型', '原因', '转入时间', '状态', '转出审批', '转入审批', '申请日期')
+      columnWidths.push(10, 30, 15, 10, 12, 12, 15)
+    }
+
+    // 添加表头行
+    const headerRow = worksheet.addRow(headers)
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFD9D9D9' }
+      }
+      cell.border = {
+        top: { style: 'thin' },
+        bottom: { style: 'thin' },
+        left: { style: 'thin' },
+        right: { style: 'thin' }
+      }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    })
+
+    // 设置列宽
+    columnWidths.forEach((width, index) => {
+      const col = index + 1
+      worksheet.getColumn(col).width = width
+    })
+
+    // 添加数据行
+    for (const row of filteredData.value) {
+      const dataRow: any[] = []
+
+      // 通用字段
+      dataRow.push(row.employeeName || '', row.departmentName || '')
+
+      if (props.tabType === 'overtime' || props.tabType === 'temporary') {
+        dataRow.push(
+          row.type || '',
+          formatTemporaryTime(row.startDate, row.startTime),
+          formatTemporaryTime(row.endDate, row.endTime),
+          row.duration || 0,
+          getStatusText(row.status),
+          row.reason || ''
+        )
+      } else if (props.tabType === 'annual') {
+        dataRow.push(
+          row.type || '',
+          row.startDate || '',
+          row.endDate || '',
+          row.duration || 0,
+          getStatusText(row.status),
+          row.approverName || '',
+          row.reason || ''
+        )
+      } else if (props.tabType === 'resignation') {
+        dataRow.push(
+          row.type || '',
+          row.reason || '',
+          row.transferDate || '',
+          getStatusText(row.status),
+          getApprovalStatusText(row.transferOutApprovalStatus || ''),
+          getApprovalStatusText(row.transferInApprovalStatus || ''),
+          row.applyDate ? row.applyDate.split(' ')[0] : ''
+        )
+      }
+
+      const dataRowObj = worksheet.addRow(dataRow)
+      dataRowObj.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin' },
+          bottom: { style: 'thin' },
+          left: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+        cell.alignment = { vertical: 'middle' }
+      })
+    }
+
+    // 生成文件并下载
+    const buffer = await workbook.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+
+    // 生成文件名
+    const now = new Date()
+    const dateStr = now.toISOString().split('T')[0]
+    let fileName = `请假记录_${dateStr}`
+    if (props.tabType === 'overtime') {
+      fileName = `临时加班记录_${dateStr}`
+    } else if (props.tabType === 'temporary') {
+      fileName = `临时请假公差记录_${dateStr}`
+    } else if (props.tabType === 'annual') {
+      fileName = `请假年假记录_${dateStr}`
+    } else if (props.tabType === 'resignation') {
+      fileName = `离职转岗记录_${dateStr}`
+    }
+
+    link.download = `${fileName}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error('导出失败:', error)
+    ElMessage.error('导出失败，请重试')
+  }
+}
+
 </script>
 
 <style scoped>
 .leave-tab-container {
-  padding: 20px;
+  padding: 12px 16px;
   background-color: #f9f9f9;
   border-radius: 8px;
+  height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .stats-container {
   display: flex;
   justify-content: space-around;
-  margin-bottom: 20px;
-  gap: 20px; /* 增加卡片之间的间距 */
+  margin-bottom: 12px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .stat-card {
   flex: 1;
   background-color: #ffffff;
   border-radius: 8px;
-  padding: 20px;
+  padding: 12px 16px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
   display: flex;
   align-items: center;
-  justify-content: center; /* 居中内容 */
-  min-width: 200px; /* 确保卡片不会太窄 */
+  justify-content: center;
+  min-width: 160px;
 }
 
 .stat-content {
   display: flex;
   align-items: center;
-  gap: 15px; /* 图标和文字的间距 */
+  gap: 12px;
 }
 
 .stat-icon {
-  font-size: 36px;
-  color: #409eff; /* Element Plus Primary color */
+  font-size: 28px;
+  color: #409eff;
 }
 
 .stat-info .stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: bold;
   color: #303133;
 }
 
 .stat-info .stat-label {
-  font-size: 14px;
+  font-size: 12px;
   color: #909399;
 }
 
 .filter-bar {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  flex-wrap: wrap; /* 允许换行 */
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.batch-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.batch-action-bar span {
+  color: #1890ff;
+  font-weight: 500;
 }
 
 .filter-input {
-  width: 200px; /* 统一输入框宽度 */
+  width: 180px;
 }
 
 .filter-select {
-  width: 150px; /* 统一选择框宽度 */
+  width: 130px;
 }
 
 .data-table {
   width: 100%;
-  margin-bottom: 20px;
+  flex: 1;
+  overflow: hidden;
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow-y: auto !important;
+}
+
+:deep(.el-table) {
+  height: 100%;
 }
 
 .pagination {
   justify-content: flex-end;
+  flex-shrink: 0;
+  margin-top: 8px;
 }
 
 .action-buttons .el-button {

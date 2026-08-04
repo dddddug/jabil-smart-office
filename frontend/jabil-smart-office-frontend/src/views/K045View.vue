@@ -1375,11 +1375,14 @@ const handleEndDistribution = (doc: K045Document) => {
       await endDistributionK045Document(doc.id!);
       // 分料结束后自动打开邮件客户端
       const notifyResult = await sendK045Notification(doc.id!);
-      // sendK045Notification 返回的已是解包后的数据（response interceptor 自动解包）
-      if (notifyResult?.mailtoUrl) {
+      // 在前端构建 mailto 链接，避免 URL 编码在 JSON 序列化/反序列化过程中被破坏
+      if (notifyResult?.submitterEmail) {
+        const subject = encodeURIComponent(notifyResult.subject || '');
+        const body = encodeURIComponent(notifyResult.body || '');
+        const mailtoUrl = `mailto:${notifyResult.submitterEmail}?subject=${subject}&body=${body}`;
         // 直接设置 location 打开邮件客户端，避免被浏览器阻止
-        window.location.href = notifyResult.mailtoUrl;
-      } else if (!notifyResult?.submitterEmail) {
+        window.location.href = mailtoUrl;
+      } else {
         ElMessage.warning(`未找到 ${doc.submitterName} 的邮箱地址，请手动发送邮件通知`);
       }
       ElMessage.success('分料已结束');

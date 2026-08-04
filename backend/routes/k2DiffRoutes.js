@@ -7,6 +7,9 @@ import k2DiffController from '../controllers/k2DiffController.js';
 // 获取登记记录列表
 router.get('/registrations', authenticateToken, asyncHandler(k2DiffController.getRegistrations));
 
+// 导出登记记录（必须在 /registrations/:id 之前）
+router.get('/registrations/export', authenticateToken, asyncHandler(k2DiffController.exportRegistrations));
+
 // 获取登记记录详情
 router.get('/registrations/:id', authenticateToken, asyncHandler(k2DiffController.getRegistrationById));
 

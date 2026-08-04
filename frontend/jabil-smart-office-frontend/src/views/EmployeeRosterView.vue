@@ -515,7 +515,8 @@ const filteredEmployees = computed(() => {
 
     const nameMatch = !searchQuery.value.name ||
       ((emp.name || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()) ||
-      (emp.employeeId || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()));
+      (emp.employeeId || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()) ||
+      (emp.oldEmployeeId || '').toLowerCase().includes((searchQuery.value.name || '').toLowerCase()));
     const plantMatch = !searchQuery.value.plantId || Number(emp.plantId) === Number(searchQuery.value.plantId);
     const deptMatch = !searchQuery.value.departmentId || Number(emp.departmentId) === Number(searchQuery.value.departmentId);
 

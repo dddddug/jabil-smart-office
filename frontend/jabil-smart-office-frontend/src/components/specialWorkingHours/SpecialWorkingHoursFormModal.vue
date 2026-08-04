@@ -123,7 +123,7 @@ export default {
         employeeNames: [], // 多选人员
         startTime: null,
         endTime: null,
-        registeredBy: '当前登录账号' // 示例值，实际应从登录信息获取
+        registeredBy: '' // 登记人，将在 created 中获取
       },
       rules: {
         date: [{ required: true, message: '请选择日期', trigger: 'change' }],
@@ -138,6 +138,13 @@ export default {
       selectedDepartmentId: null, // 选中的部门ID
       isDepartmentSelectDisabled: false, // 部门选择器是否禁用
       isAllUsersSelected: false
+    }
+  },
+  created() {
+    // 初始化登记人为当前登录用户
+    const currentUser = this.getCurrentUser();
+    if (currentUser) {
+      this.form.registeredBy = currentUser.realName || currentUser.username || '';
     }
   },
   computed: {
@@ -156,6 +163,11 @@ export default {
         if (this.formData.id) {
           // 编辑模式下，填充表单
           Object.assign(this.form, this.formData)
+        }
+        // 始终设置登记人为当前登录用户（新增和编辑都适用）
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          this.form.registeredBy = currentUser.realName || currentUser.username || '';
         }
         this.loadUserList() // 每次打开弹窗加载人员列表
         await this.loadDepartmentList() // 每次打开弹窗加载部门列表

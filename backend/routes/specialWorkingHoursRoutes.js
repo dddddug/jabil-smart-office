@@ -99,7 +99,9 @@ router.post('/', authenticateToken, async (req, res) => {
     }
     
     // 固定使用超级管理员
-    const registeredBy = '超级管理员';
+    // 获取当前登录用户的真实姓名
+    const userResult = await pool.query(`SELECT real_name FROM ${USER_TABLE} WHERE id = $1`, [req.user.id]);
+    const registeredBy = userResult.rows.length > 0 ? userResult.rows[0].real_name : '未知用户';
 
     const recordsToInsert = [];
     for (const employeeName of employeeNames) {
@@ -280,7 +282,9 @@ router.post('/import', authenticateToken, memoryUpload.single('file'), async (re
     }
 
     const rows = parseExcel(req.file.buffer);
-    const registeredBy = '超级管理员';
+    // 获取当前登录用户的真实姓名
+    const userResult = await pool.query(`SELECT real_name FROM ${USER_TABLE} WHERE id = $1`, [req.user.id]);
+    const registeredBy = userResult.rows.length > 0 ? userResult.rows[0].real_name : '未知用户';
     const result = await handleSpecialWorkingHoursUpload(rows, registeredBy);
 
     if (!result.success) {

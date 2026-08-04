@@ -231,8 +231,7 @@ router.beforeEach((to, from) => {
   const token = getToken(); // 直接获取 token
   const isLoggedIn = !!token; // 根据 token 存在与否判断登录状态
   const userStr = localStorage.getItem('user');
-  const hasSkippedSetup = localStorage.getItem('hasSkippedSetup') === 'true';
-  
+
   let user = null;
   if (userStr && userStr !== "undefined") {
     try {
@@ -241,9 +240,9 @@ router.beforeEach((to, from) => {
       localStorage.removeItem('user');
     }
   }
-  
+
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-  
+
   if (requiresAuth && !isLoggedIn) {
     if (to.path !== '/login') {
       return '/login';
@@ -251,8 +250,9 @@ router.beforeEach((to, from) => {
       return undefined;
     }
   } else if (isLoggedIn && user) {
-    // needsSetup is not defined, assuming it should be user && !hasSkippedSetup
-    const needsSetup = user && !hasSkippedSetup; 
+    // 判断是否需要首次设置：需要改密码 或 (未设置安全问题 且 未跳过)
+    const hasSkippedSetup = localStorage.getItem('hasSkippedSetup') === 'true';
+    const needsSetup = user.mustChangePassword || (!user.hasSecurityQuestion && !hasSkippedSetup);
     if (needsSetup && to.path !== '/first-time-setup') {
       return '/first-time-setup';
     } else if (!needsSetup && to.path === '/first-time-setup') {

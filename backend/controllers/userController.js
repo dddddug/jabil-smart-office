@@ -191,7 +191,7 @@ export const getAllUsers = async (req, res, next) => {
       params.push(parseInt(departmentId));
     }
     if (search) {
-      whereClause += ` AND (u.real_name LIKE $${paramIndex} OR u.username LIKE $${paramIndex} OR u.employee_id LIKE $${paramIndex})`;
+      whereClause += ` AND (u.real_name LIKE $${paramIndex} OR u.username LIKE $${paramIndex} OR u.employee_id LIKE $${paramIndex} OR u.old_employee_id LIKE $${paramIndex} OR u.sap_employee_id LIKE $${paramIndex})`;
       params.push(`%${search}%`);
       paramIndex++;
     }
@@ -792,6 +792,97 @@ export const updateUser = async (req, res, next) => {
 };
 
 /**
+ * 验证安全问题用于密码重置
+ */
+export const verifySecurityQuestion = async (req, res, next) => {
+  try {
+    const { username, securityQuestion, answer } = req.body;
+
+    if (!username || !securityQuestion || !answer) {
+      throw BadRequestError('用户名、安全问题和答案不能为空');
+    }
+
+    // 查找用户
+    const userResult = await pool.query(
+      `SELECT id, username, real_name, security_question, security_answer FROM ${USER_TABLE} WHERE username = $1`,
+      [username]
+    );
+    const user = userResult.rows[0];
+
+    if (!user) {
+      throw NotFoundError('用户不存在');
+    }
+
+    // 验证安全问题
+    if (!user.security_question || !user.security_answer) {
+      throw BadRequestError('该用户尚未设置安全问题，请联系管理员重置密码');
+    }
+
+    if (user.security_question !== securityQuestion) {
+      throw UnauthorizedError('安全问题答案不正确');
+    }
+
+    // 比较答案（不区分大小写）
+    if (user.security_answer.toLowerCase() !== answer.toLowerCase().trim()) {
+      throw UnauthorizedError('安全问题答案不正确');
+    }
+
+    logInfo('用户通过安全问题验证', { userId: user.id, username: user.username });
+
+    // 返回验证成功信号，让前端跳转到设置新密码页面
+    success(res, { verified: true, userId: user.id }, '身份验证成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 重置用户密码
+ */
+export const resetUserPassword = async (req, res, next) => {
+  try {
+    const { userId, newPassword, confirmPassword } = req.body;
+
+    if (!userId || !newPassword || !confirmPassword) {
+      throw BadRequestError('用户ID和新密码不能为空');
+    }
+
+    if (newPassword !== confirmPassword) {
+      throw BadRequestError('两次输入的密码不一致');
+    }
+
+    if (newPassword.length < 6) {
+      throw BadRequestError('密码长度不能少于6位');
+    }
+
+    // 查找用户
+    const userResult = await pool.query(
+      `SELECT id, username, real_name FROM ${USER_TABLE} WHERE id = $1`,
+      [userId]
+    );
+    const user = userResult.rows[0];
+
+    if (!user) {
+      throw NotFoundError('用户不存在');
+    }
+
+    // 哈希新密码
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await pool.query(
+      `UPDATE ${USER_TABLE} SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [hashedPassword, userId]
+    );
+
+    logInfo('用户密码重置成功', { userId: user.id, username: user.username, resetByIp: req.ip });
+
+    success(res, null, '密码重置成功，请使用新密码登录');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * 管理员重置密码为123456
  */
 export const adminResetPassword = async (req, res, next) => {
@@ -814,6 +905,86 @@ export const adminResetPassword = async (req, res, next) => {
     logUserAction(req.user?.id, req.user?.username, 'admin_reset_password', { targetUserId: id });
 
     success(res, null, '密码已重置为123456');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 修改当前用户密码
+ */
+export const changePassword = async (req, res, next) => {
+  try {
+    const { oldPassword, newPassword, confirmPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      throw BadRequestError('所有密码字段都不能为空');
+    }
+
+    if (newPassword !== confirmPassword) {
+      throw BadRequestError('两次输入的新密码不一致');
+    }
+
+    if (newPassword.length < 6) {
+      throw BadRequestError('新密码长度不能少于6位');
+    }
+
+    // 验证旧密码
+    const userResult = await pool.query(
+      `SELECT password FROM ${USER_TABLE} WHERE id = $1`,
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw NotFoundError('用户不存在');
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, userResult.rows[0].password);
+    if (!isMatch) {
+      throw UnauthorizedError('当前密码不正确');
+    }
+
+    // 哈希新密码并更新
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      `UPDATE ${USER_TABLE} SET password = $1, must_change_password = false, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [hashedPassword, userId]
+    );
+
+    logInfo('用户修改密码成功', { userId, ip: req.ip });
+
+    success(res, null, '密码修改成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 设置安全问题
+ */
+export const setSecurityQuestion = async (req, res, next) => {
+  try {
+    const { securityQuestion, securityAnswer } = req.body;
+    const userId = req.user.id;
+
+    if (!securityQuestion || !securityAnswer) {
+      throw BadRequestError('安全问题和答案不能为空');
+    }
+
+    // 更新用户的安全问题和答案
+    const result = await pool.query(
+      `UPDATE ${USER_TABLE} SET security_question = $1, security_answer = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING id`,
+      [securityQuestion, securityAnswer.trim(), userId]
+    );
+
+    if (result.rows.length === 0) {
+      throw NotFoundError('用户不存在');
+    }
+
+    logInfo('用户设置安全问题成功', { userId, securityQuestion });
+
+    success(res, null, '安全问题设置成功');
   } catch (err) {
     next(err);
   }
@@ -883,6 +1054,10 @@ export default {
   createUser,
   batchImportUsers,
   updateUser,
+  changePassword,
+  setSecurityQuestion,
+  verifySecurityQuestion,
+  resetUserPassword,
   adminResetPassword,
   deleteUser,
 };

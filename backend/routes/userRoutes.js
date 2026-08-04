@@ -51,6 +51,18 @@ router.put('/:id', updateUserValidation, validationMiddleware, asyncHandler(user
 // 管理员重置密码
 router.post('/:id/admin-reset-password', authenticateToken, authorize(['super_admin']), resetPasswordValidation, validationMiddleware, asyncHandler(userController.adminResetPassword));
 
+// 验证安全问题用于密码重置（无需认证）
+router.post('/reset-password/verify', asyncHandler(userController.verifySecurityQuestion));
+
+// 重置用户密码（无需认证）
+router.post('/reset-password', asyncHandler(userController.resetUserPassword));
+
+// 修改当前用户密码（需要认证）
+router.post('/change-password', authenticateToken, asyncHandler(userController.changePassword));
+
+// 设置安全问题（需要认证）
+router.post('/set-security-question', authenticateToken, asyncHandler(userController.setSecurityQuestion));
+
 // 删除用户
 router.delete('/:id', authenticateToken, asyncHandler(userController.deleteUser));
 

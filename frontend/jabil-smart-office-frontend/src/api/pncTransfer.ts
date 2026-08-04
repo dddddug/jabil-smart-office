@@ -84,9 +84,10 @@ export const sendEmail = (id: number) => {
     transferNo: string;
     status: string;
     emailSentAt: string;
-    mailtoLink: string;
-    emailBody: string;
     subject: string;
+    body: string;
+    to: string;
+    cc?: string;
   }>(`/pnc-transfer/documents/${id}/send-email`, {});
 };
 

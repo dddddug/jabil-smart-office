@@ -185,7 +185,8 @@ export interface K045NotificationResponse {
   documentNo: string;
   submitterName: string;
   submitterEmail: string;
-  mailtoUrl: string;
+  subject: string;
+  body: string;
   status: string;
 }
 

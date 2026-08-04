@@ -160,6 +160,14 @@ export const sendK2DiffBulkNotification = (ids: number[]) => {
   return request.post(`/k2-diff/registrations/notify-bulk`, { ids });
 };
 
+// 导出登记记录
+export const exportK2DiffRegistrations = (params?: K2DiffQueryParams) => {
+  return request.get('/k2-diff/registrations/export', {
+    params,
+    responseType: 'blob'
+  });
+};
+
 // K**差异登记配置项 key 常量
 export const K2_DIFF_CONFIG_KEYS = {
   DIFFERENCE_TYPES: 'difference_types',

@@ -61,38 +61,6 @@ export const checkAndDeactivateUsers = async () => {
   }
 };
 
-// 每周一自动提交临时加班和临时请假的定时任务
-export const autoSubmitTemporaryLeaves = async () => {
-  try {
-    console.log('开始检查需要自动提交的临时加班和临时请假...');
-
-    const [overtimeResult, leaveResult] = await Promise.all([
-      pool.query(
-        `UPDATE ${TEMPORARY_OVERTIME_TABLE}
-         SET status = 'approved', updated_at = CURRENT_TIMESTAMP
-         WHERE status = 'pending'
-         RETURNING *`
-      ),
-      pool.query(
-        `UPDATE ${TEMPORARY_LEAVE_TABLE}
-         SET status = 'approved', updated_at = CURRENT_TIMESTAMP
-         WHERE status = 'pending'
-         RETURNING *`
-      )
-    ]);
-
-    const totalCount = overtimeResult.rows.length + leaveResult.rows.length;
-
-    if (totalCount > 0) {
-      console.log(`成功自动提交 ${totalCount} 条记录`);
-    } else {
-      console.log('没有需要自动提交的记录');
-    }
-  } catch (error) {
-    console.error('自动提交临时加班和临时请假失败:', error);
-  }
-};
-
 // 处理转岗日期到期的定时任务
 export const processTransferDates = async () => {
   const client = await pool.connect();
@@ -160,12 +128,4 @@ export const initScheduledTasks = () => {
   });
 
   console.log('定时任务已设置：每天凌晨1点检查需要停用的用户和转岗日期');
-
-  // 设置定时任务：每周一早上8点自动提交临时加班和临时请假
-  cron.schedule('0 8 * * 1', () => {
-    console.log('定时任务：自动提交临时加班和临时请假');
-    autoSubmitTemporaryLeaves();
-  });
-
-  console.log('定时任务已设置：每周一早上8点自动提交临时加班和临时请假');
 };

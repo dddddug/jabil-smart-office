@@ -7,7 +7,7 @@ import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore.js';
 dayjs.extend(isSameOrBefore);
 import XLSX from 'xlsx';
-import { USER_TABLE, PLANT_TABLE, DEPT_TABLE, TEMPORARY_OVERTIME_TABLE, TEMPORARY_LEAVE_TABLE, SHIFT_DURATION_RULES_TABLE, SCHEDULE_TABLE } from '../config/db_constants.js';
+import { USER_TABLE, PLANT_TABLE, DEPT_TABLE, TEMPORARY_OVERTIME_TABLE, TEMPORARY_LEAVE_TABLE, SHIFT_DURATION_RULES_TABLE, SCHEDULE_TABLE, FORMAL_LEAVE_TABLE } from '../config/db_constants.js';
 import { checkBreak7Rest1 } from '../utils/scheduleUtils.js';
 import { handleScheduleUpload } from '../services/batchUploadService.js';
 import { parseExcel } from '../utils/excelUtils.js';
@@ -262,6 +262,60 @@ export const saveSchedule = async (req, res, next) => {
     }
 
     logDatabase(existing.rows.length > 0 ? 'UPDATE' : 'INSERT', 'jso_hr_employee_schedule', { employeeId, scheduleDate });
+
+    // 如果保存的是年假或请假，同步到 formal_leave 表
+    if (shift && (shift.includes('年假') || shift.includes('请假'))) {
+      try {
+        // 获取员工和部门信息
+        const userResult = await pool.query(
+          `SELECT u.*, p.id as plant_id, d.id as department_id
+           FROM ${USER_TABLE} u
+           LEFT JOIN ${PLANT_TABLE} p ON u.plant_id = p.id
+           LEFT JOIN ${DEPT_TABLE} d ON u.department_id = d.id
+           WHERE u.id = $1`,
+          [employeeId]
+        );
+
+        if (userResult.rows.length > 0) {
+          const userInfo = userResult.rows[0];
+          const leaveType = shift.includes('年假') ? 'ANNUAL_LEAVE' : 'PERSONAL_LEAVE';
+
+          // 检查是否已存在 formal_leave 记录（同一员工同一天，不区分状态）
+          const existingLeave = await pool.query(
+            `SELECT id FROM ${FORMAL_LEAVE_TABLE}
+             WHERE employee_id = $1 AND start_date = $2 AND end_date = $2`,
+            [employeeId, scheduleDate]
+          );
+
+          if (existingLeave.rows.length === 0) {
+            // 插入新的 formal_leave 记录，状态直接设置为已批准
+            // 使用当前登录用户作为审批人
+            const currentUserId = req.user?.id || employeeId;
+            await pool.query(
+              `INSERT INTO ${FORMAL_LEAVE_TABLE}
+               (employee_id, plant_id, department_id, leave_type, start_date, end_date, days, hours, status, applicant_id, approver_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'approved', $9, $10)`,
+              [employeeId, userInfo.plant_id, userInfo.department_id, leaveType, scheduleDate, scheduleDate, 1, 8, employeeId, currentUserId]
+            );
+            logInfo('排班年假/请假同步到 formal_leave 表', { employeeId, scheduleDate, leaveType, approverId: currentUserId });
+          } else {
+            // 已存在记录，更新状态为已批准（如果还不是已批准状态）
+            // 使用当前登录用户作为审批人
+            const currentUserId = req.user?.id || employeeId;
+            await pool.query(
+              `UPDATE ${FORMAL_LEAVE_TABLE}
+               SET status = 'approved', approver_id = $1, updated_at = CURRENT_TIMESTAMP
+               WHERE id = $2 AND status != 'approved'`,
+              [currentUserId, existingLeave.rows[0].id]
+            );
+            logInfo('排班年假/请假更新 formal_leave 状态为已批准', { employeeId, scheduleDate, leaveType, approverId: currentUserId });
+          }
+        }
+      } catch (syncErr) {
+        logWarn('同步年假/请假到 formal_leave 表失败', { error: syncErr.message });
+        // 不影响主流程，继续执行
+      }
+    }
 
     // 获取员工信息并发送通知
     try {

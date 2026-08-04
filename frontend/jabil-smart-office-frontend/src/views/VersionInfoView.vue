@@ -420,6 +420,13 @@ const loadCommitHistory = async (append = false) => {
     // 模拟从 git log 获取的提交历史
     // 在实际环境中，这应该从后端 API 获取
     const mockCommits: CommitInfo[] = [
+      { hash: 'lmn7890', fullHash: 'lmn7890123456abcdef1234567890abcdef1234', message: 'fix: 修复首次登录设置安全问题保存后不生效的问题，改为调用实际API', type: 'fix', time: '刚刚' },
+      { hash: 'opq4567', fullHash: 'opq4567890123abcdef1234567890abcdef1234', message: 'feat: 新增/api/users/reset-password/verify和/api/users/reset-password端点用于忘记密码重置', type: 'feat', time: '刚刚' },
+      { hash: 'ijk3456', fullHash: 'ijk3456789012abcdef1234567890abcdef1234', message: 'fix: 修复破7休1结束日期逻辑，如有调休请假则用实际结束日期，否则用开始日期+12天', type: 'fix', time: '刚刚' },
+      { hash: 'abc1234', fullHash: 'abc1234567890abcdef1234567890abcdef1234', message: 'fix: 修复发送邮件附件中区域和部门列显示不正确的问题', type: 'fix', time: '刚刚' },
+      { hash: 'def5678', fullHash: 'def5678901234abcdef1234567890abcdef1234', message: 'fix: 修复破7休1和周工时上限Excel导出中区域和部门列为空的问题', type: 'fix', time: '刚刚' },
+      { hash: 'fgh9012', fullHash: 'fgh9012345678abcdef1234567890abcdef1234', message: 'v1.1.6: 修复破7休1和周工时上限导出Excel区域和部门列显示问题', type: 'feat', time: '刚刚', version: '1.1.6', date: '2026-07-30' },
+      { hash: '464a71b', fullHash: '464a71b3c6d1b4e5f8a2c1d9e7f3b4a5c6d7e8f', message: 'v1.1.5: 修复K**差异登记问题描述选择后刷新问题，新增接口文档功能', type: 'feat', time: '1天前', version: '1.1.5', date: '2026-07-30' },
       { hash: 'ba23599', fullHash: 'ba2359923c6d1b4e5f8a2c1d9e7f3b4a5c6d7e8f', message: 'fix: 修复保存临时加班后刷新数据的日期参数', type: 'fix', time: '2天前' },
       { hash: '0055afe', fullHash: '0055afe123456789abcdef123456789abcdef12', message: 'fix: 保存临时加班/请假后刷新数据列表', type: 'fix', time: '2天前' },
       { hash: '8f0d580', fullHash: '8f0d580123456789abcdef123456789abcdef12', message: 'fix: 排除离职员工后重新计算级别工时汇总', type: 'fix', time: '3天前' },

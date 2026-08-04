@@ -12,20 +12,28 @@
     <div class="stats-row">
       <!-- 环形图：根据筛选条件统计类型分布 -->
       <div class="stat-card chart-card">
-        <div class="stat-label">📊 类型分布</div>
+        <div class="stat-label">📊 今日差异类型汇总</div>
         <div ref="donutChartRef" class="chart-container" style="height: 180px;"></div>
       </div>
 
       <!-- 饼图：近7天类型分布 -->
       <div class="stat-card chart-card">
-        <div class="stat-label">🥧 近7天类型分布</div>
+        <div class="stat-label">🥧 近7天差异类型汇总</div>
         <div ref="pieChartRef" class="chart-container" style="height: 180px;"></div>
       </div>
 
-      <!-- 簇状图：近14天趋势 -->
+      <!-- 簇状图：趋势汇总 -->
       <div class="stat-card chart-card" style="flex: 1.5;">
-        <div class="stat-label">📈 近14天趋势</div>
-        <div ref="barChartRef" class="chart-container" style="height: 200px;"></div>
+        <div class="stat-label">📈 差异类型趋势汇总</div>
+        <div class="chart-tabs" style="margin-bottom: 8px;">
+          <button
+            v-for="period in ['Day', 'Week', 'Month']"
+            :key="period"
+            :class="['tab-btn', { active: trendPeriod === period }]"
+            @click="trendPeriod = period as 'Day' | 'Week' | 'Month'"
+          >{{ period }}</button>
+        </div>
+        <div ref="barChartRef" class="chart-container" style="height: 180px;"></div>
       </div>
     </div>
 
@@ -36,6 +44,7 @@
         <div class="table-card-actions">
           <button type="button" class="btn btn-secondary" @click="loadRegistrations">🔄 刷新</button>
           <button type="button" class="btn btn-secondary" @click="sendEmail">📧 发送邮件</button>
+          <button type="button" class="btn btn-secondary" @click="handleExport">📥 导出</button>
           <button type="button" class="btn btn-primary" @click="showAddDialog">➕ 新增登记</button>
         </div>
       </div>
@@ -280,11 +289,13 @@ import {
   deleteK2DiffRegistration,
   sendK2DiffBulkNotification,
   getK2DiffConfigs,
+  exportK2DiffRegistrations,
   K2_DIFF_CONFIG_KEYS,
   type K2DiffRegistration,
   type K2DiffStats,
   type K2DiffQueryParams
 } from '../api/k2Diff';
+import { downloadFile } from '../utils/excelUtils';
 import { clearRequestCache } from '../utils/request';
 
 // 获取本地日期字符串 (YYYY-MM-DD)
@@ -344,19 +355,12 @@ const createPieChartOption = (
       formatter: '{b}: {c} ({d}%)'
     },
     legend: {
-      orient: 'vertical',
-      right: 5,
-      top: 'center',
-      textStyle: { fontSize: 11 },
-      formatter: (name: string) => {
-        const item = chartData.find(d => d.name === name);
-        return `${name}: ${item?.value || 0}`;
-      }
+      show: false
     },
     series: [{
       type: 'pie',
       radius: actualRadius,
-      center: ['35%', '50%'],
+      center: ['50%', '50%'],
       avoidLabelOverlap: false,
       itemStyle: {
         borderRadius: type === 'donut' ? 6 : 4,
@@ -422,6 +426,9 @@ const stats = reactive<K2DiffStats>({
   last7Days: { total: 0, shiftA: 0, shiftC: 0 },
   daily: []
 });
+
+// 趋势汇总周期选择
+const trendPeriod = ref<'Day' | 'Week' | 'Month'>('Day');
 
 // 近14天数据
 const last14Days = computed(() => {
@@ -514,7 +521,7 @@ const renderPieChart = async () => {
   }
 };
 
-// 渲染柱状图（近14天趋势 - 每日总数）
+// 渲染柱状图（趋势汇总 - 支持Day/Week/Month）
 const renderBarChart = async () => {
   if (!barChartRef.value) return;
 
@@ -522,10 +529,65 @@ const renderBarChart = async () => {
     barChart = echarts.init(barChartRef.value);
   }
 
-  // 生成近14天日期数组
-  const days = last14Days.value;
-  const xAxisData = days.map(d => d.label);
-  const barData = days.map(d => d.shiftA + d.shiftC);
+  const period = trendPeriod.value;
+  let xAxisData: string[] = [];
+  let barData: number[] = [];
+
+  if (period === 'Day') {
+    // 近14天每日数据
+    const days = last14Days.value;
+    xAxisData = days.map(d => d.label);
+    barData = days.map(d => d.shiftA + d.shiftC);
+  } else if (period === 'Week') {
+    // 按周汇总（近14周，每周从周一开始）
+    const weeks: { label: string; total: number }[] = [];
+    const today = new Date();
+    const todayDay = today.getDay(); // 0=周日, 1=周一, ...
+    // 计算本周周一的日期（周一=1，周日=0时特殊处理）
+    const daysSinceMonday = todayDay === 0 ? 6 : todayDay - 1;
+
+    for (let w = 13; w >= 0; w--) {
+      // 计算这一周的周一
+      const weekStartDate = new Date(today);
+      weekStartDate.setDate(today.getDate() - daysSinceMonday - w * 7);
+
+      const weekEndDate = new Date(weekStartDate);
+      weekEndDate.setDate(weekStartDate.getDate() + 6);
+
+      const weekNum = getWeekNumber(weekStartDate);
+      let total = 0;
+
+      // 遍历这一周的每一天（周一到周日）
+      for (let day = 0; day < 7; day++) {
+        const date = new Date(weekStartDate);
+        date.setDate(weekStartDate.getDate() + day);
+        const dateStr = formatLocalDate(date);
+        const dayData = stats.daily.find(item => item.date === dateStr);
+        total += (dayData?.shiftA || 0) + (dayData?.shiftC || 0);
+      }
+      weeks.push({ label: `W${weekNum}`, total });
+    }
+    xAxisData = weeks.map(w => w.label);
+    barData = weeks.map(w => w.total);
+  } else {
+    // 按月汇总（近12个月）
+    const months: { label: string; total: number }[] = [];
+    const today = new Date();
+    for (let m = 11; m >= 0; m--) {
+      const year = today.getFullYear();
+      const month = today.getMonth() - m;
+      // 处理跨年情况
+      const date = new Date(year, month, 1);
+      const y = date.getFullYear();
+      const mon = date.getMonth() + 1;
+      const monthStr = `${y}-${String(mon).padStart(2, '0')}`;
+      const monthData = stats.daily.filter(d => d.date.startsWith(monthStr));
+      const total = monthData.reduce((sum, d) => sum + (d.shiftA || 0) + (d.shiftC || 0), 0);
+      months.push({ label: `${y}年${mon}月`, total });
+    }
+    xAxisData = months.map(m => m.label);
+    barData = months.map(m => m.total);
+  }
 
   const option: echarts.EChartsOption = {
     tooltip: {
@@ -576,6 +638,15 @@ const renderBarChart = async () => {
   };
 
   barChart.setOption(option);
+};
+
+// 获取周数
+const getWeekNumber = (date: Date): number => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
 // 渲染所有图表
@@ -656,6 +727,14 @@ watch(
   () => [searchParams.startDate, searchParams.endDate, searchParams.partNo, searchParams.shift],
   () => {
     renderDonutChart();
+  }
+);
+
+// 监听趋势周期变化，重新渲染柱状图
+watch(
+  () => trendPeriod.value,
+  () => {
+    renderBarChart();
   }
 );
 
@@ -918,16 +997,20 @@ const loadRegistrations = async () => {
       pageSize: pagination.pageSize
     };
 
-    // 默认显示今日数据，支持搜索覆盖
+    // 默认显示最近7天数据，支持搜索覆盖
     if (searchParams.startDate) {
       params.startDate = searchParams.startDate;
-    } else {
-      params.startDate = currentDate.value;
     }
     if (searchParams.endDate) {
       params.endDate = searchParams.endDate;
-    } else {
-      params.endDate = currentDate.value;
+    }
+    // 如果没有指定日期范围，默认显示最近7天
+    if (!searchParams.startDate && !searchParams.endDate) {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 6); // 最近7天
+      params.startDate = start.toISOString().split('T')[0];
+      params.endDate = end.toISOString().split('T')[0];
     }
 
     if (searchParams.partNo) params.partNo = searchParams.partNo;
@@ -935,12 +1018,14 @@ const loadRegistrations = async () => {
     if (searchParams.shift) params.shift = searchParams.shift;
 
     const response = await getK2DiffRegistrations(params);
+    console.log('[Chart Debug] registrations response:', response);
     registrations.value = response.items || [];
     // 初始化表格行编辑数据
     registrations.value.forEach((item) => {
       editingData[item.id!] = item.problemDescription || '';
     });
-    pagination.total = response.total || 0;
+    // 从 pagination 对象中获取总数
+    pagination.total = response.pagination?.total || response.total || 0;
   } catch (error) {
     console.error('加载登记记录失败:', error);
     ElMessage.error('加载数据失败');
@@ -1083,13 +1168,13 @@ const confirmDelete = async (item: K2DiffRegistration) => {
 
 // 发送邮件通知（合并当前筛选条件下的所有记录为一封邮件）
 const sendEmail = async () => {
-  if (registrations.value.length === 0) {
+  if (pagination.total === 0) {
     ElMessage.warning('当前没有登记记录');
     return;
   }
 
   try {
-    const totalCount = registrations.value.length;
+    const totalCount = pagination.total;
     await ElMessageBox.confirm(
       `确定要发送邮件通知吗？\n将汇总发送 ${totalCount} 条记录\n日期范围: ${searchParams.startDate || '不限'} ~ ${searchParams.endDate || '不限'}`,
       '发送邮件确认',
@@ -1106,15 +1191,42 @@ const sendEmail = async () => {
     // 批量发送，所有记录合并为一封邮件
     const response = await sendK2DiffBulkNotification(ids);
     console.log('邮件响应:', response);
-    if (response?.mailtoLink) {
+    if (response) {
+      // 在前端构建 mailto 链接，避免 URL 编码在 JSON 序列化/反序列化过程中被破坏
+      const subject = encodeURIComponent(response.subject || '');
+      const body = encodeURIComponent(response.body || '');
+      let mailtoLink = `mailto:${response.recipients || ''}?subject=${subject}&body=${body}`;
+      if (response.cc) {
+        mailtoLink += `&cc=${encodeURIComponent(response.cc)}`;
+      }
       // 打开邮件客户端
-      window.open(response.mailtoLink, '_self');
+      window.open(mailtoLink, '_self');
     }
   } catch (error) {
     if ((error as string) !== 'cancel') {
       console.error('发送邮件失败:', error);
       ElMessage.error('发送邮件失败');
     }
+  }
+};
+
+// 导出登记记录
+const handleExport = async () => {
+  try {
+    const params: K2DiffQueryParams = {};
+
+    // 使用当前搜索条件
+    if (searchParams.startDate) params.startDate = searchParams.startDate;
+    if (searchParams.endDate) params.endDate = searchParams.endDate;
+    if (searchParams.partNo) params.partNo = searchParams.partNo;
+    if (searchParams.grn) params.grn = searchParams.grn;
+    if (searchParams.shift) params.shift = searchParams.shift;
+
+    const res = await exportK2DiffRegistrations(params);
+    downloadFile(res, 'K差异登记.xlsx');
+    ElMessage.success('导出成功');
+  } catch (error: any) {
+    ElMessage.error('导出失败：' + (error.message || error));
   }
 };
 
@@ -1255,6 +1367,39 @@ onUnmounted(() => {
 
 .chart-container {
   width: 100%;
+}
+
+/* 趋势汇总 Tab 切换 */
+.chart-tabs {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.tab-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #E5E7EB;
+  background: #FFFFFF;
+  color: #6B7280;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tab-btn:hover {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+  color: #374151;
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #0066CC, #0052A3);
+  color: #fff;
+  border-color: #0066CC;
+  box-shadow: 0 2px 4px rgba(0, 102, 204, 0.3);
 }
 
 .stat-summary {

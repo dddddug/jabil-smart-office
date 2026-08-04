@@ -41,7 +41,7 @@ router.get('/', authenticateToken, async (req, res) => {
     
     // 构建数据查询
     const query = `
-      SELECT t.*, emp.real_name as employee_name, p.name as plant_name, d.name as department_name
+      SELECT t.*, emp.real_name as employee_name, emp.old_employee_id as employee_no, p.name as plant_name, d.name as department_name
       FROM ${TEMPORARY_LEAVE_TABLE} t
       LEFT JOIN ${USER_TABLE} emp ON t.employee_id = emp.id
       LEFT JOIN ${PLANT_TABLE} p ON t.plant_id = p.id
@@ -50,27 +50,29 @@ router.get('/', authenticateToken, async (req, res) => {
     const result = await pool.query(query, [...where.values, limit, offset]);
 
     const items = result.rows.map(row => {
-        // 尝试多种方式来正确处理日期时间
+        // 正确处理日期时间：日期字段存日期，时间字段存时间
         let startDateStr = '';
         let endDateStr = '';
-        
+
         try {
           if (row.start_date) {
+            // 只取日期部分，不添加时间
             const d = dayjs(row.start_date);
-            startDateStr = d.format('YYYY-MM-DD HH:mm');
+            startDateStr = d.format('YYYY-MM-DD');
           }
           if (row.end_date) {
             const d = dayjs(row.end_date);
-            endDateStr = d.format('YYYY-MM-DD HH:mm');
+            endDateStr = d.format('YYYY-MM-DD');
           }
         } catch (e) {
           console.error('日期格式化错误:', e);
         }
-        
+
         return {
           id: row.id,
           employeeId: row.employee_id,
           employeeName: row.employee_name,
+          employeeNo: row.employee_no,
           plantId: row.plant_id,
           plantName: row.plant_name,
           departmentId: row.department_id,
@@ -207,17 +209,17 @@ router.put('/:id/withdraw', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      `UPDATE ${TEMPORARY_LEAVE_TABLE} 
+      `UPDATE ${TEMPORARY_LEAVE_TABLE}
        SET status = 'pending', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND status = 'approved' 
+       WHERE id = $1 AND status != 'pending'
        RETURNING *`,
       [id]
     );
-    
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: '记录不存在或未提交' });
+      return res.status(404).json({ error: '记录不存在或已是待提交状态' });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('撤回临时请假公差记录失败:', error);

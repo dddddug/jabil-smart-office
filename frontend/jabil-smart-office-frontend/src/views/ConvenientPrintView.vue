@@ -1111,9 +1111,15 @@ const executePrint = async () => {
       }
       const emailData = await sendEmail(doc.id);
 
-      // 打开邮件客户端
-      if (emailData.mailtoLink) {
-        window.open(emailData.mailtoLink, '_self');
+      // 打开邮件客户端 - 前端自行构建 mailto 链接，避免编码问题
+      if (emailData.to) {
+        const subject = encodeURIComponent(emailData.subject || '');
+        const body = encodeURIComponent(emailData.body || '');
+        let mailtoLink = `mailto:${emailData.to}?subject=${subject}&body=${body}`;
+        if (emailData.cc) {
+          mailtoLink += `&cc=${encodeURIComponent(emailData.cc)}`;
+        }
+        window.open(mailtoLink, '_self');
       }
 
       ElMessage.success(`转仓单 ${doc.transferNo} 已创建并发送邮件`);

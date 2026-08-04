@@ -17,7 +17,7 @@
     </el-form-item>
     <el-form-item class="login-options-row">
       <el-checkbox v-model="loginForm.rememberUsername">记住用户名</el-checkbox>
-      <el-link type="primary" :underline="false" @click="$emit('switch-view', 'resetPassword')">忘记密码？</el-link>
+      <el-link type="primary" underline="never" @click="$emit('switch-view', 'resetPassword')">忘记密码？</el-link>
     </el-form-item>
     <el-form-item>
       <el-button type="primary" native-type="submit" class="login-button" :loading="isLoggingIn">
@@ -86,6 +86,7 @@ const handleLogin = async () => {
               console.log('[LoginForm] Token after setToken():', localStorage.getItem('jabil-token'));
             }
             if (fullResponse.data && fullResponse.data.user) {
+              // 保存用户信息到 localStorage
               localStorage.setItem('user', JSON.stringify(fullResponse.data.user));
               localStorage.setItem('isLoggedIn', 'true');
               localStorage.setItem('userRole', fullResponse.data.user.roleName);
@@ -94,7 +95,9 @@ const handleLogin = async () => {
 
               ElMessage.success('登录成功！');
 
-              const targetRoute = fullResponse.data.user.mustChangePassword || !fullResponse.data.user.hasSecurityQuestion ? '/first-time-setup' : '/';
+              // 判断是否需要首次设置：需要改密码 或 未设置安全问题
+              const needsSetup = fullResponse.data.user.mustChangePassword || !fullResponse.data.user.hasSecurityQuestion;
+              const targetRoute = needsSetup ? '/first-time-setup' : '/';
               console.log('[LoginForm] Preparing to navigate to:', targetRoute);
               router.push(targetRoute);
             } else {

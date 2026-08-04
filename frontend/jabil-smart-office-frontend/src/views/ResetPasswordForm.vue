@@ -14,8 +14,11 @@
         安全问题 <el-icon><QuestionFilled /></el-icon>
       </template>
       <el-select v-model="resetPasswordForm.securityQuestion" placeholder="请选择安全问题">
-        <el-option label="您母亲的姓氏是什么？" value="mother_maiden_name"></el-option>
-        <el-option label="您的第一所学校名称？" value="first_school_name"></el-option>
+        <el-option label="您母亲的姓氏是什么？" value="您母亲的姓氏是什么？"></el-option>
+        <el-option label="您的第一所学校名称？" value="您的第一所学校名称？"></el-option>
+        <el-option label="您出生的城市是？" value="您出生的城市是？"></el-option>
+        <el-option label="您的宠物名字是？" value="您的宠物名字是？"></el-option>
+        <el-option label="您最喜欢的颜色是？" value="您最喜欢的颜色是？"></el-option>
       </el-select>
     </el-form-item>
     <el-form-item class="form-item-answer">
@@ -34,7 +37,7 @@
   </el-form>
 
   <div class="system-info">
-    <p>记得密码了？<el-link type="primary" :underline="false" @click="$emit('switch-view', 'login')">返回登录</el-link></p>
+    <p>记得密码了？<el-link type="primary" underline="never" @click="$emit('switch-view', 'login')">返回登录</el-link></p>
   </div>
 </template>
 
@@ -60,7 +63,7 @@ const handleResetPassword = async () => {
     isLoading.value = true;
     await resetPasswordFormRef.value.validate(async (valid) => {
       if (valid) {
-        const response = await fetch('/api/reset-password', {
+        const response = await fetch('/api/users/reset-password/verify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -73,9 +76,10 @@ const handleResetPassword = async () => {
         });
 
         const data = await response.json();
-        if (response.ok) {
+        if (response.ok && data.code === 200) {
           ElMessage.success('身份验证成功，请设置新密码！');
-          emit('switch-view', 'set-new-password'); // Assuming a new view for setting password
+          // 传递验证通过的用户ID给新密码设置组件
+          emit('switch-view', 'setNewPassword', { userId: data.data.userId });
         } else {
           ElMessage.error(data.message || '身份验证失败，请检查您的信息。');
         }

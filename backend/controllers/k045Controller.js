@@ -806,20 +806,14 @@ export const sendNotification = async (req, res, next) => {
       logDebug('获取提交人邮箱失败', { submitterName: doc.submitter_name, error: err.message });
     }
 
-    // 生成 mailto 链接
-    let mailtoUrl = '';
-    if (submitterEmail) {
-      const subject = encodeURIComponent(`K045单据分料完成通知 - ${doc.document_no}`);
-      const body = encodeURIComponent(
-        `您好 ${doc.submitter_name}，\n\n` +
-        `您的 K045 单据 ${doc.document_no} 已完成分料。\n\n` +
-        `请确认收货后，在系统中进行确认完成操作。\n\n` +
-        `---\n` +
-        `Jabil Smart Office\n` +
-        `单据管理系统`
-      );
-      mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
-    }
+    // 生成邮件内容（不进行 URL 编码，让前端自己处理）
+    const subject = `K045单据分料完成通知 - ${doc.document_no}`;
+    const body = `您好 ${doc.submitter_name}，\n\n` +
+      `您的 K045 单据 ${doc.document_no} 已完成分料。\n\n` +
+      `请确认收货后，在系统中进行确认完成操作。\n\n` +
+      `---\n` +
+      `Jabil Smart Office\n` +
+      `单据管理系统`;
 
     logInfo('K045单据邮件通知', {
       id,
@@ -834,7 +828,8 @@ export const sendNotification = async (req, res, next) => {
       documentNo: doc.document_no,
       submitterName: doc.submitter_name,
       submitterEmail,
-      mailtoUrl,
+      subject,
+      body,
       status: doc.status
     }, '邮件通知已准备');
 

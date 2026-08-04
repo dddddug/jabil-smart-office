@@ -67,10 +67,10 @@ onMounted(() => {
 
 <style scoped>
 .leave-management-container {
-  padding: 0 24px 24px 24px;
+  padding: 0 16px 16px 16px;
   background-color: #F9FAFB;
   min-height: 100%;
-  padding-top: 20px;
+  padding-top: 12px;
 }
 
 .page-header {
@@ -81,7 +81,7 @@ onMounted(() => {
   top: 52px;
   z-index: 99;
   background-color: #F9FAFB;
-  padding: 8px 0 16px 0;
+  padding: 8px 0 12px 0;
   margin-bottom: 0;
 }
 

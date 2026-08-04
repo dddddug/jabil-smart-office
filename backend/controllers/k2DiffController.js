@@ -2,6 +2,7 @@
  * K**差异登记 主数据控制器
  */
 import pool from '../config/db.js';
+import ExcelJS from 'exceljs';
 import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logDebug } from '../utils/logger.js';
@@ -129,15 +130,19 @@ export const getRegistrations = async (req, res, next) => {
     const params = [];
     let whereClause = 'WHERE 1=1';
 
+    // 日期查询使用 Asia/Shanghai 时区转换，确保本地日期匹配正确
+    // registration_date 存储为 UTC，但在查询时转换为上海时区的日期
+    const dateConversion = "DATE(registration_date AT TIME ZONE 'Asia/Shanghai')";
+
     // 动态构建查询条件
     if (startDate) {
       params.push(startDate);
-      whereClause += ` AND registration_date >= $${params.length}`;
+      whereClause += ` AND ${dateConversion} >= $${params.length}::date`;
     }
 
     if (endDate) {
       params.push(endDate);
-      whereClause += ` AND registration_date <= $${params.length}`;
+      whereClause += ` AND ${dateConversion} <= $${params.length}::date`;
     }
 
     if (shift) {
@@ -461,6 +466,9 @@ export const getStats = async (req, res, next) => {
     const sevenDaysAgo = getDaysAgoShanghai(7, now);
     const sevenDaysAgoStr = formatShanghaiDate(sevenDaysAgo);
 
+    // 日期查询使用 Asia/Shanghai 时区转换
+    const dateConversion = "DATE(registration_date AT TIME ZONE 'Asia/Shanghai')";
+
     // 今日统计
     const todayResult = await pool.query(`
       SELECT
@@ -468,7 +476,7 @@ export const getStats = async (req, res, next) => {
         COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
         COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
       FROM ${K2_DIFF_REGISTRATION_TABLE}
-      WHERE registration_date = $1
+      WHERE ${dateConversion} = $1::date
     `, [todayStr]);
 
     // 近7天统计
@@ -478,21 +486,22 @@ export const getStats = async (req, res, next) => {
         COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
         COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
       FROM ${K2_DIFF_REGISTRATION_TABLE}
-      WHERE registration_date >= $1 AND registration_date <= $2
+      WHERE ${dateConversion} >= $1::date AND ${dateConversion} <= $2::date
     `, [sevenDaysAgoStr, todayStr]);
 
-    // 近7天每日统计
+    // 近365天每日统计（支持12个月趋势汇总）
+    const oneYearAgoStr = formatDate(new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
     const dailyResult = await pool.query(`
       SELECT
-        registration_date,
+        ${dateConversion} as local_date,
         COUNT(*) as count,
         COUNT(CASE WHEN shift = 'A' THEN 1 END) as shift_a,
         COUNT(CASE WHEN shift = 'C' THEN 1 END) as shift_c
       FROM ${K2_DIFF_REGISTRATION_TABLE}
-      WHERE registration_date >= $1 AND registration_date <= $2
-      GROUP BY registration_date
-      ORDER BY registration_date DESC
-    `, [sevenDaysAgoStr, todayStr]);
+      WHERE ${dateConversion} >= $1::date AND ${dateConversion} <= $2::date
+      GROUP BY ${dateConversion}
+      ORDER BY ${dateConversion} DESC
+    `, [oneYearAgoStr, todayStr]);
 
     const stats = {
       today: {
@@ -506,7 +515,7 @@ export const getStats = async (req, res, next) => {
         shiftC: parseInt(weekResult.rows[0].shift_c) || 0
       },
       daily: dailyResult.rows.map(row => ({
-        date: formatDate(row.registration_date),
+        date: formatDate(row.local_date),
         count: parseInt(row.count) || 0,
         shiftA: parseInt(row.shift_a) || 0,
         shiftC: parseInt(row.shift_c) || 0
@@ -540,12 +549,14 @@ export const getTypeStats = async (req, res, next) => {
     }
 
     // 按问题描述分组统计
+    // 日期查询使用 Asia/Shanghai 时区转换，确保本地日期匹配正确
+    const dateConversion = "DATE(registration_date AT TIME ZONE 'Asia/Shanghai')";
     const result = await pool.query(`
       SELECT
         COALESCE(problem_description, '未分类') as type_name,
         COUNT(*) as count
       FROM ${K2_DIFF_REGISTRATION_TABLE}
-      WHERE registration_date >= $1 AND registration_date <= $2
+      WHERE ${dateConversion} >= $1::date AND ${dateConversion} <= $2::date
       GROUP BY problem_description
       ORDER BY count DESC
     `, [start, end]);
@@ -600,18 +611,36 @@ export const sendBulkNotification = async (req, res, next) => {
     const todayStr = formatDate(today);
     const subject = `${todayStr}【K**差异登记Report】`;
 
-    // 构建邮件正文
-    let body = `HI ALL: 以下是每日K**异常物料，请核查并改善，谢谢！\n\n`;
+    // 计算日期范围和类型统计
+    const dates = records.map(r => new Date(r.registration_date)).sort((a, b) => a - b);
+    const startDate = formatDate(dates[0]);
+    const endDate = formatDate(dates[dates.length - 1]);
+    const dateRange = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`;
 
-    // 数据行（每行包含字段名和值）
-    records.forEach((record, index) => {
-      const regDate = formatDate(record.registration_date);
-      const regTime = formatDateTime(record.registration_time);
-      if (index > 0) {
-        body += '\n';
-      }
-      body += `  日期:${regDate}|班次:${record.shift}班|Part No:${record.part_no}|GRN:${record.grn || '-'}|数量:${record.qty}|位置:${record.location || '-'}|问题:${record.problem_description || '-'}|退料:${record.return_location || '-'}|记录人:${record.recorder}|时间:${regTime}`;
+    // 按问题类型统计
+    const typeCount = {};
+    records.forEach(record => {
+      const type = record.problem_description || '其他';
+      typeCount[type] = (typeCount[type] || 0) + 1;
     });
+    const typeBreakdown = Object.entries(typeCount)
+      .map(([type, count]) => `${type}: ${count}个`)
+      .join('，');
+
+    // 构建邮件正文
+    let body = `HI ALL: 以下是 ${dateRange} K**异常物料，共计${records.length}个，其中${typeBreakdown}，请核查并改善，谢谢！\n\n`;
+
+    // 明细行（限制显示数量避免URL过长）
+    const maxDisplayRecords = 50;
+    const displayRecords = records.slice(0, maxDisplayRecords);
+    body += '\n明细如下：\n';
+    displayRecords.forEach((record) => {
+      const regDate = formatDate(record.registration_date);
+      body += `${regDate}|${record.shift}班|${record.part_no}|GRN:${record.grn || '-'}|数量:${record.qty}|问题:${record.problem_description || '-'}\n`;
+    });
+    if (records.length > maxDisplayRecords) {
+      body += `\n... 共${records.length}条记录，显示前${maxDisplayRecords}条`;
+    }
 
     body += `\n---
 此邮件由系统自动发送，请勿回复。`;
@@ -622,20 +651,11 @@ export const sendBulkNotification = async (req, res, next) => {
       cc
     });
 
-    // 构建 mailto 链接
-    const mailtoSubject = encodeURIComponent(subject);
-    const mailtoBody = encodeURIComponent(body);
-    let mailtoLink = `mailto:${recipients}?subject=${mailtoSubject}&body=${mailtoBody}`;
-    if (cc) {
-      mailtoLink += `&cc=${encodeURIComponent(cc)}`;
-    }
-
     success(res, {
       count: records.length,
       recipients,
       cc,
       subject,
-      mailtoLink,
       body
     }, '邮件已准备');
 
@@ -699,23 +719,159 @@ GRN: ${record.grn || '-'}
       cc
     });
 
-    // 构建 mailto 链接
-    const mailtoSubject = encodeURIComponent(subject);
-    const mailtoBody = encodeURIComponent(body);
-    let mailtoLink = `mailto:${recipients}?subject=${mailtoSubject}&body=${mailtoBody}`;
-    if (cc) {
-      mailtoLink += `&cc=${encodeURIComponent(cc)}`;
-    }
-
     success(res, {
       id: record.id,
       partNo: record.part_no,
       recipients,
       cc,
       subject,
-      mailtoLink,
       body
     }, '邮件已准备');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 导出登记记录
+ */
+export const exportRegistrations = async (req, res, next) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      shift,
+      partNo,
+      grn,
+      returnLocation,
+      recorder
+    } = req.query;
+
+    const params = [];
+    let whereClause = 'WHERE 1=1';
+
+    // 动态构建查询条件
+    if (startDate) {
+      params.push(startDate);
+      whereClause += ` AND registration_date >= $${params.length}`;
+    }
+
+    if (endDate) {
+      params.push(endDate);
+      whereClause += ` AND registration_date <= $${params.length}`;
+    }
+
+    if (shift) {
+      params.push(shift);
+      whereClause += ` AND shift = $${params.length}`;
+    }
+
+    if (partNo) {
+      params.push(`%${partNo}%`);
+      whereClause += ` AND part_no ILIKE $${params.length}`;
+    }
+
+    if (grn) {
+      params.push(`%${grn}%`);
+      whereClause += ` AND grn ILIKE $${params.length}`;
+    }
+
+    if (returnLocation) {
+      params.push(`%${returnLocation}%`);
+      whereClause += ` AND return_location ILIKE $${params.length}`;
+    }
+
+    if (recorder) {
+      params.push(`%${recorder}%`);
+      whereClause += ` AND recorder ILIKE $${params.length}`;
+    }
+
+    // 查询所有符合条件的记录（不分页）
+    const result = await pool.query(`
+      SELECT
+        registration_date,
+        shift,
+        part_no,
+        grn,
+        qty,
+        location,
+        problem_description,
+        registration_time,
+        return_location,
+        recorder
+      FROM ${K2_DIFF_REGISTRATION_TABLE}
+      ${whereClause}
+      ORDER BY registration_time DESC
+    `, params);
+
+    // 创建 Excel 工作簿
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Export Records');
+
+    // 设置列头
+    worksheet.columns = [
+      { header: '日期', key: 'registrationDate', width: 12 },
+      { header: '班次', key: 'shift', width: 8 },
+      { header: 'Part No', key: 'partNo', width: 18 },
+      { header: 'GRN', key: 'grn', width: 15 },
+      { header: '数量', key: 'qty', width: 10 },
+      { header: '位置', key: 'location', width: 12 },
+      { header: '问题描述', key: 'problemDescription', width: 20 },
+      { header: '登记时间', key: 'registrationTime', width: 18 },
+      { header: '退料地点', key: 'returnLocation', width: 15 },
+      { header: '记录人', key: 'recorder', width: 12 }
+    ];
+
+    // 设置表头样式
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF52C41A' }
+      };
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    // 添加数据行
+    result.rows.forEach((row, index) => {
+      const dataRow = worksheet.addRow({
+        registrationDate: formatDate(row.registration_date),
+        shift: row.shift + '班',
+        partNo: row.part_no,
+        grn: row.grn || '-',
+        qty: parseFloat(row.qty) || 0,
+        location: row.location || '-',
+        problemDescription: row.problem_description || '-',
+        registrationTime: formatDateTime(row.registration_time),
+        returnLocation: row.return_location || '-',
+        recorder: row.recorder
+      });
+
+      // 隔行变色
+      if (index % 2 === 1) {
+        dataRow.eachCell((cell) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF9FAFB' }
+          };
+        });
+      }
+    });
+
+    // 设置响应头
+    const fileName = `K差异登记_${startDate || '开始'}_${endDate || '结束'}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=' + encodeURIComponent(fileName));
+
+    // 将工作簿写入响应
+    await workbook.xlsx.write(res);
+    res.end();
+
+    logInfo('K**差异登记记录导出成功', { recordCount: result.rows.length });
 
   } catch (err) {
     next(err);
@@ -731,5 +887,6 @@ export default {
   getStats,
   getTypeStats,
   sendBulkNotification,
-  sendNotification
+  sendNotification,
+  exportRegistrations
 };

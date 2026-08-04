@@ -26,8 +26,8 @@ async function writeLeaveToSchedule(client, employeeId, startDate, endDate, leav
   const start = dayjs(startDate);
   const end = dayjs(endDate);
 
-  // 确定特殊状态显示（统一显示为"请假"，前端可再区分）
-  const specialStatus = '请假';
+  // 年假写年假，事假写请假
+  const specialStatus = leaveType === 'ANNUAL_LEAVE' ? '年假' : '请假';
 
   // 遍历日期范围内的每一天
   let currentDate = start;
@@ -43,15 +43,18 @@ async function writeLeaveToSchedule(client, employeeId, startDate, endDate, leav
     if (existing.rows.length > 0) {
       // 更新现有记录，追加特殊状态
       const currentStatus = existing.rows[0].special_status || '';
-      const newStatus = currentStatus ? `${currentStatus}, ${specialStatus}` : specialStatus;
-      await client.query(
-        `UPDATE ${SCHEDULE_TABLE} SET special_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-        [newStatus, existing.rows[0].id]
-      );
+      // 避免重复添加
+      if (!currentStatus.split(',').map(s => s.trim()).includes(specialStatus)) {
+        const newStatus = currentStatus ? `${currentStatus}, ${specialStatus}` : specialStatus;
+        await client.query(
+          `UPDATE ${SCHEDULE_TABLE} SET special_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [newStatus, existing.rows[0].id]
+        );
+      }
     } else {
-      // 插入新记录
+      // 插入新记录，年假写年假，事假写请假
       await client.query(
-        `INSERT INTO ${SCHEDULE_TABLE} (employee_id, schedule_date, shift, special_status) VALUES ($1, $2, '休息', $3)`,
+        `INSERT INTO ${SCHEDULE_TABLE} (employee_id, schedule_date, shift, special_status) VALUES ($1, $2, $3, $3)`,
         [employeeId, dateStr, specialStatus]
       );
     }
@@ -280,24 +283,25 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // 创建请假/年假或离职/转岗记录
 router.post('/', authenticateToken, checkApproverRole, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { 
-      employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId, 
+    const {
+      employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId,
       transferToId, transferReason, transferPlantId, transferDepartmentId, transferDate, // Fields for resignation/transfer
       transferOutApproverId, transferInApproverId
     } = req.body;
-    
+
     let targetTable;
     let query;
     let params;
-    
+
     if (leaveType === '离职' || leaveType === '转岗') {
       targetTable = RESIGNATION_TRANSFER_TABLE;
-      query = `INSERT INTO ${targetTable} 
-               (employee_id, plant_id, department_id, type, reason, proof_file, applicant_id, approver_id, 
-                transfer_to_id, transfer_reason, transfer_plant_id, transfer_department_id, transfer_date, 
+      query = `INSERT INTO ${targetTable}
+               (employee_id, plant_id, department_id, type, reason, proof_file, applicant_id, approver_id,
+                transfer_to_id, transfer_reason, transfer_plant_id, transfer_department_id, transfer_date,
                 transfer_out_approver_id, transfer_in_approver_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                RETURNING *`;
       params = [
         employeeId, plantId, departmentId, leaveType, reason, proofFile, applicantId, approverId,
@@ -306,18 +310,136 @@ router.post('/', authenticateToken, checkApproverRole, async (req, res) => {
       ];
     } else {
       targetTable = FORMAL_LEAVE_TABLE;
-      query = `INSERT INTO ${targetTable} 
+      query = `INSERT INTO ${targetTable}
                (employee_id, plant_id, department_id, leave_type, start_date, end_date, days, hours, reason, proof_file, applicant_id, approver_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                RETURNING *`;
       params = [
         employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId
       ];
     }
-    
-    const result = await pool.query(query, params);
+
+    await client.query('BEGIN');
+    const result = await client.query(query, params);
     const newItem = result.rows[0];
+
+    // 注意：请假/年假创建时不立即同步到排班表，审批通过后再同步
+    // 同步逻辑在 approve 端点中处理
+
+    await client.query('COMMIT');
     res.json({ item: { ...newItem, createdAt: dayjs(newItem.created_at).format('YYYY-MM-DD HH:mm:ss') } });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('创建请假/年假或离职/转岗记录失败:', error);
+    res.status(500).json({ error: '创建请假/年假或离职/转岗记录失败' });
+  } finally {
+    client.release();
+  }
+});
+
+// 辅助函数：将请假/年假同步到排班表
+async function syncLeaveToSchedule(client, employeeId, startDate, endDate, leaveType, specialStatus) {
+  const start = dayjs(startDate);
+  const end = dayjs(endDate);
+  const displayStatus = specialStatus || '请假';
+
+  let currentDate = start;
+  while (currentDate.isBefore(end) || currentDate.isSame(end)) {
+    const dateStr = currentDate.format('YYYY-MM-DD');
+
+    // 检查是否已存在排班记录
+    const existing = await client.query(
+      `SELECT id, special_status FROM ${SCHEDULE_TABLE} WHERE employee_id = $1 AND schedule_date = $2`,
+      [employeeId, dateStr]
+    );
+
+    if (existing.rows.length > 0) {
+      // 更新现有记录，追加特殊状态
+      const currentStatus = existing.rows[0].special_status || '';
+      const newStatus = currentStatus ? `${currentStatus}, ${displayStatus}` : displayStatus;
+      await client.query(
+        `UPDATE ${SCHEDULE_TABLE} SET special_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [newStatus, existing.rows[0].id]
+      );
+    } else {
+      // 插入新记录
+      await client.query(
+        `INSERT INTO ${SCHEDULE_TABLE} (employee_id, schedule_date, shift, special_status) VALUES ($1, $2, '休息', $3)`,
+        [employeeId, dateStr, displayStatus]
+      );
+    }
+
+    currentDate = currentDate.add(1, 'day');
+  }
+  console.log(`请假/年假已同步到排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}`);
+}
+
+// 创建请假/年假或离职/转岗记录（同步到排班表）
+router.post('/with-sync', authenticateToken, checkApproverRole, async (req, res) => {
+  try {
+    const {
+      employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId,
+      transferToId, transferReason, transferPlantId, transferDepartmentId, transferDate,
+      transferOutApproverId, transferInApproverId
+    } = req.body;
+
+    let targetTable;
+    let query;
+    let params;
+
+    // 确定同步的特殊状态
+    let specialStatus = null;
+    if (leaveType === 'ANNUAL_LEAVE' || leaveType === '年假') {
+      specialStatus = '年假';
+    } else if (leaveType !== '离职' && leaveType !== '转岗') {
+      specialStatus = '请假';
+    }
+
+    if (leaveType === '离职' || leaveType === '转岗') {
+      targetTable = RESIGNATION_TRANSFER_TABLE;
+      query = `INSERT INTO ${targetTable}
+               (employee_id, plant_id, department_id, type, reason, proof_file, applicant_id, approver_id,
+                transfer_to_id, transfer_reason, transfer_plant_id, transfer_department_id, transfer_date,
+                transfer_out_approver_id, transfer_in_approver_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+               RETURNING *`;
+      params = [
+        employeeId, plantId, departmentId, leaveType, reason, proofFile, applicantId, approverId,
+        transferToId, transferReason, transferPlantId, transferDepartmentId, transferDate,
+        transferOutApproverId, transferInApproverId
+      ];
+    } else {
+      targetTable = FORMAL_LEAVE_TABLE;
+      query = `INSERT INTO ${targetTable}
+               (employee_id, plant_id, department_id, leave_type, start_date, end_date, days, hours, reason, proof_file, applicant_id, approver_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+               RETURNING *`;
+      params = [
+        employeeId, plantId, departmentId, leaveType, startDate, endDate, days, hours, reason, proofFile, applicantId, approverId
+      ];
+    }
+
+    // 使用事务确保数据一致性
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const result = await client.query(query, params);
+      const newItem = result.rows[0];
+
+      // 同步到排班表（请假/年假类型才同步）
+      if (specialStatus && startDate && endDate) {
+        await syncLeaveToSchedule(client, employeeId, startDate, endDate, leaveType, specialStatus);
+      }
+
+      await client.query('COMMIT');
+      res.json({ item: { ...newItem, createdAt: dayjs(newItem.created_at).format('YYYY-MM-DD HH:mm:ss') } });
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('创建请假/年假或离职/转岗记录失败:', error);
     res.status(500).json({ error: '创建请假/年假或离职/转岗记录失败' });
@@ -405,6 +527,7 @@ router.put('/:id', authenticateToken, checkApproverRole, async (req, res) => {
 // 根据员工ID和日期删除请假/年假记录（清除排班时同步删除）
 // 注意：此路由必须在 /:id 路由之前定义，否则会被 /:id 路由先匹配
 router.delete('/by-employee-date', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { employeeId, date } = req.query;
 
@@ -412,10 +535,48 @@ router.delete('/by-employee-date', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: '缺少员工ID或日期参数' });
     }
 
+    // 先查出要删除的记录，获取 leave_type
+    const checkResult = await client.query(
+      `SELECT id, leave_type, start_date, end_date FROM ${FORMAL_LEAVE_TABLE}
+       WHERE employee_id = $1 AND status = 'approved'
+       AND start_date <= $2 AND end_date >= $2`,
+      [employeeId, date]
+    );
+
+    await client.query('BEGIN');
+
+    // 同步清理排班表
+    if (checkResult.rows.length > 0) {
+      const record = checkResult.rows[0];
+      const startDate = dayjs(record.start_date).format('YYYY-MM-DD');
+      const endDate = dayjs(record.end_date).format('YYYY-MM-DD');
+      const leaveType = record.leave_type;
+
+      let shiftValue = null;
+      if (leaveType === 'ANNUAL_LEAVE') {
+        shiftValue = '年假';
+      } else if (leaveType === 'PERSONAL_LEAVE') {
+        shiftValue = '请假';
+      }
+
+      if (shiftValue) {
+        await client.query(
+          `UPDATE ${SCHEDULE_TABLE}
+           SET shift = '',
+               special_status = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE employee_id = $1
+             AND schedule_date >= $2
+             AND schedule_date <= $3
+             AND (shift = $4 OR special_status LIKE $5)`,
+          [employeeId, startDate, endDate, shiftValue, `%${shiftValue}%`]
+        );
+        console.log(`by-employee-date 删除时同步排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}, 移除=${shiftValue}`);
+      }
+    }
+
     // 删除该员工在该日期范围内的请假/年假记录
-    // 日期格式应为 YYYY-MM-DD，清除排班时会删除该日期的特殊状态
-    // 如果请假/年假覆盖该日期，则一并删除
-    const result = await pool.query(
+    const result = await client.query(
       `DELETE FROM ${FORMAL_LEAVE_TABLE}
        WHERE employee_id = $1
        AND status = 'approved'
@@ -425,14 +586,19 @@ router.delete('/by-employee-date', authenticateToken, async (req, res) => {
       [employeeId, date]
     );
 
+    await client.query('COMMIT');
+
     res.json({
       success: true,
       deletedCount: result.rowCount,
       deletedIds: result.rows.map(r => r.id)
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('删除请假/年假记录失败:', error);
     res.status(500).json({ error: '删除请假/年假记录失败' });
+  } finally {
+    client.release();
   }
 });
 
@@ -467,6 +633,7 @@ router.delete('/resignation/by-employee-date', authenticateToken, async (req, re
 
 // 删除请假/年假或离职/转岗记录
 router.delete('/:id', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
 
@@ -474,7 +641,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     let originalRecord;
 
     // Determine which table the record belongs to
-    let checkResult = await pool.query(`SELECT leave_type FROM ${FORMAL_LEAVE_TABLE} WHERE id = $1`, [id]);
+    let checkResult = await client.query(`SELECT leave_type, employee_id, start_date, end_date FROM ${FORMAL_LEAVE_TABLE} WHERE id = $1`, [id]);
     if (checkResult.rows.length > 0) {
       originalRecord = checkResult.rows[0];
       if (!['离职', '转岗'].includes(originalRecord.leave_type)) {
@@ -483,7 +650,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     }
 
     if (!targetTable) {
-      checkResult = await pool.query(`SELECT type FROM ${RESIGNATION_TRANSFER_TABLE} WHERE id = $1`, [id]);
+      checkResult = await client.query(`SELECT type, employee_id FROM ${RESIGNATION_TRANSFER_TABLE} WHERE id = $1`, [id]);
       if (checkResult.rows.length > 0) {
         originalRecord = checkResult.rows[0];
         targetTable = RESIGNATION_TRANSFER_TABLE;
@@ -494,7 +661,46 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: '记录不存在' });
     }
 
-    const result = await pool.query(`DELETE FROM ${targetTable} WHERE id = $1 RETURNING *`, [id]);
+    await client.query('BEGIN');
+
+    // 同步删除排班表中的记录（请假/年假类型）
+    if (targetTable === FORMAL_LEAVE_TABLE && originalRecord.start_date && originalRecord.end_date) {
+      const employeeId = originalRecord.employee_id;
+      const startDate = dayjs(originalRecord.start_date).format('YYYY-MM-DD');
+      const endDate = dayjs(originalRecord.end_date).format('YYYY-MM-DD');
+      const leaveType = originalRecord.leave_type;
+
+      // 年假写年假，事假写请假
+      let specialStatus = null;
+      if (leaveType === 'ANNUAL_LEAVE') {
+        specialStatus = '年假';
+      } else if (leaveType === 'PERSONAL_LEAVE') {
+        specialStatus = '请假';
+      } else {
+        specialStatus = '请假'; // 处理旧数据
+      }
+
+      if (specialStatus) {
+        // 清理排班表：同时清理 shift 和 special_status 字段
+        // shift 列有 NOT NULL 约束，所以用空字符串替代 NULL
+        const updateResult = await client.query(
+          `UPDATE ${SCHEDULE_TABLE}
+           SET shift = '',
+               special_status = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE employee_id = $1
+             AND schedule_date >= $2
+             AND schedule_date <= $3
+             AND (shift = $4 OR special_status LIKE $5)`,
+          [employeeId, startDate, endDate, specialStatus, `%${specialStatus}%`]
+        );
+        console.log(`删除请假/年假时同步更新排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}, 移除=${specialStatus}, 影响行数=${updateResult.rowCount}`);
+      }
+    }
+
+    const result = await client.query(`DELETE FROM ${targetTable} WHERE id = $1 RETURNING *`, [id]);
+
+    await client.query('COMMIT');
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '记录不存在或删除失败' });
@@ -502,8 +708,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('删除记录失败:', error);
     res.status(500).json({ error: '删除记录失败' });
+  } finally {
+    client.release();
   }
 });
 
@@ -569,7 +778,7 @@ router.put('/:id/approve', authenticateToken, checkApproverRole, async (req, res
     const updatedRecord = result.rows[0];
 
     // 如果是请假/年假类型，将特殊状态写入排班表
-    if (targetTable === FORMAL_LEAVE_TABLE && ['请假', '年假', '病假', '事假'].includes(recordType)) {
+    if (targetTable === FORMAL_LEAVE_TABLE && ['ANNUAL_LEAVE', 'PERSONAL_LEAVE'].includes(recordType)) {
       await writeLeaveToSchedule(client, updatedRecord.employee_id, updatedRecord.start_date, updatedRecord.end_date, recordType);
     }
 

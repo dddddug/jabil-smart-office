@@ -1,1 +1,0 @@
-var e={listeners:{},on(e,t){this.listeners[e]||(this.listeners[e]=[]),this.listeners[e].push(t)},off(e,t){this.listeners[e]&&(t?this.listeners[e]=this.listeners[e].filter(e=>e!==t):delete this.listeners[e])},emit(e,t){this.listeners[e]&&this.listeners[e].forEach(e=>e(t))}};export{e as t};

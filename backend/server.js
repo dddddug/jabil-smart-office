@@ -57,6 +57,7 @@ import pncTransferRoutes from './routes/pncTransferRoutes.js'; // PNC转仓打�
 import k2DiffConfigRoutes from './routes/k2DiffConfigRoutes.js'; // K**差异登记 配置路由
 import k2DiffRoutes from './routes/k2DiffRoutes.js'; // K**差异登记 路由
 import systemRoutes from './routes/systemRoutes.js'; // 系统信息路由
+import positionReasonConfigRoutes from './routes/positionReasonConfigRoutes.js'; // 岗位原因配置路由
 
 // 导入模块化的定时任务
 import { initScheduledTasks, checkAndDeactivateUsers, processTransferDates } from './scripts/scheduledTasks.js';
@@ -105,10 +106,10 @@ const loginLimiter = rateLimit({
   },
 });
 
-// API 通用限流：每分钟100次
+// API 通用限流：每分钟1000次
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -151,6 +152,7 @@ app.use('/api/pnc-transfer', pncTransferRoutes); // PNC转仓打印路由
 app.use('/api/k2-diff-config', k2DiffConfigRoutes); // K**差异登记 配置路由
 app.use('/api/k2-diff', k2DiffRoutes); // K**差异登记 路由
 app.use('/api/system', systemRoutes); // 系统信息路由
+app.use('/api/config/position-reasons', positionReasonConfigRoutes); // 岗位原因配置路由
 
 
 // 确保 uploads 目录存在

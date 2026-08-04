@@ -9,7 +9,7 @@
           </div>
         </template>
         <div class="statistic-content">
-          <el-statistic :value="totalDuration" suffix="小时"></el-statistic>
+          <el-statistic :value="totalDuration" suffix="小时" :precision="1"></el-statistic>
         </div>
       </el-card>
 

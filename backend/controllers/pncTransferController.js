@@ -519,33 +519,8 @@ export const sendEmail = async (req, res, next) => {
     `, [id]);
 
     // 构建邮件内容（使用兼容性更好的字符，避免乱码）
-    const subject = `PNC转仓单 - ${doc.transfer_no}`;
-
-    let emailBody = `PNC转仓单详情\n`;
-    emailBody += `================================\n`;
-    emailBody += `转仓单号：${doc.transfer_no}\n`;
-    emailBody += `转仓部门：${doc.department_name || '-'}\n`;
-    emailBody += `接收人：${doc.recipient_name || '-'}\n`;
-    emailBody += `联系电话：${doc.contact_phone || '-'}\n`;
-    emailBody += `接收地址：${doc.receiving_address || '-'}\n`;
-    emailBody += `系统位置：${doc.system_location || '-'}\n`;
-    emailBody += `================================\n`;
-    emailBody += `明细列表：\n`;
-    emailBody += `================================\n`;
-    emailBody += `序号    Batch      P/N           GRN           数量\n`;
-    emailBody += `----------------------------------------\n`;
-
-    itemsResult.rows.forEach(item => {
-      emailBody += `${String(item.sequence_no).padEnd(4)}    ${(item.batch || '-').padEnd(8)}    ${item.part_number.padEnd(11)}    ${(item.grn || '-').padEnd(11)}    ${item.quantity}\n`;
-    });
-
-    emailBody += `================================\n`;
-    emailBody += `创建人：${doc.creator_name}\n`;
-    emailBody += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
-
-    // 使用 mailto: 方式打开邮件客户端
-    // 前端会处理实际的邮件发送
-    const mailtoLink = buildMailtoLink(doc, itemsResult.rows);
+    const subject = `转Part物料请注意签收 - ${doc.transfer_no}`;
+    const emailBody = buildEmailBody(doc, itemsResult.rows);
 
     logInfo('PNC转仓单邮件准备发送', {
       id,
@@ -584,9 +559,10 @@ export const sendEmail = async (req, res, next) => {
       transferNo: doc.transfer_no,
       status: DocumentStatus.SENT,
       emailSentAt: new Date(),
-      mailtoLink,
-      emailBody,
-      subject
+      subject,
+      body: emailBody,
+      to: doc.recipient_email,
+      cc: doc.cc_email
     }, '邮件已发送');
 
   } catch (err) {
@@ -602,6 +578,35 @@ export const sendEmail = async (req, res, next) => {
 const encodeSubject = (text) => {
   const encoded = Buffer.from(text, 'utf8').toString('base64');
   return `=?UTF-8?B?${encoded}?=`;
+};
+
+/**
+ * 构建邮件正文
+ */
+const buildEmailBody = (doc, items) => {
+  let body = `PNC转仓单详情\n`;
+  body += `================================\n`;
+  body += `转仓单号：${doc.transfer_no}\n`;
+  body += `转仓部门：${doc.department_name || '-'}\n`;
+  body += `接收人：${doc.recipient_name || '-'}\n`;
+  body += `联系电话：${doc.contact_phone || '-'}\n`;
+  body += `接收地址：${doc.receiving_address || '-'}\n`;
+  body += `系统位置：${doc.system_location || '-'}\n`;
+  body += `================================\n`;
+  body += `明细列表：\n`;
+  body += `================================\n`;
+  body += `序号    Batch      P/N           GRN           数量\n`;
+  body += `----------------------------------------\n`;
+
+  items.forEach(item => {
+    body += `${String(item.sequence_no).padEnd(4)}    ${(item.batch || '-').padEnd(8)}    ${item.part_number.padEnd(11)}    ${(item.grn || '-').padEnd(11)}    ${item.quantity}\n`;
+  });
+
+  body += `================================\n`;
+  body += `创建人：${doc.creator_name}\n`;
+  body += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
+
+  return body;
 };
 
 /**

@@ -66,7 +66,10 @@
       </div>
 
       <div class="login-right">
-        <component :is="currentViewComponent" @switch-view="goToView" />
+        <LoginForm v-if="currentView === 'login'" @switch-view="goToView" />
+        <RegisterForm v-else-if="currentView === 'register'" @switch-view="goToView" />
+        <ResetPasswordForm v-else-if="currentView === 'resetPassword'" @switch-view="goToView" />
+        <SetNewPassword v-else-if="currentView === 'setNewPassword'" :user-id="viewData.userId" @switch-view="goToView" />
 
         <div class="system-info">
           <p>🎯 SERVER ONLINE    SYS-ID: JABIL-202606</p>
@@ -89,8 +92,9 @@ import { useRoute } from 'vue-router'
 import LoginForm from './LoginForm.vue'
 import RegisterForm from './RegisterForm.vue'
 import ResetPasswordForm from './ResetPasswordForm.vue'
+import SetNewPassword from './SetNewPassword.vue'
 
-const currentView = shallowRef('login') // 'login', 'register', 'resetPassword'
+const currentView = shallowRef('login') // 'login', 'register', 'resetPassword', 'setNewPassword'
 
 // 实时日期时间
 const currentDateTime = ref('')
@@ -117,14 +121,22 @@ const currentViewComponent = computed(() => {
       return RegisterForm
     case 'resetPassword':
       return ResetPasswordForm
+    case 'setNewPassword':
+      return SetNewPassword
     default:
       return LoginForm
   }
 })
 
+// Store for passing data between views
+const viewData = ref<any>({})
+
 // Function to switch views
-const goToView = (viewName: string) => {
+const goToView = (viewName: string, data?: any) => {
   currentView.value = viewName
+  if (data) {
+    viewData.value = data
+  }
 }
 
 const route = useRoute() // Initialize useRoute

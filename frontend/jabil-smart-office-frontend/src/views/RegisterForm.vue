@@ -51,7 +51,7 @@
   </el-form>
 
   <div class="system-info">
-    <p><el-link type="primary" :underline="'never'" @click="$emit('switch-view', 'login')">← 返回登录</el-link></p>
+    <p><el-link type="primary" underline="never" @click="$emit('switch-view', 'login')">← 返回登录</el-link></p>
   </div>
 </template>
 

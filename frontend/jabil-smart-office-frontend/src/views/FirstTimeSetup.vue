@@ -119,32 +119,45 @@ const securityRules: FormRules = {
 
 const handleSkip = () => {
   localStorage.setItem('hasSkippedSetup', 'true');
+  // 清除 mustChangePassword，下次登录时从服务器获取最新状态
   const userStr = localStorage.getItem('user');
   if (userStr) {
     const user = JSON.parse(userStr);
     user.mustChangePassword = false;
-    user.hasSecurityQuestion = true;
     localStorage.setItem('user', JSON.stringify(user));
   }
-  ElMessage.success('已跳过设置');
   router.push('/');
 };
 
 const handleLogout = () => {
   localStorage.removeItem('user');
   localStorage.removeItem('isLoggedIn');
-  localStorage.removeItem('hasSkippedSetup');
   router.push('/login');
 };
 
 const handleChangePassword = async () => {
   if (!passwordFormRef.value) return;
-  
+
   try {
     await passwordFormRef.value.validate();
     loading.value = true;
-    
-    setTimeout(() => {
+
+    const response = await fetch('/api/users/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('jabil-token')}`
+      },
+      body: JSON.stringify({
+        oldPassword: passwordForm.oldPassword,
+        newPassword: passwordForm.newPassword,
+        confirmPassword: passwordForm.confirmPassword
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.code === 200) {
       loading.value = false;
       const userStr = localStorage.getItem('user');
       if (userStr) {
@@ -154,19 +167,38 @@ const handleChangePassword = async () => {
       }
       ElMessage.success('密码修改成功');
       currentStep.value = 2;
-    }, 1000);
+    } else {
+      loading.value = false;
+      ElMessage.error(data.message || '密码修改失败');
+    }
   } catch (error) {
+    loading.value = false;
+    ElMessage.error('请求失败，请稍后重试');
   }
 };
 
 const handleSetSecurityQuestion = async () => {
   if (!securityFormRef.value) return;
-  
+
   try {
     await securityFormRef.value.validate();
     loading.value = true;
-    
-    setTimeout(() => {
+
+    const response = await fetch('/api/users/set-security-question', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('jabil-token')}`
+      },
+      body: JSON.stringify({
+        securityQuestion: securityForm.securityQuestion,
+        securityAnswer: securityForm.securityAnswer
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.code === 200) {
       loading.value = false;
       const userStr = localStorage.getItem('user');
       if (userStr) {
@@ -177,8 +209,13 @@ const handleSetSecurityQuestion = async () => {
       ElMessage.success('安全问题设置成功');
       localStorage.setItem('hasSkippedSetup', 'true');
       router.push('/');
-    }, 1000);
+    } else {
+      loading.value = false;
+      ElMessage.error(data.message || '安全问题设置失败');
+    }
   } catch (error) {
+    loading.value = false;
+    ElMessage.error('请求失败，请稍后重试');
   }
 };
 </script>
