@@ -3393,23 +3393,31 @@ const getEmployeeHours = (emp: any) => {
   // 使用统一的日期范围计算，和排班总览保持一致
   const { start, end } = getAttendanceDateRange();
 
+  console.log(`📊 getEmployeeHours - ${emp.name}: 日期范围 ${start.format('YYYY-MM-DD')} 至 ${end.format('YYYY-MM-DD')}`);
+
   let scheduleHours = 0;
   let overtimeHours = 0;
   let leaveHours = 0;
 
   // 遍历整个日期范围
   let currentDate = start.clone();
-  while (currentDate.isBefore(end) || currentDate.isSame(end)) {
+  while (currentDate.isBefore(end) || currentDate.isSame(end, 'day')) {
     const dateStr = currentDate.format('YYYY-MM-DD');
     const schedule = emp.schedule[dateStr];
 
     // 计算排班工时
     if (schedule && schedule.shift) {
-      scheduleHours += getWorkHours(schedule.shift);
+      const wh = getWorkHours(schedule.shift);
+      scheduleHours += wh;
+      console.log(`  ${dateStr}: 班次=${schedule.shift}, 排班工时=${wh}`);
     }
 
     // 计算加班工时（按天计算）
-    overtimeHours += calculateEmployeeOvertimeHours(emp.id, dateStr, dateStr);
+    const otHours = calculateEmployeeOvertimeHours(emp.id, dateStr, dateStr);
+    if (otHours > 0) {
+      overtimeHours += otHours;
+      console.log(`  ${dateStr}: 加班工时=${otHours}`);
+    }
 
     currentDate = currentDate.add(1, 'day');
   }
@@ -3418,6 +3426,8 @@ const getEmployeeHours = (emp: any) => {
   leaveHours = calculateEmployeeLeaveHours(emp.id, start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD'));
 
   const totalHours = scheduleHours + overtimeHours - leaveHours;
+
+  console.log(`  总计: 排班=${scheduleHours}h, 加班=${overtimeHours}h, 请假=${leaveHours}h, 总计=${totalHours}h`);
 
   return {
     scheduleHours,
