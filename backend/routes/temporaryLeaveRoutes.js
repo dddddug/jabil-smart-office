@@ -34,7 +34,7 @@ router.get('/', authenticateToken, async (req, res) => {
     }
     if (status) {
       where.push(`l.status = $${idx++}`);
-      params.push(status);
+      params.push(status.toUpperCase());
     }
     if (leaveType) {
       where.push(`l.leave_type = $${idx++}`);
@@ -50,9 +50,26 @@ router.get('/', authenticateToken, async (req, res) => {
     );
     const total = parseInt(countResult.rows[0].count);
 
-    // 获取列表
+    // 获取列表 - 字段名与前端一致
     const result = await pool.query(`
-      SELECT l.*, u.real_name as employee_name, d.name as department_name
+      SELECT
+        l.id,
+        l.employee_id,
+        l.plant_id,
+        l.department_id,
+        l.leave_type as type,
+        l.start_date,
+        l.end_date,
+        l.start_time,
+        l.end_time,
+        l.hours as duration,
+        l.reason,
+        l.proof_file as proof_file,
+        l.status,
+        l.applicant_id,
+        l.created_at as apply_date,
+        u.real_name as employee_name,
+        d.name as department_name
       FROM ${TABLE} l
       LEFT JOIN ${USER_TABLE} u ON l.employee_id = u.id
       LEFT JOIN jso_org_department_management d ON u.department_id = d.id
@@ -61,7 +78,17 @@ router.get('/', authenticateToken, async (req, res) => {
       LIMIT $${idx++} OFFSET $${idx++}
     `, [...params, parseInt(pageSize), offset]);
 
-    res.json({ success: true, items: result.rows, total, page: parseInt(page), pageSize: parseInt(pageSize) });
+    // 转换状态值和类型
+    const typeMap = { LEAVE: '请假', ERRAND: '公差', SICK: '病假' };
+    const items = result.rows.map(row => ({
+      ...row,
+      employeeName: row.employee_name,
+      departmentName: row.department_name,
+      type: typeMap[row.type] || row.type,
+      status: row.status === 'PENDING' ? 'pending' : row.status === 'APPROVED' ? 'approved' : row.status === 'REJECTED' ? 'rejected' : row.status
+    }));
+
+    res.json({ success: true, items, total, page: parseInt(page), pageSize: parseInt(pageSize) });
   } catch (error) {
     console.error('获取临时请假列表失败:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -71,12 +98,13 @@ router.get('/', authenticateToken, async (req, res) => {
 // 创建
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { employeeId, startDate, endDate, leaveType, reason, isHalfDay } = req.body;
+    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours, isHalfDay } = req.body;
+    const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
     const result = await pool.query(`
-      INSERT INTO ${TABLE} (employee_id, start_date, end_date, leave_type, reason, is_half_day, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', CURRENT_TIMESTAMP)
+      INSERT INTO ${TABLE} (employee_id, start_date, end_date, start_time, end_time, leave_type, reason, hours, is_half_day, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', CURRENT_TIMESTAMP)
       RETURNING *
-    `, [employeeId, startDate, endDate, leaveType, reason, isHalfDay || false]);
+    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, isHalfDay || false]);
 
     res.json({ success: true, item: result.rows[0] });
   } catch (error) {
@@ -90,9 +118,11 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const statusMap = { pending: 'PENDING', approved: 'APPROVED', rejected: 'REJECTED' };
+    const dbStatus = statusMap[status] || status;
     const result = await pool.query(
       `UPDATE ${TABLE} SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-      [status, id]
+      [dbStatus, id]
     );
     res.json({ success: true, item: result.rows[0] });
   } catch (error) {
