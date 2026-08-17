@@ -52,7 +52,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
     // 获取列表
     const result = await pool.query(`
-      SELECT l.*, u.name as employee_name, d.name as department_name
+      SELECT l.*, u.real_name as employee_name, d.name as department_name
       FROM ${TABLE} l
       LEFT JOIN ${USER_TABLE} u ON l.employee_id = u.id
       LEFT JOIN jso_org_department_management d ON u.department_id = d.id
