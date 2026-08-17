@@ -128,13 +128,13 @@ router.get('/', authenticateToken, async (req, res) => {
 // 创建
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours, isHalfDay } = req.body;
+    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours } = req.body;
     const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
     const result = await pool.query(`
-      INSERT INTO ${TABLE} (employee_id, start_date, end_date, start_time, end_time, leave_type, reason, hours, is_half_day, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', CURRENT_TIMESTAMP)
+      INSERT INTO ${TABLE} (employee_id, start_date, end_date, start_time, end_time, leave_type, reason, hours, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', CURRENT_TIMESTAMP)
       RETURNING *
-    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, isHalfDay || false]);
+    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours]);
 
     res.json({ success: true, item: result.rows[0] });
   } catch (error) {
