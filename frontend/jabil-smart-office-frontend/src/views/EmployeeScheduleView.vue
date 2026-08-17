@@ -11,10 +11,13 @@
     </div>
 
     <div class="controls-section">
-      <div class="view-mode-selector">
+      <div class="view-mode-selector" v-if="subTab !== 'break7'">
         <button :class="{ active: scheduleViewMode === 'week' }" @click="switchViewMode('week')">周视图</button>
         <button :class="{ active: scheduleViewMode === 'month' }" @click="switchViewMode('month')">月视图</button>
         <button :class="{ active: scheduleViewMode === 'range' }" @click="switchViewMode('range')">自定义范围</button>
+      </div>
+      <div class="view-mode-selector" v-else>
+        <span class="week-only-hint">周视图</span>
       </div>
 
       <div class="date-controls">
@@ -191,7 +194,7 @@
                       @mouseover="isSelecting && updateSelection(employee.id, day.date)"
                       @contextmenu.prevent="(e) => handleRightClick(e, employee.id, day.date)"
                       @dblclick="() => openShiftEditDialog(employee, day.date)"
-                      @click="handleSingleDateSelect(day.date)"
+                      @click="handleSingleDateSelect(employee.id, day.date)"
                       :class="{ 'cell-selected': isCellSelected(employee.id, day.date) }">
                     <div :class="['shift-cell', getShiftClass(employee.schedule[day.date]?.shift || '')]" v-if="employee.schedule[day.date]">
                       {{ employee.schedule[day.date]?.shift }}
@@ -250,7 +253,7 @@
                       @mouseover="isSelecting && updateSelection(employee.id, day.date)"
                       @contextmenu.prevent="(e) => handleRightClick(e, employee.id, day.date)"
                       @dblclick="() => openShiftEditDialog(employee, day.date)"
-                      @click="handleSingleDateSelect(day.date)"
+                      @click="handleSingleDateSelect(employee.id, day.date)"
                       :class="{ 'cell-selected': isCellSelected(employee.id, day.date),
                                 'other-month': !day.isCurrentMonth,
                                 'today': day.isToday }">
@@ -313,7 +316,7 @@
                       @mouseover="isSelecting && updateSelection(employee.id, day.date)"
                       @contextmenu.prevent="(e) => handleRightClick(e, employee.id, day.date)"
                       @dblclick="() => openShiftEditDialog(employee, day.date)"
-                      @click="handleSingleDateSelect(day.date)"
+                      @click="handleSingleDateSelect(employee.id, day.date)"
                       :class="{ 'cell-selected': isCellSelected(employee.id, day.date) }">
                     <div :class="['shift-cell', getShiftClass(employee.schedule[day.date]?.shift || '')]" v-if="employee.schedule[day.date]">
                       {{ employee.schedule[day.date]?.shift }}
@@ -637,17 +640,23 @@
     <div v-else-if="subTab === 'attendance'" class="sub-tab-content">
       <!-- 考勤汇总的子 tab -->
       <div class="sub-tabs-sub">
-        <div 
-          :class="{ 'tab-item-sub': true, 'active': attendanceSubTab === 'overtime' }" 
+        <div
+          :class="{ 'tab-item-sub': true, 'active': attendanceSubTab === 'overtime' }"
           @click="attendanceSubTab = 'overtime'"
         >
           加班
         </div>
-        <div 
-          :class="{ 'tab-item-sub': true, 'active': attendanceSubTab === 'leave' }" 
+        <div
+          :class="{ 'tab-item-sub': true, 'active': attendanceSubTab === 'leave' }"
           @click="attendanceSubTab = 'leave'"
         >
           事假
+        </div>
+        <div
+          :class="{ 'tab-item-sub': true, 'active': attendanceSubTab === 'annual' }"
+          @click="attendanceSubTab = 'annual'"
+        >
+          年假
         </div>
       </div>
 
@@ -723,6 +732,49 @@
               </tr>
               <tr v-if="leaveList.length === 0">
                 <td colspan="6" style="text-align: center; color: #9ca3af;">暂无事假记录</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 年假内容 -->
+      <div v-else-if="attendanceSubTab === 'annual'" class="attendance-section">
+        <div class="section-header">
+          <h3 class="section-title">年假记录</h3>
+          <div class="section-actions">
+            <button class="btn btn-export" @click="exportAnnualLeaveToExcel">
+              <span class="btn-icon">📥</span>
+              导出Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>工号</th>
+                <th>姓名</th>
+                <th>部门</th>
+                <th>开始日期</th>
+                <th>结束日期</th>
+                <th>天数</th>
+                <th>原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, index) in mergedAnnualLeaveList" :key="index">
+                <td>{{ item.sap }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.departmentName }}</td>
+                <td>{{ item.startDate }}</td>
+                <td>{{ item.endDate }}</td>
+                <td>{{ item.totalDays }}</td>
+                <td>{{ item.reason }}</td>
+              </tr>
+              <tr v-if="annualLeaveList.length === 0">
+                <td colspan="7" style="text-align: center; color: #9ca3af;">暂无年假记录</td>
               </tr>
             </tbody>
           </table>
@@ -969,6 +1021,93 @@ import { fetchImageAsBase64 } from '@/utils/fileUtils';
 import { formatShanghaiDateTime } from '../utils/dateUtils';
 import eventBus from '@/utils/eventBus';
 import { getReasonByPosition, loadPositionReasonsToCache } from '@/utils/positionReasonUtils';
+import { useVoiceReminder } from '@/composables/useVoiceReminder';
+
+// 语音提醒
+const { checkScheduleChange } = useVoiceReminder();
+
+// 排班变动记录（用于语音提醒）- 使用 localStorage 持久化存储
+const SCHEDULE_HASH_KEY = 'jabil-schedule-hash';
+
+// 获取上次保存的排班哈希
+const getStoredScheduleHash = (): string => {
+  try {
+    return localStorage.getItem(SCHEDULE_HASH_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+// 保存排班哈希到 localStorage
+const saveScheduleHash = (hash: string) => {
+  try {
+    localStorage.setItem(SCHEDULE_HASH_KEY, hash);
+  } catch (e) {
+    console.error('[Schedule] 保存排班哈希失败:', e);
+  }
+};
+
+// 之前排班数据结构
+interface PreviousScheduleItem {
+  id: number;
+  name: string;
+  schedule: Record<string, string>;
+}
+
+// 检测排班变动
+const detectScheduleChanges = () => {
+  // 生成当前排班的哈希值
+  const currentHash = JSON.stringify(employees.value.map(emp => ({
+    id: emp.id,
+    name: emp.name,
+    schedule: emp.schedule || {}
+  })));
+
+  // 获取上次保存的哈希
+  const storedHash = getStoredScheduleHash();
+
+  // 与存储的哈希对比
+  if (storedHash && storedHash !== currentHash) {
+    // 获取有变动的员工列表
+    try {
+      const previousSchedule: PreviousScheduleItem[] = JSON.parse(storedHash);
+      const changes: { employeeName: string; changeType: string }[] = [];
+
+      employees.value.forEach(emp => {
+        const prevEmp = previousSchedule.find((p) => p.id === emp.id);
+        if (prevEmp) {
+          const prevScheduleStr = JSON.stringify(prevEmp.schedule || {});
+          const currScheduleStr = JSON.stringify(emp.schedule || {});
+          if (prevScheduleStr !== currScheduleStr) {
+            changes.push({ employeeName: emp.name || '未知员工', changeType: '排班变更' });
+          }
+        }
+      });
+
+      if (changes.length > 0) {
+        checkScheduleChange(changes);
+      }
+    } catch (e) {
+      console.error('[Schedule] 检测排班变动失败:', e);
+    }
+  }
+
+  // 保存当前排班状态到 localStorage
+  saveScheduleHash(currentHash);
+};
+
+// 获取当前登录用户
+const getCurrentUser = () => {
+  const userStr = localStorage.getItem('user');
+  if (userStr) {
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
 
 // 日期格式化函数 - 美式格式 (月/日/年)
 const formatUsDate = (dateStr: string): string => {
@@ -1224,10 +1363,14 @@ const setSummaryReason = (department: string, reason: string) => {
 
 // ========== 初始化加载 ==========
 // 页面加载时从 localStorage 恢复状态
+const isInitialized = ref(false);
+
 onMounted(async () => {
   loadIgnoredItems();
   loadSummaryReasons();
   await loadPositionReasonsToCache();
+  // 标记初始化完成
+  isInitialized.value = true;
 });
 
 const ignoredOverworkItems = ref<IgnoredOverworkItem[]>([]);
@@ -1251,7 +1394,7 @@ const toggleIgnoreOverwork = (emp: Employee) => {
     startDate: emp.startDate,
     endDate: emp.endDate,
   };
-  const index = ignoredOverworkItems.value.findIndex(item => 
+  const index = ignoredOverworkItems.value.findIndex(item =>
     item.employeeId === itemIdentifier.employeeId &&
     item.startDate === itemIdentifier.startDate &&
     item.endDate === itemIdentifier.endDate
@@ -1266,7 +1409,7 @@ const toggleIgnoreOverwork = (emp: Employee) => {
   }
   saveIgnoredItems();
   // 重新计算并刷新视图
-  refreshData(); 
+  refreshData();
 };
 
 const scheduleFileInput = ref<HTMLInputElement | null>(null);
@@ -1308,15 +1451,46 @@ const isSelecting = ref(false); // 是否正在框选
 const selectionStart = ref<SelectedCell | null>(null); // 框选起始单元格
 const copiedCells = ref<{ shift: string; specialStatus?: string }[]>([]); // 复制的排班
 const hasDragged = ref(false); // 是否有拖动
+const lastMouseDownTime = ref(0); // 上次鼠标按下时间，用于判断是否是拖动后的点击
+const DRAG_THRESHOLD_MS = 50; // 拖动阈值（毫秒），鼠标按下后这么快释放被认为是点击而非拖动
 const selectedDateForButtons = ref<string | null>(null); // 单选日期，用于控制岗位/班次按钮激活
 
-const handleSingleDateSelect = (date: string) => {
+const handleSingleDateSelect = (employeeId: number, date: string) => {
+  // 如果是拖拽框选触发的 click，不清空选择
+  // 通过时间差判断：如果距离鼠标按下时间很短，说明是快速点击，不是拖动
+  const timeSinceMouseDown = Date.now() - lastMouseDownTime.value;
+
+  // 如果刚结束框选（hasDragged 为 true）或者时间很短，说明是拖拽后的残留 click 事件，直接返回
+  if (hasDragged.value || timeSinceMouseDown < DRAG_THRESHOLD_MS) {
+    hasDragged.value = false;
+    return;
+  }
+
+  // 检查该单元格是否已经在 selectedCells 中（可能是 startSelection 添加的）
+  const existingIndex = selectedCells.value.findIndex(
+    cell => cell.employeeId === employeeId && cell.date === date
+  );
+
+  if (existingIndex >= 0) {
+    // 单元格已经在 selectedCells 中，可能是 startSelection 添加的
+    // 如果之前没有选中（selectedDateForButtons 为 null），则设置为当前日期
+    if (!selectedDateForButtons.value) {
+      selectedDateForButtons.value = date;
+    }
+    return; // 不做任何修改
+  }
+
+  // 正常点击选中单元格 - 添加到 selectedCells
   if (selectedDateForButtons.value === date) {
     selectedDateForButtons.value = null; // Deselect if already selected
   } else {
     selectedDateForButtons.value = date; // Select new date
   }
-  selectedCells.value = []; // Clear batch selection to avoid conflicts
+
+  // 更新选中单元格
+  if (selectedDateForButtons.value === date) {
+    selectedCells.value.push({ employeeId, date });
+  }
 };
 
 // 处理日期表头点击，选中一整列
@@ -1368,15 +1542,15 @@ const loadAvailableShifts = async () => {
     });
     shiftDurationMap.value = durationMap;
   } catch {
-    ElMessage.error('加载可用班次失败！');
+    ElMessage.error({ message: '加载可用班次失败！', showClose: true, duration: 3000 });
   }
 };
 
 // 监听所有状态变化，保存到 localStorage
 watch(subTab, (newValue) => {
   localStorage.setItem('employeeScheduleSubTab', newValue);
-  // 当切换到 break7 时，刷新数据
-  if (newValue === 'break7') {
+  // 当切换到 break7 时，刷新数据（仅在初始化完成后）
+  if (isInitialized.value && newValue === 'break7') {
     setTimeout(() => {
       checkOverworking();
       checkWeeklyHours();
@@ -1481,6 +1655,20 @@ interface LeaveItem {
   remark?: string;
 }
 
+interface AnnualLeaveItem {
+  sap: string;
+  name: string;
+  departmentName: string;
+  joinDate?: string;
+  startDate: string;
+  endDate: string;
+  hours?: number;
+  days: number;
+  reason: string;
+  applicantName?: string;
+  applyDate?: string;
+}
+
 interface DepartmentSummary {
   department: string;
   plant: string;
@@ -1494,11 +1682,15 @@ interface DepartmentSummary {
 
 const overtimeList = ref<OvertimeItem[]>([]);
 const leaveList = ref<LeaveItem[]>([]);
+const annualLeaveList = ref<AnnualLeaveItem[]>([]);
+
+// 合并后的年假列表（用于显示和导出）
+const mergedAnnualLeaveList = computed(() => mergeConsecutiveLeave(annualLeaveList.value));
 
 // 考勤汇总子 tab 持久化
 const savedAttendanceSubTab = localStorage.getItem('employeeAttendanceSubTab');
-const attendanceSubTab = ref<'overtime' | 'leave'>(
-  (savedAttendanceSubTab as 'overtime' | 'leave') || 'overtime'
+const attendanceSubTab = ref<'overtime' | 'leave' | 'annual'>(
+  (savedAttendanceSubTab as 'overtime' | 'leave' | 'annual') || 'overtime'
 );
 
 // 监听考勤汇总子 tab 变化，保存到 localStorage
@@ -1617,11 +1809,17 @@ const calculateOvertime = () => {
         }
 
         if (overtimeHours > 0) {
+          // 周六周天：全天算加班，不限制4小时上限
+          // 周一到周五：每天最大不超过4小时
+          const displayHours = (dayOfWeek === 6 || dayOfWeek === 0)
+            ? overtimeHours
+            : Math.min(overtimeHours, 4);
+
           overtimeList.value.push({
             sap: emp.oldEmployeeId || emp.sap,
             name: emp.name,
             date: currentDate.format('YYYY/M/D'),
-            hours: Math.min(overtimeHours, 4)  // 每天最大不超过4小时
+            hours: displayHours
           });
         }
       });
@@ -1752,13 +1950,14 @@ const calculateLeave = () => {
 
     if (isTargetLeave) {
       // 检查请假日期范围是否有周一到周五且不是法定节假日的日期
+      // 也包括周六和周日（因为周末临时请假也是事假）
       let hasValidDate = false;
       let checkDate = itemStart.clone();
       while (checkDate.isBefore(itemEnd) || checkDate.isSame(itemEnd)) {
         const dateStr = checkDate.format('YYYY-MM-DD');
         const dayOfWeek = checkDate.day();
-        // 只考虑周一到周五，且不是法定节假日
-        if (dayOfWeek >= 1 && dayOfWeek <= 5 && !statutoryHolidays.has(dateStr)) {
+        // 周一到周五（1-5）和周末（0=周日，6=周六），且不是法定节假日
+        if ((dayOfWeek >= 1 && dayOfWeek <= 5 || dayOfWeek === 0 || dayOfWeek === 6) && !statutoryHolidays.has(dateStr)) {
           hasValidDate = true;
           break;
         }
@@ -1873,6 +2072,83 @@ const calculateLeave = () => {
   } catch (error) {
     console.error('计算事假数据失败:', error);
     leaveList.value = [];
+  }
+};
+
+// 计算年假数据
+const calculateAnnualLeave = () => {
+  try {
+    const { start, end } = getAttendanceDateRange();
+
+    annualLeaveList.value = [];
+
+    // 从 formalLeaves 中获取年假数据
+    if (formalLeaves.value && Array.isArray(formalLeaves.value)) {
+      formalLeaves.value.forEach(item => {
+        if (!item || typeof item !== 'object') {
+          return;
+        }
+
+        // 只处理已批准的请假
+        if (item.status !== 'approved') {
+          return;
+        }
+
+        // 只处理年假类型
+        if (item.leaveType !== 'ANNUAL_LEAVE' && item.leaveType !== '年假') {
+          return;
+        }
+
+        // 找到对应的员工
+        const emp = employees.value.find(e => e.id === item.employeeId);
+        if (!emp) {
+          return;
+        }
+
+        // 过滤掉 employeeType 等于 'jabil' 的员工
+        if (emp.employeeType && String(emp.employeeType).toLowerCase().includes('jabil')) {
+          return;
+        }
+
+        // 检查日期是否在范围内
+        const itemStart = item.startDate ? dayjs(item.startDate) : null;
+        const itemEnd = item.endDate ? dayjs(item.endDate) : null;
+
+        if (!itemStart || !itemEnd) {
+          return;
+        }
+
+        if (itemEnd.isBefore(start) || itemStart.isAfter(end)) {
+          return;
+        }
+
+        const daysValue = parseInt(item.days) || Math.ceil(itemEnd.diff(itemStart, 'day', true)) + 1;
+        annualLeaveList.value.push({
+          sap: emp.oldEmployeeId || emp.sap,
+          name: emp.name,
+          departmentName: 'Stockroom',
+          joinDate: item.employeeHireDate || '',
+          startDate: itemStart.format('YYYY-M-D'),
+          endDate: itemEnd.format('YYYY-M-D'),
+          hours: daysValue * 8,
+          days: daysValue,
+          reason: item.reason || '留存年假',
+          applicantName: (() => {
+            const user = getCurrentUser();
+            return user?.realName || user?.username || item.applicantName || '';
+          })(),
+          applyDate: item.createdAt ? dayjs(item.createdAt).format('YYYY-MM-DD') : ''
+        });
+      });
+    }
+
+    // 按开始日期排序
+    annualLeaveList.value.sort((a, b) => {
+      return a.startDate.localeCompare(b.startDate);
+    });
+  } catch (error) {
+    console.error('计算年假数据失败:', error);
+    annualLeaveList.value = [];
   }
 };
 
@@ -2001,6 +2277,7 @@ const mergeApprovedLeavesToSchedule = () => {
 const refreshAttendanceData = () => {
   calculateOvertime();
   calculateLeave();
+  calculateAnnualLeave();
 };
 
 // 汇总数据
@@ -2070,21 +2347,28 @@ const refreshData = () => {
   weeklyLimitCurrentPage.value = 1;
 };
 
-// 监听筛选条件变化，自动刷新数据
+// 监听筛选条件变化，自动刷新数据（仅在初始化完成后）
 watch([currentPeriodStart, customRangeEnd, scheduleViewMode], () => {
-  if (subTab.value === 'break7') {
-    refreshData();
-  } else if (subTab.value === 'attendance') {
-    refreshAttendanceData();
+  if (isInitialized.value) {
+    if (subTab.value === 'break7') {
+      refreshData();
+    } else if (subTab.value === 'attendance') {
+      refreshAttendanceData();
+    }
   }
 });
 
 // 监听子标签页切换，当进入破7休1或考勤汇总页面时自动加载数据
+// 破7休1界面强制使用周视图
 watch(subTab, (newTab) => {
-  if (newTab === 'break7') {
-    refreshData();
-  } else if (newTab === 'attendance') {
-    refreshAttendanceData();
+  if (isInitialized.value) {
+    if (newTab === 'break7') {
+      // 强制切换到周视图，确保日期范围一致
+      switchViewMode('week');
+      refreshData();
+    } else if (newTab === 'attendance') {
+      refreshAttendanceData();
+    }
   }
 });
 
@@ -2326,7 +2610,7 @@ const loadPlants = async () => {
     console.error('加载厂区失败:', error);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.error('错误详情:', (error as any)?.stack || new Error().stack);
-    ElMessage.error('加载厂区失败！');
+    ElMessage.error({ message: '加载厂区失败！', showClose: true, duration: 3000 });
   }
 };
 
@@ -2369,7 +2653,7 @@ const loadDepartments = async () => {
     console.error('错误消息:', (error as any)?.message);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.error('错误堆栈:', (error as any)?.stack);
-    ElMessage.error('加载部门失败！');
+    ElMessage.error({ message: '加载部门失败！', showClose: true, duration: 3000 });
   }
 };
 
@@ -2378,7 +2662,6 @@ const loadEmployeesAndSchedules = async () => {
   isLoading.value = true;
   try {
     const { startDate, endDate } = currentCalculatedDateRange.value;
-    console.log('开始加载排班数据，日期范围:', startDate, '-', endDate);
 
     const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
       params: {
@@ -2388,11 +2671,6 @@ const loadEmployeesAndSchedules = async () => {
         departmentId: currentDepartmentFilter.value || undefined,
       },
     });
-    console.log('排班API原始响应:', JSON.stringify(response).substring(0, 500));
-    console.log('response type:', typeof response);
-    console.log('response is array:', Array.isArray(response));
-    console.log('response.employees:', response?.employees);
-    console.log('response.employees length:', response?.employees?.length);
 
     // 防御：确保 response 有效
     if (!response) {
@@ -2406,17 +2684,54 @@ const loadEmployeesAndSchedules = async () => {
     const data = response;
 
     // 防御：处理不同的响应格式
+    let rawEmployees: Employee[] = [];
     if (Array.isArray(data)) {
       // 如果直接返回数组（某些缓存场景）
-      employees.value = data;
+      rawEmployees = data;
     } else if (data.employees) {
       // 标准格式 { employees: [...] }
-      employees.value = data.employees;
+      rawEmployees = data.employees;
     } else {
       // 未知格式
       console.error('未知的响应格式:', data);
-      employees.value = [];
+      rawEmployees = [];
     }
+
+    // 岗位排序：Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
+    const positionOrder: Record<string, number> = {
+      'Supervisor': 1,
+      'Leader': 2,
+      'Goods to people': 3,
+      'HMP': 4,
+      '收发料': 5,
+      'Change part': 6,
+      'Spare part': 7,
+      'MRO': 8,
+      'MRB': 9,
+      'Cycle Count': 10,
+      'IA': 11,
+      'MFG': 12
+    };
+
+    // 按岗位排序，同岗位按入职日期排序（早入职的排前面）
+    rawEmployees.sort((a: Employee, b: Employee) => {
+      const orderA = positionOrder[a.position || ''] || 999;
+      const orderB = positionOrder[b.position || ''] || 999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      // 同岗位按入职日期排序，早入职排前面
+      const dateA = a.employeeHireDate || '';
+      const dateB = b.employeeHireDate || '';
+      if (dateA && dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      if (dateA) return -1;
+      if (dateB) return 1;
+      return (a.name || '').localeCompare(b.name || '', 'zh-CN');
+    });
+
+    employees.value = rawEmployees;
 
     // 防御：获取临时数据（使用 try-catch 避免失败影响主流程）
     try {
@@ -2458,10 +2773,16 @@ const loadEmployeesAndSchedules = async () => {
       leaveList.value = [];
     }
 
+    try {
+      calculateAnnualLeave();
+    } catch (annualError) {
+      console.error('计算年假数据失败（继续执行）:', annualError);
+      annualLeaveList.value = [];
+    }
+
   } catch (error) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
-      console.log('请求被取消（路由切换），忽略此错误');
       return;
     }
 
@@ -2481,11 +2802,14 @@ const loadEmployeesAndSchedules = async () => {
         console.error('Error response status:', (error as any)?.response.status);
       }
     }
-    ElMessage.error('加载员工和排班数据失败！');
+    ElMessage.error({ message: '加载员工和排班数据失败！', showClose: true, duration: 3000 });
     employees.value = [];
   } finally {
     isLoading.value = false;
   }
+
+  // 检测排班变动并触发语音提醒
+  detectScheduleChanges();
 };
 
 const fetchTemporaryData = async (startDate: string, endDate: string) => {
@@ -2540,7 +2864,6 @@ const fetchTemporaryData = async (startDate: string, endDate: string) => {
   } catch (error) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((error as any)?.code === 'CANCELLED' || (error as any)?.isCancelled) {
-      console.log('获取临时数据请求被取消（路由切换），忽略此错误');
       return;
     }
     console.error('获取临时加班或请假数据失败:', error);
@@ -2651,7 +2974,7 @@ const fetchEmployees = async () => {
     try {
       await fetchTemporaryData(startDate, endDate);
     } catch {
-      ElMessage.warning('获取临时数据失败，继续加载排班数据！');
+      ElMessage.warning({ message: '获取临时数据失败，继续加载排班数据！', showClose: true, duration: 3000 });
     }
 
     const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
@@ -2667,19 +2990,53 @@ const fetchEmployees = async () => {
       if (!emp.leaveDate) {
         return true;
       }
-      
+
       const leaveDate = dayjs(emp.leaveDate);
-      
+
       let cycleStartOfLeaveDate: dayjs.Dayjs;
       if (leaveDate.date() >= 24) {
         cycleStartOfLeaveDate = leaveDate.date(24);
       } else {
         cycleStartOfLeaveDate = leaveDate.subtract(1, 'month').date(24);
       }
-      
+
       const firstHiddenCycleStart = cycleStartOfLeaveDate.add(1, 'month');
-      
+
       return viewStartDate.isBefore(firstHiddenCycleStart);
+    });
+
+    // 岗位排序：Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
+    const positionOrder: Record<string, number> = {
+      'Supervisor': 1,
+      'Leader': 2,
+      'Goods to people': 3,
+      'HMP': 4,
+      '收发料': 5,
+      'Change part': 6,
+      'Spare part': 7,
+      'MRO': 8,
+      'MRB': 9,
+      'Cycle Count': 10,
+      'IA': 11,
+      'MFG': 12
+    };
+
+    // 按岗位排序，同岗位按入职日期排序（早入职的排前面）
+    filteredEmployees.sort((a: Employee, b: Employee) => {
+      const orderA = positionOrder[a.position || ''] || 999;
+      const orderB = positionOrder[b.position || ''] || 999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      // 同岗位按入职日期排序，早入职排前面
+      const dateA = a.employeeHireDate || '';
+      const dateB = b.employeeHireDate || '';
+      if (dateA && dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      if (dateA) return -1;
+      if (dateB) return 1;
+      return (a.name || '').localeCompare(b.name || '', 'zh-CN');
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2697,7 +3054,7 @@ const fetchEmployees = async () => {
         overtimeHours = calculateEmployeeOvertimeHours(emp.id, startDate, endDate);
         leaveHours = calculateEmployeeLeaveHours(emp.id, startDate, endDate);
       } catch {
-        ElMessage.warning('计算临时工时失败！');
+        ElMessage.warning({ message: '计算临时工时失败！', showClose: true, duration: 3000 });
       }
       
       return {
@@ -2710,15 +3067,15 @@ const fetchEmployees = async () => {
         totalHours: scheduleHours + overtimeHours - leaveHours
       };
     });
-    
-    if (subTab.value === 'break7') {
+
+    if (isInitialized.value && subTab.value === 'break7') {
       refreshData();
     }
   } else {
     employees.value = [];
   }
   } catch {
-    ElMessage.error('获取员工数据失败！');
+    ElMessage.error({ message: '获取员工数据失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -2757,61 +3114,48 @@ onMounted(async () => {
   // 添加一个延迟以确保 DOM 渲染完成，然后再进行任何需要 DOM 宽度的计算
   setTimeout(() => {
     // ensureTableScroll();
-    if (subTab.value === 'break7') {
+    if (isInitialized.value && subTab.value === 'break7') {
       checkOverworking();
       checkWeeklyHours();
     } else if (subTab.value === 'attendance') {
       refreshAttendanceData();
     }
   }, 1000);
+});
 
-  // 记录按下的鼠标按钮
-  document.addEventListener('mousedown', (e) => {
-    lastMouseButton.value = e.button;
-  });
-  
-  document.addEventListener('keydown', (e) => {
-    // Ctrl+C 复制
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-      e.preventDefault();
-      copySelection();
-      // 复制后自动清空选择
-      setTimeout(() => clearSelection(), 100);
-    }
-    // Ctrl+V 粘贴
-    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-      e.preventDefault();
-      pasteSelection();
-      // 粘贴后自动清空选择
-      setTimeout(() => clearSelection(), 100);
-    }
-    // ESC 清空选择和关闭菜单
-    if (e.key === 'Escape') {
-      clearSelection();
-      closeContextMenu();
-    }
-  });
-  
-  document.addEventListener('mouseup', () => {
-    // 如果是右键，不执行 endSelection
-    if (lastMouseButton.value === 2) {
-      console.log('右键松开，不执行 endSelection');
-      return;
-    }
-    endSelection();
-  });
-  
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    // 如果点击的不是排班表格单元格，也不是右键菜单，就清空选择
-    if (!target.closest('.schedule-table') && !target.closest('.context-menu')) {
-      clearSelection();
-    }
-    // 关闭右键菜单
-    if (!target.closest('.context-menu')) {
-      closeContextMenu();
-    }
-  });
+// 监听键盘事件
+document.addEventListener('keydown', (e) => {
+  // Ctrl+C 复制
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+    e.preventDefault();
+    copySelection();
+    // 复制后自动清空选择
+    setTimeout(() => clearSelection(), 100);
+  }
+  // Ctrl+V 粘贴
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    e.preventDefault();
+    pasteSelection();
+    // 粘贴后自动清空选择
+    setTimeout(() => clearSelection(), 100);
+  }
+  // ESC 清空选择和关闭菜单
+  if (e.key === 'Escape') {
+    clearSelection();
+    closeContextMenu();
+  }
+});
+
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  // 如果点击的不是排班表格单元格，也不是右键菜单，就清空选择
+  if (!target.closest('.schedule-table') && !target.closest('.context-menu')) {
+    clearSelection();
+  }
+  // 关闭右键菜单
+  if (!target.closest('.context-menu')) {
+    closeContextMenu();
+  }
 });
 const prevPeriod = () => {
   if (scheduleViewMode.value === 'week') {
@@ -3028,12 +3372,6 @@ watch(filteredEmployees, () => {
   }
 });
 
-const paginatedEmployees = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  const end = start + pageSize.value;
-  return filteredEmployees.value.slice(start, end);
-});
-
 // 汇总数据计算
 // 注意: shiftCount 未使用，已注释保留以便将来启用
 // const shiftCount = computed(() => {
@@ -3052,31 +3390,17 @@ const paginatedEmployees = computed(() => {
 // 计算单个员工在当前筛选日期范围内的工时
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getEmployeeHours = (emp: any) => {
-  // 获取当前视图的日期范围
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let currentDays: any[] = [];
-  let startDate = '';
-  let endDate = '';
-  if (scheduleViewMode.value === 'week') {
-    currentDays = weekDays.value;
-    startDate = weekDays.value[0]?.date || '';
-    endDate = weekDays.value[weekDays.value.length - 1]?.date || '';
-  } else if (scheduleViewMode.value === 'month') {
-    currentDays = monthDays.value;
-    startDate = monthDays.value[0]?.date || '';
-    endDate = monthDays.value[monthDays.value.length - 1]?.date || '';
-  } else {
-    currentDays = customRangeDays.value;
-    startDate = customRangeDays.value[0]?.date || '';
-    endDate = customRangeDays.value[customRangeDays.value.length - 1]?.date || '';
-  }
+  // 使用统一的日期范围计算，和排班总览保持一致
+  const { start, end } = getAttendanceDateRange();
 
   let scheduleHours = 0;
   let overtimeHours = 0;
   let leaveHours = 0;
 
-  currentDays.forEach(day => {
-    const dateStr = day.date;
+  // 遍历整个日期范围
+  let currentDate = start.clone();
+  while (currentDate.isBefore(end) || currentDate.isSame(end)) {
+    const dateStr = currentDate.format('YYYY-MM-DD');
     const schedule = emp.schedule[dateStr];
 
     // 计算排班工时
@@ -3084,12 +3408,14 @@ const getEmployeeHours = (emp: any) => {
       scheduleHours += getWorkHours(schedule.shift);
     }
 
-    // 计算加班工时（按天计算，因为加班是按天记录的）
+    // 计算加班工时（按天计算）
     overtimeHours += calculateEmployeeOvertimeHours(emp.id, dateStr, dateStr);
-  });
 
-  // 请假工时只调用一次，传入整个日期范围（避免多天请假被重复计算）
-  leaveHours = calculateEmployeeLeaveHours(emp.id, startDate, endDate);
+    currentDate = currentDate.add(1, 'day');
+  }
+
+  // 请假工时只调用一次，传入整个日期范围
+  leaveHours = calculateEmployeeLeaveHours(emp.id, start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD'));
 
   const totalHours = scheduleHours + overtimeHours - leaveHours;
 
@@ -3317,7 +3643,7 @@ const saveShift = async () => {
       if (tempMatter.type === '公差') {
         const hours = calculateTempMatterDurationAsNumber();
         if (hours > 2 && !tempMatter.proof) {
-          ElMessage.warning('公差超过2小时必须上传证明材料！');
+          ElMessage.warning({ message: '公差超过2小时必须上传证明材料！', showClose: true, duration: 3000 });
           return;
         }
       }
@@ -3344,11 +3670,11 @@ const saveShift = async () => {
           
           try {
             await request.post('/temporary-overtime', overtimeData);
-            ElMessage.success('临时加班保存成功！');
+            ElMessage.success({ message: '临时加班保存成功！', showClose: true, duration: 3000 });
             // 刷新临时加班数据
             await fetchTemporaryData(editingDate.value, editingDate.value);
           } catch {
-            ElMessage.error('临时加班记录保存失败，请稍后重试！');
+            ElMessage.error({ message: '临时加班记录保存失败，请稍后重试！', showClose: true, duration: 3000 });
             return;
           }
         } else {
@@ -3370,11 +3696,11 @@ const saveShift = async () => {
           
           try {
             await request.post('/temporary-leave', leaveData);
-            ElMessage.success('临时请假/公差保存成功！');
+            ElMessage.success({ message: '临时请假/公差保存成功！', showClose: true, duration: 3000 });
             // 刷新临时请假数据
             await fetchTemporaryData(editingDate.value, editingDate.value);
           } catch {
-            ElMessage.error('临时请假/公差记录保存失败，请稍后重试！');
+            ElMessage.error({ message: '临时请假/公差记录保存失败，请稍后重试！', showClose: true, duration: 3000 });
             return;
           }
         }
@@ -3403,14 +3729,14 @@ const saveShift = async () => {
             clearRequestCache();
             // 通知员工花名册页面刷新
             eventBus.emit('employee-roster-changed');
-            ElMessage.success('排班保存成功！员工状态已自动更新为离职');
+            ElMessage.success({ message: '排班保存成功！员工状态已自动更新为离职', showClose: true, duration: 3000 });
           } catch (syncError) {
             // 花名册更新失败不影响排班保存的提示
             console.error('自动同步员工状态失败:', syncError);
-            ElMessage.success('排班保存成功！');
+            ElMessage.success({ message: '排班保存成功！', showClose: true, duration: 3000 });
           }
         } else {
-          ElMessage.success('排班保存成功！');
+          ElMessage.success({ message: '排班保存成功！', showClose: true, duration: 3000 });
         }
 
         // 清除请求缓存，确保获取最新数据
@@ -3425,10 +3751,10 @@ const saveShift = async () => {
           eventBus.emit('schedule-annual-leave-changed');
         }
       } catch {
-        ElMessage.error('排班保存失败，请稍后重试！');
+        ElMessage.error({ message: '排班保存失败，请稍后重试！', showClose: true, duration: 3000 });
       }
     } catch {
-      ElMessage.error('保存失败，请重试！');
+      ElMessage.error({ message: '保存失败，请重试！', showClose: true, duration: 3000 });
     }
   }
   closeShiftEditDialog();
@@ -3447,9 +3773,9 @@ const deleteShift = async () => {
       await request.delete(`/schedule/${editingEmployee.value.id}/${editingDate.value}`);
       // 删除成功后，重新获取数据
       await fetchEmployees();
-      ElMessage.success('排班删除成功！');
+      ElMessage.success({ message: '排班删除成功！', showClose: true, duration: 3000 });
     } catch {
-      ElMessage.error('删除排班失败！');
+      ElMessage.error({ message: '删除排班失败！', showClose: true, duration: 3000 });
     }
   }
   closeShiftEditDialog();
@@ -3499,7 +3825,7 @@ const handleFileChange = (event: Event) => {
 
 // 操作按钮
 const oneClickSchedule = () => {
-  ElMessage.info('执行一键排班功能');
+  ElMessage.info({ message: '执行一键排班功能', showClose: true, duration: 3000 });
 };
 
 const printSchedule = () => {
@@ -3522,7 +3848,7 @@ const printSchedule = () => {
   // 创建打印窗口
   const printWindow = window.open('', '_blank', 'width=800,height=600');
   if (!printWindow) {
-    ElMessage.error('请允许弹出窗口！');
+    ElMessage.error({ message: '请允许弹出窗口！', showClose: true, duration: 3000 });
     return;
   }
 
@@ -3706,9 +4032,9 @@ const downloadScheduleTemplate = async () => {
     a.download = '排班导入模板.xlsx';
     a.click();
     window.URL.revokeObjectURL(url);
-    ElMessage.success('排班模板下载成功！');
+    ElMessage.success({ message: '排班模板下载成功！', showClose: true, duration: 3000 });
   } catch {
-    ElMessage.error('下载模板失败！');
+    ElMessage.error({ message: '下载模板失败！', showClose: true, duration: 3000 });
   }
 };
 
@@ -3744,7 +4070,7 @@ const exportAttendance = () => {
     while (current.isBefore(monthEnd) || current.isSame(monthEnd)) {
       monthDateMap.set(
         current.format('YYYY-MM-DD'),
-        String(dayCode).padStart(2, '0')
+        String(dayCode)
       );
       current = current.add(1, 'day');
       dayCode++;
@@ -3793,7 +4119,7 @@ const exportAttendance = () => {
     while (current.isBefore(monthEnd) || current.isSame(monthEnd)) {
       monthDateMap.set(
         current.format('YYYY-MM-DD'),
-        String(dayCode).padStart(2, '0')
+        String(dayCode)
       );
       current = current.add(1, 'day');
       dayCode++;
@@ -3809,7 +4135,7 @@ const exportAttendance = () => {
       while (current2.isBefore(endDate) || current2.isSame(endDate)) {
         dateRangeList.push({
           date: current2.format('YYYY-MM-DD'),
-          code: String(dayCode2).padStart(2, '0'),
+          code: String(dayCode2),
           dayOfWeek: current2.day()
         });
         current2 = current2.add(1, 'day');
@@ -4047,7 +4373,7 @@ const handleScheduleFileUpload = async (e: Event) => {
 
       // 如果有部分错误也展示
       if (result.errors && result.errors.length > 0) {
-        ElMessage.warning(`文件 "${file.name}" 导入存在部分错误，请查看控制台！`);
+        ElMessage.warning({ message: `文件 "${file.name}" 导入存在部分错误，请查看控制台！`, showClose: true, duration: 3000 });
       }
     } catch (error) {
       anyError = true;
@@ -4063,15 +4389,15 @@ const handleScheduleFileUpload = async (e: Event) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         errorMsg += ':\n' + (error as any).message;
       }
-      ElMessage.error(errorMsg);
+      ElMessage.error({ message: errorMsg, showClose: true, duration: 3000 });
     }
   }
 
   // 显示结果
   if (!anyError) {
-    ElMessage.success(`全部导入成功！\n新增: ${totalInserted} 条\n更新: ${totalUpdated} 条`);
+    ElMessage.success({ message: `全部导入成功！\n新增: ${totalInserted} 条\n更新: ${totalUpdated} 条`, showClose: true, duration: 3000 });
   } else {
-    ElMessage.warning(`导入完成！\n新增: ${totalInserted} 条\n更新: ${totalUpdated} 条\n(部分文件可能导入失败)`);
+    ElMessage.warning({ message: `导入完成！\n新增: ${totalInserted} 条\n更新: ${totalUpdated} 条\n(部分文件可能导入失败)`, showClose: true, duration: 3000 });
   }
 
   // 清除请求缓存，确保获取最新数据
@@ -4112,7 +4438,8 @@ const handleRightClick = (e: MouseEvent, employeeId: number, date: string) => {
 const startSelection = (employeeId: number, date: string, e: MouseEvent) => {
   // 如果是右键，不处理
   if (e.button !== 0) return;
-  
+
+  lastMouseDownTime.value = Date.now();
   isSelecting.value = true;
   hasDragged.value = false;
   selectionStart.value = { employeeId, date };
@@ -4126,26 +4453,32 @@ const startSelection = (employeeId: number, date: string, e: MouseEvent) => {
 // 更新框选
 const updateSelection = (employeeId: number, date: string) => {
   if (!isSelecting.value || !selectionStart.value) return;
-  
+
   // 记录有拖动
   hasDragged.value = true;
-  
-  // 获取当前显示的员工和日期列表
-  const currentEmployees = paginatedEmployees.value;
+
+  // 获取当前显示的员工和日期列表（使用 filteredEmployees 而非 paginatedEmployees，保持与模板一致）
+  const currentEmployees = filteredEmployees.value;
   const currentDays = scheduleViewMode.value === 'week' ? weekDays.value : monthDays.value;
-  
+
   // 找到起始和结束的索引
   const startEmpIndex = currentEmployees.findIndex(e => e.id === selectionStart.value!.employeeId);
   const endEmpIndex = currentEmployees.findIndex(e => e.id === employeeId);
+
+  // 如果找不到员工，不执行框选
+  if (startEmpIndex === -1 || endEmpIndex === -1) {
+    return;
+  }
+
   const startDateIndex = currentDays.findIndex(d => d.date === selectionStart.value!.date);
   const endDateIndex = currentDays.findIndex(d => d.date === date);
-  
+
   // 确定范围
   const minEmpIndex = Math.min(startEmpIndex, endEmpIndex);
   const maxEmpIndex = Math.max(startEmpIndex, endEmpIndex);
   const minDateIndex = Math.min(startDateIndex, endDateIndex);
   const maxDateIndex = Math.max(startDateIndex, endDateIndex);
-  
+
   // 生成选中的单元格
   selectedCells.value = [];
   for (let i = minEmpIndex; i <= maxEmpIndex; i++) {
@@ -4164,9 +4497,7 @@ const updateSelection = (employeeId: number, date: string) => {
 
 // 结束框选
 const endSelection = () => {
-  // 不再在 endSelection 里不打开编辑对话框了，改由双击触发
   isSelecting.value = false;
-  hasDragged.value = false;
 };
 
 // 复制排班
@@ -4221,7 +4552,7 @@ const pasteSelection = async () => {
             specialStatus: copiedData.specialStatus
           });
         } catch {
-          ElMessage.error(`保存排班失败: ${cell.date}`);
+          ElMessage.error({ message: `保存排班失败: ${cell.date}`, showClose: true, duration: 3000 });
         }
       }
     }
@@ -4268,7 +4599,7 @@ const handleClearSchedule = async () => {
       }
     );
   } catch {
-    ElMessage.info('已取消清空操作');
+    ElMessage.info({ message: '已取消清空操作', showClose: true, duration: 3000 });
     return;
   }
   
@@ -4305,7 +4636,7 @@ const handleClearSchedule = async () => {
           // 忽略删除离职/转岗记录的错误（可能没有记录）
         }
       } catch {
-        ElMessage.error(`删除排班失败: ${cell.date}`);
+        ElMessage.error({ message: `删除排班失败: ${cell.date}`, showClose: true, duration: 3000 });
       }
     }
   }
@@ -4339,7 +4670,7 @@ const openBatchShiftEdit = () => {
 // 保存批量修改
 const saveBatchShift = async () => {
   if (!batchShiftValue.value || selectedCells.value.length === 0) {
-    ElMessage.warning('请选择班次和单元格！');
+    ElMessage.warning({ message: '请选择班次和单元格！', showClose: true, duration: 3000 });
     return;
   }
 
@@ -4375,7 +4706,7 @@ const saveBatchShift = async () => {
           shift: batchShiftValue.value
         });
       } catch {
-        ElMessage.error(`保存排班失败: ${cell.date}`);
+        ElMessage.error({ message: `保存排班失败: ${cell.date}`, showClose: true, duration: 3000 });
       }
     }
   }
@@ -4388,7 +4719,7 @@ const saveBatchShift = async () => {
 
   // 刷新数据
   await fetchEmployees();
-  ElMessage.success('批量排班保存成功！');
+  ElMessage.success({ message: '批量排班保存成功！', showClose: true, duration: 3000 });
 };
 
 // 监听鼠标按钮
@@ -4402,65 +4733,65 @@ onMounted(async () => {
   await loadEmployeesAndSchedules();
   await loadAllPositions(); // 加载所有岗位
   await loadAvailableShifts(); // 加载所有可用班次
+
+  // 监听请假/年假数据变更事件，刷新排班表中的请假显示
+  eventBus.on('formal-leave-changed', handleFormalLeaveChanged);
+
   // 添加一个延迟以确保 DOM 渲染完成，然后再进行任何需要 DOM 宽度的计算
   setTimeout(() => {
     // ensureTableScroll();
-    if (subTab.value === 'break7') {
+    if (isInitialized.value && subTab.value === 'break7') {
       checkOverworking();
       checkWeeklyHours();
     } else if (subTab.value === 'attendance') {
       refreshAttendanceData();
     }
   }, 1000);
+});
 
-  // 记录按下的鼠标按钮
-  document.addEventListener('mousedown', (e) => {
-    lastMouseButton.value = e.button;
-  });
-  
-  document.addEventListener('keydown', (e) => {
-    // Ctrl+C 复制
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-      e.preventDefault();
-      copySelection();
-      // 复制后自动清空选择
-      setTimeout(() => clearSelection(), 100);
-    }
-    // Ctrl+V 粘贴
-    if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-      e.preventDefault();
-      pasteSelection();
-      // 粘贴后自动清空选择
-      setTimeout(() => clearSelection(), 100);
-    }
-    // ESC 清空选择和关闭菜单
-    if (e.key === 'Escape') {
-      clearSelection();
-      closeContextMenu();
-    }
-  });
-  
-  // 鼠标松开时结束框选（全局）
-  document.addEventListener('mouseup', () => {
-    // 如果是右键，不执行 endSelection
-    if (lastMouseButton.value === 2) {
-      return;
-    }
-    endSelection();
-  });
-  
-  // 点击其他地方关闭右键菜单并清空选择
-  document.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    // 如果点击的不是排班表格单元格，也不是右键菜单，就清空选择
-    if (!target.closest('.schedule-table') && !target.closest('.context-menu')) {
-      clearSelection();
-    }
-    // 关闭右键菜单
-    if (!target.closest('.context-menu')) {
-      closeContextMenu();
-    }
-  });
+// 监听键盘事件
+document.addEventListener('keydown', (e) => {
+  // Ctrl+C 复制
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+    e.preventDefault();
+    copySelection();
+    // 复制后自动清空选择
+    setTimeout(() => clearSelection(), 100);
+  }
+  // Ctrl+V 粘贴
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    e.preventDefault();
+    pasteSelection();
+    // 粘贴后自动清空选择
+    setTimeout(() => clearSelection(), 100);
+  }
+  // ESC 清空选择和关闭菜单
+  if (e.key === 'Escape') {
+    clearSelection();
+    closeContextMenu();
+  }
+});
+
+// 鼠标松开时结束框选（全局）
+document.addEventListener('mouseup', () => {
+  // 如果是右键，不执行 endSelection
+  if (lastMouseButton.value === 2) {
+    return;
+  }
+  endSelection();
+});
+
+// 点击其他地方关闭右键菜单并清空选择
+document.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  // 如果点击的不是排班表格单元格，也不是右键菜单，就清空选择
+  if (!target.closest('.schedule-table') && !target.closest('.context-menu')) {
+    clearSelection();
+  }
+  // 关闭右键菜单
+  if (!target.closest('.context-menu')) {
+    closeContextMenu();
+  }
 });
 
 // 监听筛选变化时重置页码
@@ -5272,8 +5603,13 @@ const openInOutlook = async () => {
     // 2. 破7休1详细表
     const overworkSheet = workbook.addWorksheet('打破7休1');
     overworkSheet.addRow(['序号', '区域', '部门', '级别', '工号', '姓名', '开始日期', '结束日期', '连续工作天数', '原因说明']);
-    
-    overworkingEmployees.value.forEach((emp, idx) => {
+
+    let overworkRowNum = 0;
+    overworkingEmployees.value.forEach((emp) => {
+      if (emp.isIgnored) {
+        return; // 跳过被忽略的项
+      }
+      overworkRowNum++;
       // 格式化日期
       const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
@@ -5284,7 +5620,7 @@ const openInOutlook = async () => {
       const plantValue = emp.plant || emp.plantName || '-';
       const deptValue = emp.department || (emp.departmentName ? emp.departmentName.replace('MPL_Stockroom', 'ST') : 'ST');
       overworkSheet.addRow([
-        idx + 1,
+        overworkRowNum,
         plantValue,
         deptValue,
         emp.level || '',
@@ -5542,10 +5878,13 @@ const openInOutlook = async () => {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    
+
     // 保存上报记录
-    // 保存破7休1记录
+    // 保存破7休1记录（跳过忽略的项）
     overworkingEmployees.value.forEach(emp => {
+      if (emp.isIgnored) {
+        return; // 跳过被忽略的项
+      }
       saveReportedRecord({
         employeeId: emp.id,
         type: 'overwork',
@@ -5725,6 +6064,257 @@ const exportLeaveToExcel = async () => {
   }
 };
 
+// 合并连续多天的年假记录
+interface MergedAnnualLeave {
+  sap: string;
+  name: string;
+  departmentName: string;
+  joinDate: string;
+  startDate: string;
+  endDate: string;
+  totalHours: number;
+  totalDays: number;
+  reason: string;
+  applicantName: string;
+  applyDate: string;
+}
+
+const mergeConsecutiveLeave = (list: AnnualLeaveItem[]): MergedAnnualLeave[] => {
+  if (!list || list.length === 0) return [];
+
+  // 按工号、姓名、入职日期排序（使用dayjs进行日期比较）
+  const sorted = [...list].sort((a, b) => {
+    if (a.sap !== b.sap) return a.sap.localeCompare(b.sap);
+    if (a.name !== b.name) return a.name.localeCompare(b.name);
+    return dayjs(a.startDate).isBefore(dayjs(b.startDate)) ? -1 : 1;
+  });
+
+  const merged: MergedAnnualLeave[] = [];
+  let current: MergedAnnualLeave | null = null;
+
+  sorted.forEach((item) => {
+    const hours = typeof item.hours === 'number' ? item.hours : (item.hours ? parseInt(String(item.hours)) : 8) || 8;
+    const days = typeof item.days === 'number' ? item.days : (item.days ? parseInt(String(item.days)) : 1) || 1;
+
+    if (!current) {
+      current = {
+        sap: item.sap,
+        name: item.name,
+        departmentName: 'Stockroom',
+        joinDate: item.joinDate || '',
+        startDate: item.startDate,
+        endDate: item.endDate,
+        totalHours: hours,
+        totalDays: days,
+        reason: item.reason || '',
+        applicantName: item.applicantName || '',
+        applyDate: item.applyDate || ''
+      };
+    } else if (current.sap === item.sap && current.name === item.name) {
+      // 检查是否连续
+      const nextStart = dayjs(item.startDate);
+      const prevEnd = dayjs(current.endDate);
+      const daysDiff = nextStart.diff(prevEnd, 'day');
+
+      if (daysDiff === 1) {
+        // 连续，合并
+        current.endDate = item.endDate;
+        current.totalHours += hours;
+        current.totalDays += days;
+      } else {
+        // 不连续，保存当前并开始新记录
+        merged.push(current);
+        current = {
+          sap: item.sap,
+          name: item.name,
+          departmentName: 'Stockroom',
+          joinDate: item.joinDate || '',
+          startDate: item.startDate,
+          endDate: item.endDate,
+          totalHours: hours,
+          totalDays: days,
+          reason: item.reason || '',
+          applicantName: item.applicantName || '',
+          applyDate: item.applyDate || ''
+        };
+      }
+    } else {
+      // 不同员工，保存当前并开始新记录
+      merged.push(current);
+      current = {
+        sap: item.sap,
+        name: item.name,
+        departmentName: 'Stockroom',
+        joinDate: item.joinDate || '',
+        startDate: item.startDate,
+        endDate: item.endDate,
+        totalHours: hours,
+        totalDays: days,
+        reason: item.reason || '',
+        applicantName: item.applicantName || '',
+        applyDate: item.applyDate || ''
+      };
+    }
+  });
+
+  if (current) {
+    merged.push(current);
+  }
+
+  return merged;
+};
+
+// 导出年假Excel
+const exportAnnualLeaveToExcel = async () => {
+  try {
+    console.log('📥 导出年假Excel...');
+    const weekNum = getWeekNumber(currentPeriodStart.value);
+
+    // 使用合并后的年假列表
+    const mergedList = mergedAnnualLeaveList.value;
+
+    const workbook = new ExcelJS.Workbook();
+
+    // 创建年假表
+    const annualLeaveSheet = workbook.addWorksheet('年假');
+
+    // 不使用columns定义（会生成自动表头），手动添加所有行
+    // 设置列宽（12列）
+    annualLeaveSheet.columns = [
+      { key: 'index', width: 6 },
+      { key: 'sap', width: 10 },
+      { key: 'name', width: 10 },
+      { key: 'departmentName', width: 14 },
+      { key: 'joinDate', width: 12 },
+      { key: 'leaveType', width: 10 },
+      { key: 'startDate', width: 18 },
+      { key: 'endDate', width: 18 },
+      { key: 'totalHours', width: 8 },
+      { key: 'totalDays', width: 8 },
+      { key: 'reason', width: 20 },
+      { key: 'applicantName', width: 10 },
+      { key: 'applyDate', width: 18 },
+    ];
+
+    // 添加标题行（年份动态）
+    const currentYear = new Date().getFullYear();
+    const titleRow = annualLeaveSheet.addRow([`Stockroom ${currentYear} 请假申请表`]);
+    titleRow.getCell(1).font = { bold: true, size: 14 };
+    titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    titleRow.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF92D050' }
+    };
+    // 合并13列（A1到M1）
+    annualLeaveSheet.mergeCells(1, 1, 1, 13);
+    titleRow.height = 25;
+
+    // 表头样式
+    const headerCellStyle = (cell: ExcelJS.Cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF92D050' }
+      };
+      cell.font = {
+        bold: true,
+        size: 11,
+        color: { argb: 'FF000000' }
+      };
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle'
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+      };
+    };
+
+    // 添加表头行（13列，包含请假详细原因）
+    const headers = ['序号', '工号', '姓名', '部门', '入职日期', '请假类别', '请假时间起', '请假时间止', '时数H', '天数D', '请假详细原因', '填表人', '填写时间'];
+    const headerRow = annualLeaveSheet.addRow(headers);
+    headerRow.eachCell((cell) => {
+      headerCellStyle(cell);
+    });
+    headerRow.height = 20;
+
+    // 添加数据行（白底单色，禁止交替行样式）
+    mergedList.forEach((item, index) => {
+      const row = annualLeaveSheet.addRow([
+        index + 1,
+        item.sap,
+        item.name,
+        item.departmentName,
+        item.joinDate,
+        '年假',
+        item.startDate,
+        item.endDate,
+        item.totalHours,
+        item.totalDays,
+        item.reason,
+        item.applicantName,
+        item.applyDate
+      ]);
+      row.height = 18;
+      row.eachCell((cell) => {
+        // 强制白底覆盖任何默认样式
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFFFFFF' }
+        };
+        // 细边框
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        };
+        cell.alignment = {
+          horizontal: 'center',
+          vertical: 'middle'
+        };
+      });
+    });
+
+    // 禁用工作表的交替行样式
+    const sheetRows = (annualLeaveSheet as ExcelJS.Worksheet & { _rows?: unknown[] })._rows;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sheetRows?.forEach((row: any) => {
+      if (row._cells) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        row._cells.forEach((cell: any) => {
+          if (cell._style) {
+            cell._style.fillId = undefined;
+          }
+        });
+      }
+    });
+
+    // 生成Excel
+    const excelBuffer = await workbook.xlsx.writeBuffer();
+    const excelBlob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const fileName = `年假请假申请表-${weekNum}.xlsx`;
+
+    // 下载Excel
+    const url = URL.createObjectURL(excelBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log('✅ 年假Excel导出成功');
+  } catch (error) {
+    console.error('❌ 导出年假Excel失败:', error);
+    alert('导出失败，请重试。');
+  }
+};
+
 // 组件卸载时清理事件监听器
 onUnmounted(() => {
   eventBus.off('formal-leave-changed', handleFormalLeaveChanged);
@@ -5839,6 +6429,18 @@ onUnmounted(() => {
   background-color: #0066CC;
   color: #FFFFFF;
   border-color: #0066CC;
+}
+
+.view-mode-selector .week-only-hint {
+  background: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+  color: #FFFFFF;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: default;
+  opacity: 0.9;
 }
 
 .date-controls {
@@ -6482,7 +7084,16 @@ onUnmounted(() => {
 }
 
 .shift-empty {
-  color: #D1D5DB;
+  color: #9CA3AF;
+  font-size: 11px;
+}
+
+.shift-cell.shift-empty {
+  color: #9CA3AF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
 }
 
 .special-status {
