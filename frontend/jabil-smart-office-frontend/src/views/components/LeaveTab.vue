@@ -222,7 +222,7 @@
       </el-table-column>
       <el-table-column label="申请日期" width="120">
         <template #default="{ row }">
-          <span>{{ row.applyDate ? row.applyDate.split(' ')[0] : '-' }}</span>
+          <span>{{ row.applyDate ? row.applyDate.split('T')[0] : '-' }}</span>
         </template>
       </el-table-column>
 
@@ -677,7 +677,7 @@ const getCurrentUser = () => {
       return JSON.parse(userStr)
     }
   } catch (error) {
-    ElMessage.error('获取用户信息失败: ' + getErrorMessage(error))
+    ElMessage.error({ message: '获取用户信息失败: ' + getErrorMessage(error), showClose: true, duration: 3000 });
   }
   return null
 }
@@ -686,6 +686,7 @@ const currentUser = getCurrentUser()
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Document, Clock, SuccessFilled, Close, Plus, Upload, Download, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from '@/plugins/dayjs'
+import { useVoiceReminder } from '@/composables/useVoiceReminder'
 
 interface Props {
   tabType: 'overtime' | 'temporary' | 'annual' | 'resignation'
@@ -800,6 +801,9 @@ const totalPages = ref(1)
 const totalPending = ref(0)
 const totalApproved = ref(0)
 const totalRejected = ref(0)
+
+// 语音提醒
+const { checkLeaveApprovalPending } = useVoiceReminder();
 const dateRange = ref<[Date, Date] | null>(null)
 const filterStatus = ref('')
 const filterEmployee = ref('')
@@ -860,7 +864,7 @@ const loadState = () => {
       }
     }
   } catch (error) {
-    ElMessage.error('加载状态失败: ' + getErrorMessage(error))
+    ElMessage.error({ message: '加载状态失败: ' + getErrorMessage(error), showClose: true, duration: 3000 });
   }
 }
 
@@ -897,7 +901,7 @@ const loadEmployees = async () => {
       }))
     }
   } catch (error) {
-    ElMessage.error('加载员工列表失败: ' + getErrorMessage(error))
+    ElMessage.error({ message: '加载员工列表失败: ' + getErrorMessage(error), showClose: true, duration: 3000 })
   }
 }
 
@@ -914,7 +918,7 @@ const loadDepartments = async () => {
       departments.value = data?.departments || []
     }
   } catch (error) {
-    ElMessage.error('加载部门列表失败: ' + getErrorMessage(error))
+    ElMessage.error({ message: '加载部门列表失败: ' + getErrorMessage(error), showClose: true, duration: 3000 })
   }
 }
 
@@ -931,7 +935,7 @@ const loadApprovers = async () => {
       approvers.value = data?.approvers || []
     }
   } catch (error) {
-    ElMessage.error('加载审批人失败: ' + getErrorMessage(error))
+    ElMessage.error({ message: '加载审批人失败: ' + getErrorMessage(error), showClose: true, duration: 3000 })
   }
 }
 
@@ -986,6 +990,10 @@ const loadData = async () => {
       // 更新统计数据
       if (result.totalPending !== undefined) {
         totalPending.value = result.totalPending
+        // 语音提醒：有待审批的记录时（仅年假标签页需要审批提醒）
+        if (props.tabType === 'annual') {
+          checkLeaveApprovalPending(result.totalPending)
+        }
       }
       if (result.totalApproved !== undefined) {
         totalApproved.value = result.totalApproved
@@ -1079,7 +1087,7 @@ const loadData = async () => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error));
-    ElMessage.error('加载数据失败: ' + errorMessage)
+    ElMessage.error({ message: '加载数据失败: ' + errorMessage, showClose: true, duration: 3000 })
   }
 }
 
@@ -1160,7 +1168,7 @@ const formatDateTime = (dateTime: string) => {
     
     return result || dateTime
   } catch (error) {
-    ElMessage.error('日期格式化错误: ' + dateTime + ', ' + getErrorMessage(error))
+    ElMessage.error({ message: '日期格式化错误: ' + dateTime + ', ' + getErrorMessage(error), showClose: true, duration: 3000 })
     return dateTime || '-'
   }
 }
@@ -1607,12 +1615,12 @@ const handleTransferOutApprove = async (row: LeaveRequest) => {
     })
     
     if (res.ok) {
-      ElMessage.success('转出批准成功')
+      ElMessage.success({ message: '转出批准成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('操作失败')
+      ElMessage.error({ message: '操作失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -1636,12 +1644,12 @@ const handleTransferOutReject = async (row: LeaveRequest) => {
     })
     
     if (res.ok) {
-      ElMessage.success('转出拒绝成功')
+      ElMessage.success({ message: '转出拒绝成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('操作失败')
+      ElMessage.error({ message: '操作失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -1665,12 +1673,12 @@ const handleTransferInApprove = async (row: LeaveRequest) => {
     })
     
     if (res.ok) {
-      ElMessage.success('转入批准成功')
+      ElMessage.success({ message: '转入批准成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('操作失败')
+      ElMessage.error({ message: '操作失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -1694,12 +1702,12 @@ const handleTransferInReject = async (row: LeaveRequest) => {
     })
     
     if (res.ok) {
-      ElMessage.success('转入拒绝成功')
+      ElMessage.success({ message: '转入拒绝成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('操作失败')
+      ElMessage.error({ message: '操作失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -1768,7 +1776,7 @@ const handleViewProof = (row: any) => {
   
   // 检查是否有文件
   if (!row.proofFile) {
-    ElMessage.warning('该记录没有上传证明文件')
+    ElMessage.warning({ message: '该记录没有上传证明文件', showClose: true, duration: 3000 })
     return
   }
   
@@ -1785,7 +1793,7 @@ const handleViewProof = (row: any) => {
 
 const handleAdd = () => {
   if (!hasAddPermission()) {
-    ElMessage.warning('您没有新增申请的权限，只有厂区管理员和部门管理员可以填写临时加班和临时请假&公差申请')
+    ElMessage.warning({ message: '您没有新增申请的权限，只有厂区管理员和部门管理员可以填写临时加班和临时请假&公差申请', showClose: true, duration: 3000 })
     return
   }
   isEdit.value = false
@@ -1824,11 +1832,11 @@ const handleAdd = () => {
 
 const handleEdit = (row: LeaveRequest) => {
   if (!hasEditPermission(row)) {
-    ElMessage.warning('您没有编辑此申请的权限，只有对应的厂区管理员和部门管理员可以编辑')
+    ElMessage.warning({ message: '您没有编辑此申请的权限，只有对应的厂区管理员和部门管理员可以编辑', showClose: true, duration: 3000 })
     return
   }
   if (isStatusDisabled(row.status)) {
-    ElMessage.warning('此申请已提交，无法编辑')
+    ElMessage.warning({ message: '此申请已提交，无法编辑', showClose: true, duration: 3000 })
     return
   }
   isEdit.value = true
@@ -1892,7 +1900,7 @@ const handleEdit = (row: LeaveRequest) => {
 
 const handleSubmitStatus = async (row: LeaveRequest) => {
   if (!hasEditPermission(row)) {
-    ElMessage.warning('您没有提交此申请的权限，只有对应的厂区管理员和部门管理员可以提交')
+    ElMessage.warning({ message: '您没有提交此申请的权限，只有对应的厂区管理员和部门管理员可以提交', showClose: true, duration: 3000 })
     return
   }
   try {
@@ -1913,22 +1921,22 @@ const handleSubmitStatus = async (row: LeaveRequest) => {
       if (index !== -1) {
         requests.value[index]!.status = 'approved'
       }
-      ElMessage.success('提交成功')
+      ElMessage.success({ message: '提交成功', showClose: true, duration: 3000 })
       loadData()
     } else {
       const data = await res.json()
-      ElMessage.error(data.error || '提交失败')
+      ElMessage.error({ message: data.error || '提交失败', showClose: true, duration: 3000 })
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('提交失败')
+      ElMessage.error({ message: '提交失败', showClose: true, duration: 3000 })
     }
   }
 };
 
 const handleUnsubmit = async (row: LeaveRequest) => {
   if (!hasEditPermission(row)) {
-    ElMessage.warning('您没有撤回此申请的权限，只有对应的厂区管理员和部门管理员可以撤回')
+    ElMessage.warning({ message: '您没有撤回此申请的权限，只有对应的厂区管理员和部门管理员可以撤回', showClose: true, duration: 3000 })
     return
   }
   try {
@@ -1949,14 +1957,14 @@ const handleUnsubmit = async (row: LeaveRequest) => {
       if (index !== -1) {
         requests.value[index]!.status = 'pending'
       }
-      ElMessage.success('撤回成功')
+      ElMessage.success({ message: '撤回成功', showClose: true, duration: 3000 })
     } else {
       const data = await res.json()
-      ElMessage.error(data.error || '撤回失败')
+      ElMessage.error({ message: data.error || '撤回失败', showClose: true, duration: 3000 })
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('撤回失败')
+      ElMessage.error({ message: '撤回失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2008,12 +2016,12 @@ const handleApprove = async (row: LeaveRequest) => {
         requests.value[index]!.approverId = currentUser?.id
         requests.value[index]!.approverName = currentUser?.realName || currentUser?.username
       }
-      ElMessage.success('批准成功')
+      ElMessage.success({ message: '批准成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('批准失败')
+      ElMessage.error({ message: '批准失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2043,12 +2051,12 @@ const handleReject = async (row: LeaveRequest) => {
         requests.value[index]!.approverId = currentUser?.id
         requests.value[index]!.approverName = currentUser?.realName || currentUser?.username
       }
-      ElMessage.success('已拒绝')
+      ElMessage.success({ message: '已拒绝', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('拒绝失败')
+      ElMessage.error({ message: '拒绝失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2072,12 +2080,12 @@ const handleResubmit = async (row: LeaveRequest) => {
       if (index !== -1) {
         requests.value[index]!.status = 'pending'
       }
-      ElMessage.success('打回重提成功')
+      ElMessage.success({ message: '打回重提成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('打回重提失败')
+      ElMessage.error({ message: '打回重提失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2097,12 +2105,12 @@ const handleDelete = async (row: LeaveRequest) => {
     })
     
     if (res.ok) {
-      ElMessage.success('删除成功')
+      ElMessage.success({ message: '删除成功', showClose: true, duration: 3000 })
       loadData()
     }
   } catch (err) {
     if (err !== 'cancel') {
-      ElMessage.error('删除失败')
+      ElMessage.error({ message: '删除失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2134,12 +2142,12 @@ const handleTransferSubmit = async () => {
         })
         
         if (res.ok) {
-          ElMessage.success('转审成功')
+          ElMessage.success({ message: '转审成功', showClose: true, duration: 3000 })
           transferDialogVisible.value = false
           loadData()
         }
       } catch (err) {
-        ElMessage.error('转审失败')
+        ElMessage.error({ message: '转审失败', showClose: true, duration: 3000 })
       }
     }
   })
@@ -2163,7 +2171,7 @@ const handleSubmit = async () => {
   // 在验证前检查日期和时间是否已填写
   if ((props.tabType === 'overtime' || props.tabType === 'temporary') && 
       (!formDate.value || !formStartTime.value || !formEndTime.value)) {
-    ElMessage.warning('请填写完整的日期和时间')
+    ElMessage.warning({ message: '请填写完整的日期和时间', showClose: true, duration: 3000 })
     return
   }
   
@@ -2173,20 +2181,19 @@ const handleSubmit = async () => {
         return
       }
       
-      console.log('表单验证通过！')
       
       let apiPath = ''
       let method = 'POST'
 
       const employee = employees.value.find(emp => emp.id === form.value.employeeId)
       if (!employee) {
-        ElMessage.error('选择的员工不存在')
+        ElMessage.error({ message: '选择的员工不存在', showClose: true, duration: 3000 })
         return
       }
 
       const approver = filteredApprovers.value.find(a => a.id === form.value.approverId)
       if ((props.tabType === 'annual' || (props.tabType === 'resignation' && form.value.type === '离职')) && !approver) {
-        ElMessage.error('选择的审批人不存在或不具备审批权限')
+        ElMessage.error({ message: '选择的审批人不存在或不具备审批权限', showClose: true, duration: 3000 })
         return
       }
 
@@ -2311,17 +2318,17 @@ const handleSubmit = async () => {
           }
           
           dialogVisible.value = false
-          ElMessage.success(isEdit.value ? '编辑成功' : '申请成功')
+          ElMessage.success({ message: isEdit.value ? '编辑成功' : '申请成功', showClose: true, duration: 3000 })
           
           // 重新加载数据
           await loadData()
       } catch (error) {
-        ElMessage.error('提交失败，请重试')
+        ElMessage.error({ message: '提交失败，请重试', showClose: true, duration: 3000 })
       }
 
     })
   } catch (error) {
-    ElMessage.error('验证失败')
+    ElMessage.error({ message: '验证失败', showClose: true, duration: 3000 })
   }
 }
 
@@ -2350,9 +2357,9 @@ const handleFileChange = async (file: any) => {
     uploadedProofFile.value = result.fileName
     fileList.value = [file]
     
-    ElMessage.success('文件上传成功')
+    ElMessage.success({ message: '文件上传成功', showClose: true, duration: 3000 })
   } catch (error) {
-    ElMessage.error((error as Error).message || '上传失败，请重试')
+    ElMessage.error({ message: (error as Error).message || '上传失败，请重试', showClose: true, duration: 3000 });
     // 清空文件列表
     fileList.value = []
     uploadedProofFile.value = ''
@@ -2424,13 +2431,13 @@ const downloadTemplate = () => {
   if (templateName) {
     window.open(`/api/templates/${encodeURIComponent(templateName)}`, '_blank')
   } else {
-    ElMessage.warning('当前类型没有可用的模板')
+    ElMessage.warning({ message: '当前类型没有可用的模板', showClose: true, duration: 3000 })
   }
 }
 
 const confirmBatchUpload = async () => {
   if (batchUploadFileList.value.length === 0) {
-    ElMessage.warning('请选择要上传的Excel文件')
+    ElMessage.warning({ message: '请选择要上传的Excel文件', showClose: true, duration: 3000 })
     return
   }
   
@@ -2480,7 +2487,7 @@ const confirmBatchUpload = async () => {
     if (result.skippedCount && result.skippedCount > 0) {
       message += `，跳过 ${result.skippedCount} 条重复数据`
     }
-    ElMessage.success(message)
+    ElMessage.success({ message: message, showClose: true, duration: 3000 })
     
     // 成功上传后，延迟关闭弹窗，让用户看到成功提示
     setTimeout(() => {
@@ -2491,7 +2498,7 @@ const confirmBatchUpload = async () => {
     }, 1500)
   } catch (error) {
     console.error('批量上传失败:', error)
-    ElMessage.error('上传失败，请检查网络连接')
+    ElMessage.error({ message: '上传失败，请检查网络连接', showClose: true, duration: 3000 })
   } finally {
     batchUploadLoading.value = false
   }
@@ -2522,14 +2529,14 @@ const hasBatchSubmitPermission = () => {
 // 批量提交
 const handleBatchSubmit = async () => {
   if (selectedRows.value.length === 0) {
-    ElMessage.warning('请先选择要提交的记录')
+    ElMessage.warning({ message: '请先选择要提交的记录', showClose: true, duration: 3000 })
     return
   }
 
   // 检查是否有非pending状态的记录
   const nonPendingRows = selectedRows.value.filter(row => row.status !== 'pending')
   if (nonPendingRows.length > 0) {
-    ElMessage.warning('只能提交待提交状态的记录')
+    ElMessage.warning({ message: '只能提交待提交状态的记录', showClose: true, duration: 3000 })
     return
   }
 
@@ -2578,9 +2585,9 @@ const handleBatchSubmit = async () => {
 
     // 显示结果
     if (failCount === 0) {
-      ElMessage.success(`成功提交 ${successCount} 条申请`)
+      ElMessage.success({ message: `成功提交 ${successCount} 条申请`, showClose: true, duration: 3000 })
     } else {
-      ElMessage.warning(`成功 ${successCount} 条，失败 ${failCount} 条`)
+      ElMessage.warning({ message: `成功 ${successCount} 条，失败 ${failCount} 条`, showClose: true, duration: 3000 })
       if (errors.length > 0) {
         console.error('提交失败详情:', errors)
       }
@@ -2591,7 +2598,7 @@ const handleBatchSubmit = async () => {
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('批量提交失败:', error)
-      ElMessage.error('批量提交失败')
+      ElMessage.error({ message: '批量提交失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -2600,7 +2607,7 @@ const handleBatchSubmit = async () => {
 
 const handleExport = async () => {
   try {
-    ElMessage.info('正在准备导出数据...')
+    ElMessage.info({ message: '正在准备导出数据...', showClose: true, duration: 3000 })
 
     // 动态导入ExcelJS
     const ExcelJS = await import('exceljs')
@@ -2759,10 +2766,10 @@ const handleExport = async () => {
     link.click()
     URL.revokeObjectURL(url)
 
-    ElMessage.success('导出成功')
+    ElMessage.success({ message: '导出成功', showClose: true, duration: 3000 })
   } catch (error) {
     console.error('导出失败:', error)
-    ElMessage.error('导出失败，请重试')
+    ElMessage.error({ message: '导出失败，请重试', showClose: true, duration: 3000 })
   }
 }
 
