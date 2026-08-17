@@ -57,19 +57,19 @@ router.get('/', authenticateToken, async (req, res) => {
         l.employee_id,
         l.plant_id,
         l.department_id,
-        l.leave_type as type,
+        l.leave_type,
         l.start_date,
         l.end_date,
         l.start_time,
         l.end_time,
-        l.hours as duration,
+        l.hours,
         l.reason,
-        l.proof_file as proof_file,
+        l.proof_file,
         l.status,
         l.applicant_id,
-        l.created_at as apply_date,
-        u.real_name as employee_name,
-        d.name as department_name
+        l.created_at,
+        u.real_name,
+        d.name
       FROM ${TABLE} l
       LEFT JOIN ${USER_TABLE} u ON l.employee_id = u.id
       LEFT JOIN jso_org_department_management d ON u.department_id = d.id
@@ -78,15 +78,44 @@ router.get('/', authenticateToken, async (req, res) => {
       LIMIT $${idx++} OFFSET $${idx++}
     `, [...params, parseInt(pageSize), offset]);
 
-    // 转换状态值和类型
+    // 转换字段名与前端一致
     const typeMap = { LEAVE: '请假', ERRAND: '公差', SICK: '病假' };
-    const items = result.rows.map(row => ({
-      ...row,
-      employeeName: row.employee_name,
-      departmentName: row.department_name,
-      type: typeMap[row.type] || row.type,
-      status: row.status === 'PENDING' ? 'pending' : row.status === 'APPROVED' ? 'approved' : row.status === 'REJECTED' ? 'rejected' : row.status
-    }));
+    const items = result.rows.map(row => {
+      // 格式化日期
+      const formatDate = (date) => {
+        if (!date) return null;
+        const d = new Date(date);
+        return d.toISOString().split('T')[0];
+      };
+      // 格式化时间
+      const formatTime = (time) => {
+        if (!time) return '';
+        return time.substring(0, 5);
+      };
+
+      return {
+        id: row.id,
+        employeeId: row.employee_id,
+        plantId: row.plant_id,
+        departmentId: row.department_id,
+        type: typeMap[row.leave_type] || row.leave_type || '请假',
+        leaveType: row.leave_type,
+        leaveDate: formatDate(row.start_date),
+        startDate: formatDate(row.start_date),
+        endDate: formatDate(row.end_date),
+        startTime: formatTime(row.start_time),
+        endTime: formatTime(row.end_time),
+        duration: row.hours,
+        totalHours: parseFloat(row.hours) || 0,
+        reason: row.reason,
+        proofFile: row.proof_file,
+        status: row.status === 'PENDING' ? 'pending' : row.status === 'APPROVED' ? 'approved' : row.status === 'REJECTED' ? 'rejected' : row.status,
+        applicantId: row.applicant_id,
+        applyDate: new Date(row.created_at).toISOString(),
+        employeeName: row.real_name,
+        departmentName: row.name
+      };
+    });
 
     res.json({ success: true, items, total, page: parseInt(page), pageSize: parseInt(pageSize) });
   } catch (error) {
