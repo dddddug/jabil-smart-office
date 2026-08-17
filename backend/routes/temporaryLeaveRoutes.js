@@ -10,6 +10,24 @@ const router = express.Router();
 const TABLE = 'jso_hr_temporary_leave';
 const USER_TABLE = 'jso_system_user_management';
 
+// 中国时区偏移（UTC+8）
+const CN_OFFSET = 8 * 60 * 60 * 1000;
+
+// 格式化日期为中国时区的 YYYY-MM-DD
+const formatDateCN = (date) => {
+  if (!date) return null;
+  const d = new Date(date);
+  // 转换为中国时区
+  const cnDate = new Date(d.getTime() + CN_OFFSET);
+  return cnDate.toISOString().split('T')[0];
+};
+
+// 格式化时间为 HH:mm
+const formatTimeCN = (time) => {
+  if (!time) return '';
+  return time.substring(0, 5);
+};
+
 // 获取列表
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -81,18 +99,6 @@ router.get('/', authenticateToken, async (req, res) => {
     // 转换字段名与前端一致
     const typeMap = { LEAVE: '请假', ERRAND: '公差', SICK: '病假' };
     const items = result.rows.map(row => {
-      // 格式化日期
-      const formatDate = (date) => {
-        if (!date) return null;
-        const d = new Date(date);
-        return d.toISOString().split('T')[0];
-      };
-      // 格式化时间
-      const formatTime = (time) => {
-        if (!time) return '';
-        return time.substring(0, 5);
-      };
-
       return {
         id: row.id,
         employeeId: row.employee_id,
@@ -100,11 +106,11 @@ router.get('/', authenticateToken, async (req, res) => {
         departmentId: row.department_id,
         type: typeMap[row.leave_type] || row.leave_type || '请假',
         leaveType: row.leave_type,
-        leaveDate: formatDate(row.start_date),
-        startDate: formatDate(row.start_date),
-        endDate: formatDate(row.end_date),
-        startTime: formatTime(row.start_time),
-        endTime: formatTime(row.end_time),
+        leaveDate: formatDateCN(row.start_date),
+        startDate: formatDateCN(row.start_date),
+        endDate: formatDateCN(row.end_date),
+        startTime: formatTimeCN(row.start_time),
+        endTime: formatTimeCN(row.end_time),
         hours: parseFloat(row.hours) || 0,
         duration: parseFloat(row.hours) || 0,
         totalHours: parseFloat(row.hours) || 0,
@@ -112,7 +118,7 @@ router.get('/', authenticateToken, async (req, res) => {
         proofFile: row.proof_file,
         status: row.status === 'PENDING' ? 'pending' : row.status === 'APPROVED' ? 'approved' : row.status === 'REJECTED' ? 'rejected' : row.status,
         applicantId: row.applicant_id,
-        applyDate: new Date(row.created_at).toISOString(),
+        applyDate: formatDateCN(row.created_at),
         employeeName: row.real_name,
         departmentName: row.name
       };
@@ -167,13 +173,35 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours } = req.body;
     const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
+
+    // 解析日期：如果是纯日期格式 YYYY-MM-DD，直接使用（避免时区问题）
+    // 如果是其他格式，需要解析
+    const parseDateForDb = (dateStr) => {
+      if (!dateStr) return null;
+      // 如果是纯日期格式 YYYY-MM-DD，直接返回
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      // 如果是 "YYYY-MM-DD HH:mm:ss" 格式，提取日期部分
+      if (dateStr.includes(' ')) {
+        return dateStr.split(' ')[0];
+      }
+      // 如果是 ISO 格式，需要转换
+      if (dateStr.includes('T')) {
+        // 提取日期部分（不带时间）
+        const datePart = dateStr.split('T')[0];
+        return datePart;
+      }
+      return dateStr;
+    };
+
     const result = await pool.query(`
       UPDATE ${TABLE}
       SET employee_id = $1, start_date = $2, end_date = $3, start_time = $4, end_time = $5,
           leave_type = $6, reason = $7, hours = $8, updated_at = CURRENT_TIMESTAMP
       WHERE id = $9
       RETURNING *
-    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, id]);
+    `, [employeeId, parseDateForDb(startDate), parseDateForDb(endDate), startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: '记录不存在' });

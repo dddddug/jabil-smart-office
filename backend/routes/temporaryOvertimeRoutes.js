@@ -10,6 +10,24 @@ const router = express.Router();
 const TABLE = 'jso_hr_temporary_overtime';
 const USER_TABLE = 'jso_system_user_management';
 
+// 中国时区偏移（UTC+8）
+const CN_OFFSET = 8 * 60 * 60 * 1000;
+
+// 格式化日期为中国时区的 YYYY-MM-DD
+const formatDateCN = (date) => {
+  if (!date) return null;
+  const d = new Date(date);
+  // 转换为中国时区
+  const cnDate = new Date(d.getTime() + CN_OFFSET);
+  return cnDate.toISOString().split('T')[0];
+};
+
+// 格式化时间为 HH:mm
+const formatTimeCN = (time) => {
+  if (!time) return '';
+  return time.substring(0, 5);
+};
+
 // 获取列表
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -53,13 +71,13 @@ router.get('/', authenticateToken, async (req, res) => {
         o.employee_id,
         o.plant_id,
         o.department_id,
-        o.overtime_type as type,
+        o.overtime_type,
         o.overtime_date,
         o.start_time,
         o.end_time,
         o.hours,
         o.reason,
-        o.proof_file as proof_file,
+        o.proof_file,
         o.status,
         o.applicant_id,
         o.created_at,
@@ -75,29 +93,17 @@ router.get('/', authenticateToken, async (req, res) => {
 
     // 转换字段名与前端一致
     const items = result.rows.map(row => {
-      // 格式化日期
-      const formatDate = (date) => {
-        if (!date) return null;
-        const d = new Date(date);
-        return d.toISOString().split('T')[0];
-      };
-      // 格式化时间
-      const formatTime = (time) => {
-        if (!time) return '';
-        return time.substring(0, 5);
-      };
-
       return {
         id: row.id,
         employeeId: row.employee_id,
         plantId: row.plant_id,
         departmentId: row.department_id,
-        type: row.type || '临时加班',
-        overtimeDate: formatDate(row.overtime_date),
-        startDate: formatDate(row.overtime_date),
-        endDate: formatDate(row.overtime_date),
-        startTime: formatTime(row.start_time),
-        endTime: formatTime(row.end_time),
+        type: row.overtime_type || '临时加班',
+        overtimeDate: formatDateCN(row.overtime_date),
+        startDate: formatDateCN(row.overtime_date),
+        endDate: formatDateCN(row.overtime_date),
+        startTime: formatTimeCN(row.start_time),
+        endTime: formatTimeCN(row.end_time),
         hours: parseFloat(row.hours) || 0,
         duration: parseFloat(row.hours) || 0,
         totalHours: parseFloat(row.hours) || 0,
@@ -105,7 +111,7 @@ router.get('/', authenticateToken, async (req, res) => {
         proofFile: row.proof_file,
         status: row.status === 'PENDING' ? 'pending' : row.status === 'APPROVED' ? 'approved' : row.status === 'REJECTED' ? 'rejected' : row.status,
         applicantId: row.applicant_id,
-        applyDate: new Date(row.created_at).toISOString(),
+        applyDate: formatDateCN(row.created_at),
         employeeName: row.real_name,
         departmentName: row.name
       };
@@ -158,13 +164,32 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { employeeId, overtimeDate, startTime, endTime, hours, reason, type } = req.body;
+
+    // 解析日期：如果是纯日期格式 YYYY-MM-DD，直接使用（避免时区问题）
+    const parseDateForDb = (dateStr) => {
+      if (!dateStr) return null;
+      // 如果是纯日期格式 YYYY-MM-DD，直接返回
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      // 如果是 "YYYY-MM-DD HH:mm:ss" 格式，提取日期部分
+      if (dateStr.includes(' ')) {
+        return dateStr.split(' ')[0];
+      }
+      // 如果是 ISO 格式，提取日期部分
+      if (dateStr.includes('T')) {
+        return dateStr.split('T')[0];
+      }
+      return dateStr;
+    };
+
     const result = await pool.query(`
       UPDATE ${TABLE}
       SET employee_id = $1, overtime_date = $2, start_time = $3, end_time = $4,
           hours = $5, reason = $6, overtime_type = $7, updated_at = CURRENT_TIMESTAMP
       WHERE id = $8
       RETURNING *
-    `, [employeeId, overtimeDate, startTime, endTime, hours, reason, type || '临时加班', id]);
+    `, [employeeId, parseDateForDb(overtimeDate), startTime, endTime, hours, reason, type || '临时加班', id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: '记录不存在' });
