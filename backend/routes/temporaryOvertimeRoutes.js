@@ -153,6 +153,29 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
+// 编辑记录
+router.put('/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { employeeId, overtimeDate, startTime, endTime, hours, reason, type } = req.body;
+    const result = await pool.query(`
+      UPDATE ${TABLE}
+      SET employee_id = $1, overtime_date = $2, start_time = $3, end_time = $4,
+          hours = $5, reason = $6, overtime_type = $7, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $8
+      RETURNING *
+    `, [employeeId, overtimeDate, startTime, endTime, hours, reason, type || '临时加班', id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: '记录不存在' });
+    }
+    res.json({ success: true, item: result.rows[0] });
+  } catch (error) {
+    console.error('编辑临时加班失败:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 提交（将状态改为已提交）
 router.put('/:id/submit', authenticateToken, async (req, res) => {
   try {

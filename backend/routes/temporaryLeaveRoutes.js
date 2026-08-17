@@ -161,6 +161,30 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
+// 编辑记录
+router.put('/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours } = req.body;
+    const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
+    const result = await pool.query(`
+      UPDATE ${TABLE}
+      SET employee_id = $1, start_date = $2, end_date = $3, start_time = $4, end_time = $5,
+          leave_type = $6, reason = $7, hours = $8, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $9
+      RETURNING *
+    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: '记录不存在' });
+    }
+    res.json({ success: true, item: result.rows[0] });
+  } catch (error) {
+    console.error('编辑临时请假失败:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 提交（将状态改为已提交）
 router.put('/:id/submit', authenticateToken, async (req, res) => {
   try {
