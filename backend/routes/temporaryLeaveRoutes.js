@@ -179,6 +179,24 @@ router.put('/:id/submit', authenticateToken, async (req, res) => {
   }
 });
 
+// 撤回（将状态改回待提交）
+router.put('/:id/withdraw', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `UPDATE ${TABLE} SET status = 'PENDING', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: '记录不存在' });
+    }
+    res.json({ success: true, item: result.rows[0] });
+  } catch (error) {
+    console.error('撤回临时请假失败:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // 删除
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
