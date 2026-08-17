@@ -30,7 +30,6 @@ process.on('unhandledRejection', (reason, promise) => {
 // 导入模块化的路由
 import announcementRoutes from './routes/announcementRoutes.js';
 import specialWorkingHoursRoutes from './routes/specialWorkingHoursRoutes.js';
-import temporaryLeaveRoutes from './routes/temporaryLeaveRoutes.js';
 import formalLeaveRoutes from './routes/formalLeaveRoutes.js';
 import scheduleRoutes from './routes/scheduleRoutes.js';
 import userRoutes from './routes/userRoutes.js';
@@ -39,7 +38,6 @@ import shiftDurationRuleRoutes from './routes/shiftDurationRuleRoutes.js';
 import employeeHourlyRateRoutes from './routes/employeeHourlyRateRoutes.js'; // Added
 import welfareConfigRoutes from './routes/welfareConfigRoutes.js'; // Added
 import notificationRoutes from './routes/notificationRoutes.js';
-import temporaryOvertimeRoutes from './routes/temporaryOvertimeRoutes.js';
 import proofRoutes from './routes/proofRoutes.js';
 import batchUploadRoutes from './routes/batchUploadRoutes.js';
 import plantRoutes from './routes/plantRoutes.js'; // Added
@@ -58,6 +56,12 @@ import k2DiffConfigRoutes from './routes/k2DiffConfigRoutes.js'; // K**差异登
 import k2DiffRoutes from './routes/k2DiffRoutes.js'; // K**差异登记 路由
 import systemRoutes from './routes/systemRoutes.js'; // 系统信息路由
 import positionReasonConfigRoutes from './routes/positionReasonConfigRoutes.js'; // 岗位原因配置路由
+import permissionRoutes from './routes/permissionRoutes.js'; // 权限管理路由
+import stockroomUrgentPullRoutes, { startScheduledRefresh } from './routes/stockroomUrgentPullRoutes.js'; // Stockroom Urgent Pull 路由
+import stockroomUrgentPullConfigRoutes from './routes/stockroomUrgentPullConfigRoutes.js'; // Stockroom Urgent Pull 配置路由
+import warehouseMonitorRoutes from './routes/warehouseMonitorRoutes.js'; // 仓库物料监控路由
+import temporaryOvertimeRoutes from './routes/temporaryOvertimeRoutes.js'; // 临时加班路由
+import temporaryLeaveRoutes from './routes/temporaryLeaveRoutes.js'; // 临时请假路由
 
 // 导入模块化的定时任务
 import { initScheduledTasks, checkAndDeactivateUsers, processTransferDates } from './scripts/scheduledTasks.js';
@@ -65,6 +69,9 @@ import { initScheduledTasks, checkAndDeactivateUsers, processTransferDates } fro
 // 导入共享的数据库连接
 import pool from './config/db.js';
 import { USER_TABLE } from './config/db_constants.js'; // 导入 USER_TABLE
+
+// 导入菜单同步服务
+import { syncMenusToDatabase, initModulesTable } from './services/menuSyncService.js';
 
 
 
@@ -125,7 +132,6 @@ app.use('/api', apiLimiter);
 // 挂载所有模块化的路由 (Updated mounting paths)
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/special-working-hours', specialWorkingHoursRoutes);
-app.use('/api/temporary-leave', temporaryLeaveRoutes);
 app.use('/api/formal-leave', formalLeaveRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/users', userRoutes);
@@ -134,7 +140,6 @@ app.use('/api/config/shift-duration-rules', shiftDurationRuleRoutes);
 app.use('/api/config/employee-hourly-rates', employeeHourlyRateRoutes);
 app.use('/api/config/welfare', welfareConfigRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/temporary-overtime', temporaryOvertimeRoutes);
 app.use('/api/proof', proofRoutes);
 app.use('/api/batch', batchUploadRoutes);
 app.use('/api/plants', plantRoutes); // Added explicit mount
@@ -153,6 +158,12 @@ app.use('/api/k2-diff-config', k2DiffConfigRoutes); // K**差异登记 配置路
 app.use('/api/k2-diff', k2DiffRoutes); // K**差异登记 路由
 app.use('/api/system', systemRoutes); // 系统信息路由
 app.use('/api/config/position-reasons', positionReasonConfigRoutes); // 岗位原因配置路由
+app.use('/api/permissions', permissionRoutes); // 权限管理路由
+app.use('/api/stockroom-urgent-pull', stockroomUrgentPullRoutes); // Stockroom Urgent Pull 路由
+app.use('/api/stockroom-urgent-pull-config', stockroomUrgentPullConfigRoutes); // Stockroom Urgent Pull 配置路由
+app.use('/api/warehouse-monitor', warehouseMonitorRoutes); // 仓库物料监控路由
+app.use('/api/temporary-overtime', temporaryOvertimeRoutes); // 临时加班路由
+app.use('/api/temporary-leave', temporaryLeaveRoutes); // 临时请假路由
 
 
 // 确保 uploads 目录存在
@@ -262,6 +273,21 @@ pool.connect(async (err) => {
       // However, if we want to run initial checks immediately after DB init, we can call them here
       await checkAndDeactivateUsers(); // Initial check on server start
       await processTransferDates();    // Initial check on server start
+
+      // 同步前端菜单配置到数据库
+      try {
+        await initModulesTable(pool);
+        await syncMenusToDatabase(pool);
+      } catch (syncError) {
+        console.error('菜单同步失败（不影响主服务）:', syncError.message);
+      }
+
+      // 启动 Stockroom Urgent Pull 定时刷新任务
+      try {
+        startScheduledRefresh();
+      } catch (refreshError) {
+        console.error('Stockroom Urgent Pull 定时刷新启动失败（不影响主服务）:', refreshError.message);
+      }
 
       // 全局错误处理
       app.use(handleError);
