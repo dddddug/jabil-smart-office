@@ -1053,7 +1053,7 @@ const loadData = async () => {
             duration: duration,
             reason: item.reason || '',
             status: item.status || 'pending',
-            applyDate: item.createdAt?.split('T')[0] || '',
+            applyDate: item.applyDate?.split('T')[0] || '',
             plantId: item.plantId,
             plantName: item.plantName || '',
             departmentId: item.departmentId,
