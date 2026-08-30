@@ -352,10 +352,6 @@
             </div>
           </div>
           <div class="action-buttons-compact">
-            <button class="btn btn-export-compact" @click="exportToExcel">
-              <span class="btn-icon-compact">📥</span>
-              导出Excel
-            </button>
             <button class="btn btn-send-compact" @click="openInOutlook">
               <span class="btn-icon-compact">📧</span>
               发送邮件
@@ -1021,12 +1017,8 @@ import { fetchImageAsBase64 } from '@/utils/fileUtils';
 import { formatShanghaiDateTime } from '../utils/dateUtils';
 import eventBus from '@/utils/eventBus';
 import { getReasonByPosition, loadPositionReasonsToCache } from '@/utils/positionReasonUtils';
-import { useVoiceReminder } from '@/composables/useVoiceReminder';
 
-// 语音提醒
-const { checkScheduleChange } = useVoiceReminder();
-
-// 排班变动记录（用于语音提醒）- 使用 localStorage 持久化存储
+// 排班变动记录（用于提醒）- 使用 localStorage 持久化存储
 const SCHEDULE_HASH_KEY = 'jabil-schedule-hash';
 
 // 获取上次保存的排班哈希
@@ -1085,7 +1077,6 @@ const detectScheduleChanges = () => {
       });
 
       if (changes.length > 0) {
-        checkScheduleChange(changes);
       }
     } catch (e) {
       console.error('[Schedule] 检测排班变动失败:', e);
@@ -1530,7 +1521,8 @@ const shiftDurationMap = ref<Map<string, number>>(new Map());
 // 获取所有可用班次
 const loadAvailableShifts = async () => {
   try {
-    const data = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
+    const res = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
+    const data = res?.data || res;
     availableShifts.value = data?.shifts || [];
 
     // 构建班次时长映射表
@@ -2388,14 +2380,24 @@ const errandFixList = computed(() => {
       // 找到对应的员工信息
       const emp = employees.value.find(e => e.id === item.employeeId);
 
-      // 正确格式化开始时间和结束时间：日期 + 时间
+      // 正确格式化开始时间和结束时间：月/日/年 时:分
       const formatDateTime = (dateStr: string, timeStr: string): string => {
-        if (!dateStr) return '';
-        let result = dateStr;
+        if (!dateStr && !timeStr) return '';
+        // 如果日期为空但有时间，直接返回时间
+        if (!dateStr && timeStr) {
+          return timeStr.substring(0, 5);
+        }
+        // 解析日期，使用中国时区
+        const dateParts = dateStr.split('T')[0].split('-');
+        if (dateParts.length !== 3) {
+          return dateStr + (timeStr ? ' ' + timeStr.substring(0, 5) : '');
+        }
+        const year = parseInt(dateParts[0]);
+        const month = parseInt(dateParts[1]);
+        const day = parseInt(dateParts[2]);
+        let result = `${month}/${day}/${year}`;
         if (timeStr) {
-          // 去掉秒部分，只保留 HH:mm
-          const time = timeStr.substring(0, 5);
-          result += ' ' + time;
+          result += ' ' + timeStr.substring(0, 5);
         }
         return result;
       };
@@ -2435,7 +2437,7 @@ const errandFixList = computed(() => {
 
       return {
         id: item.id,
-        plant: item.plantName || item.plant || '-',
+        plant: emp?.plantName || emp?.plant || item.plantName || item.plant || 'MPL',
         department: (item.departmentName || item.department || '-').replace('MPL_Stockroom', 'ST'),
         // 优先使用 oldEmployeeId（工号），其次使用 employeeNo
         sap: item.employeeNo || emp?.oldEmployeeId || '-',
@@ -2691,36 +2693,52 @@ const loadEmployeesAndSchedules = async () => {
     } else if (data.employees) {
       // 标准格式 { employees: [...] }
       rawEmployees = data.employees;
+    } else if (data.data?.employees) {
+      // 包装格式 { code: 200, data: { employees: [...] } }
+      rawEmployees = data.data.employees;
     } else {
       // 未知格式
       console.error('未知的响应格式:', data);
       rawEmployees = [];
     }
 
-    // 岗位排序：Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
+    // 岗位排序：Supervisor、As.Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
     const positionOrder: Record<string, number> = {
       'Supervisor': 1,
-      'Leader': 2,
-      'Goods to people': 3,
-      'HMP': 4,
-      '收发料': 5,
-      'Change part': 6,
-      'Spare part': 7,
-      'MRO': 8,
-      'MRB': 9,
-      'Cycle Count': 10,
-      'IA': 11,
-      'MFG': 12
+      'As.Supervisor': 2,
+      'Leader': 3,
+      'Goods to people': 4,
+      'HMP': 5,
+      '收发料': 6,
+      'Change part': 7,
+      'Spare part': 8,
+      'MRO': 9,
+      'MRB': 10,
+      'Cycle Count': 11,
+      'IA': 12,
+      'MFG': 13
     };
 
-    // 按岗位排序，同岗位按入职日期排序（早入职的排前面）
+    // 按岗位排序，同岗位按Jabil/3PL分组，再按入职年限排序
     rawEmployees.sort((a: Employee, b: Employee) => {
+      // 第一优先级：岗位
       const orderA = positionOrder[a.position || ''] || 999;
       const orderB = positionOrder[b.position || ''] || 999;
       if (orderA !== orderB) {
         return orderA - orderB;
       }
-      // 同岗位按入职日期排序，早入职排前面
+
+      // 第二优先级：Jabil 优先于 3PL
+      const categoryA = (a.category || '').toUpperCase();
+      const categoryB = (b.category || '').toUpperCase();
+      if (categoryA !== categoryB) {
+        if (categoryA === 'JABIL') return -1;
+        if (categoryB === 'JABIL') return 1;
+        if (categoryA === '3PL') return -1;
+        if (categoryB === '3PL') return 1;
+      }
+
+      // 第三优先级：入职年限（早入职排前面）
       const dateA = a.employeeHireDate || '';
       const dateB = b.employeeHireDate || '';
       if (dateA && dateB) {
@@ -2728,6 +2746,8 @@ const loadEmployeesAndSchedules = async () => {
       }
       if (dateA) return -1;
       if (dateB) return 1;
+
+      // 最后按姓名排序
       return (a.name || '').localeCompare(b.name || '', 'zh-CN');
     });
 
@@ -2981,12 +3001,18 @@ const fetchEmployees = async () => {
       params: { startDate, endDate }
     });
 
+    let rawEmployees: Employee[] = [];
     const data = response;
-
     if (data?.employees) {
+      rawEmployees = data.employees;
+    } else if (data?.data?.employees) {
+      rawEmployees = data.data.employees;
+    }
+
+    if (rawEmployees.length > 0) {
     const viewStartDate = dayjs(startDate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filteredEmployees = data.employees.filter((emp: any) => {
+    const filteredEmployees = rawEmployees.filter((emp: any) => {
       if (!emp.leaveDate) {
         return true;
       }
@@ -3005,20 +3031,21 @@ const fetchEmployees = async () => {
       return viewStartDate.isBefore(firstHiddenCycleStart);
     });
 
-    // 岗位排序：Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
+    // 岗位排序：Supervisor、As.Supervisor、Leader、Goods to people、HMP、收发料、Change part、Spare part、MRO、MRB、Cycle Count、IA、MFG
     const positionOrder: Record<string, number> = {
       'Supervisor': 1,
-      'Leader': 2,
-      'Goods to people': 3,
-      'HMP': 4,
-      '收发料': 5,
-      'Change part': 6,
-      'Spare part': 7,
-      'MRO': 8,
-      'MRB': 9,
-      'Cycle Count': 10,
-      'IA': 11,
-      'MFG': 12
+      'As.Supervisor': 2,
+      'Leader': 3,
+      'Goods to people': 4,
+      'HMP': 5,
+      '收发料': 6,
+      'Change part': 7,
+      'Spare part': 8,
+      'MRO': 9,
+      'MRB': 10,
+      'Cycle Count': 11,
+      'IA': 12,
+      'MFG': 13
     };
 
     // 按岗位排序，同岗位按入职日期排序（早入职的排前面）
@@ -3071,8 +3098,6 @@ const fetchEmployees = async () => {
     if (isInitialized.value && subTab.value === 'break7') {
       refreshData();
     }
-  } else {
-    employees.value = [];
   }
   } catch {
     ElMessage.error({ message: '获取员工数据失败！', showClose: true, duration: 3000 });
@@ -5357,19 +5382,14 @@ const exportToExcel = async () => {
   for (let i = 0; i < errandFixList.value.length; i++) {
     const item = errandFixList.value[i];
     if (!item) continue; // 添加空值检查
-    // 格式化日期
-    const formatDate = (dateStr: string) => {
-      if (!dateStr) return '';
-      const date = new Date(dateStr);
-      return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
-    };
+    // 直接使用已经格式化好的日期时间
     const row = errandSheet.addRow([
       item.plant || '',
       item.department?.replace('MPL_Stockroom', 'ST'),
       item.sap,
       item.employeeName,
-      formatDate(item.startTime),
-      formatDate(item.endTime),
+      item.startTime || '',
+      item.endTime || '',
       item.leaveType,
       item.reason,
       item.ot,
@@ -5614,7 +5634,7 @@ const openInOutlook = async () => {
       const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
-        return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+        return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
       };
       // 优先使用处理后的字段，如果没有则使用原始字段
       const plantValue = emp.plant || emp.plantName || '-';
@@ -5672,7 +5692,7 @@ const openInOutlook = async () => {
       const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
         const date = new Date(dateStr);
-        return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
+        return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
       };
       // 优先使用处理后的字段，如果没有则使用原始字段
       const plantValue = emp.plant || emp.plantName || '-';
@@ -5740,14 +5760,14 @@ const openInOutlook = async () => {
     for (let i = 0; i < errandFixList.value.length; i++) {
       const item = errandFixList.value[i];
       if (!item) continue; // 添加空值检查
-      
+
       const row = errandSheet.addRow([
         item.plant || '',
         item.department?.replace('MPL_Stockroom', 'ST'),
         item.sap,
         item.employeeName,
-        formatDate(item.startTime),
-        formatDate(item.endTime),
+        item.startTime || '',
+        item.endTime || '',
         item.leaveType,
         item.reason,
         item.ot,

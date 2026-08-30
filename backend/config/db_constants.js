@@ -37,3 +37,11 @@ export const WORKSTATION_TABLE = 'jso_config_workstation';
 export const WORKSTATION_ARRANGEMENT_TABLE = 'jso_hr_workstation_arrangement';
 export const OPERATION_LOGS_TABLE = 'operation_logs';
 export const JSO_JWT_BLACKLIST_TABLE = 'jso_jwt_blacklist';
+
+// 回仓申请模块表
+export const WAREHOUSE_RETURN_REQUEST_TABLE = 'jso_warehouse_return_request';
+export const WAREHOUSE_RETURN_ITEMS_TABLE = 'jso_warehouse_return_items';
+export const WAREHOUSE_RETURN_RECONCILIATION_LOGS_TABLE = 'jso_warehouse_return_reconciliation_logs';
+export const WAREHOUSE_RETURN_EMAIL_LOGS_TABLE = 'jso_warehouse_return_email_logs';
+export const WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE = 'jso_warehouse_return_building_config';
+export const WAREHOUSE_RETURN_EMAIL_CC_CONFIG_TABLE = 'jso_warehouse_return_email_cc_config';

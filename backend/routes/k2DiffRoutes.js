@@ -7,8 +7,11 @@ import k2DiffController from '../controllers/k2DiffController.js';
 // 获取登记记录列表
 router.get('/registrations', authenticateToken, asyncHandler(k2DiffController.getRegistrations));
 
-// 导出登记记录（必须在 /registrations/:id 之前）
+// 导出登记记录
 router.get('/registrations/export', authenticateToken, asyncHandler(k2DiffController.exportRegistrations));
+
+// 批量发送邮件通知（合并所有记录为一封邮件）- 必须在 /registrations/:id 之前
+router.get('/registrations/notify-bulk', authenticateToken, asyncHandler(k2DiffController.sendBulkNotification));
 
 // 获取登记记录详情
 router.get('/registrations/:id', authenticateToken, asyncHandler(k2DiffController.getRegistrationById));
@@ -27,9 +30,6 @@ router.get('/stats', authenticateToken, asyncHandler(k2DiffController.getStats))
 
 // 获取类型统计（数据库聚合）
 router.get('/type-stats', authenticateToken, asyncHandler(k2DiffController.getTypeStats));
-
-// 批量发送邮件通知（合并所有记录为一封邮件）
-router.post('/registrations/notify-bulk', authenticateToken, asyncHandler(k2DiffController.sendBulkNotification));
 
 // 发送邮件通知（单个记录）
 router.post('/registrations/:id/notify', authenticateToken, asyncHandler(k2DiffController.sendNotification));

@@ -471,7 +471,6 @@ const autoAssignByPosition = async () => {
         reason: null,
       });
 
-      console.log('自动分配: ' + employee.realName + '(' + employee.position + ') -> ' + ws.workstationName);
     } catch (err) {
       console.error('自动分配失败:', employee.realName, err);
     }
@@ -618,8 +617,6 @@ const fetchScheduledEmployees = async () => {
         position: s.position || '',
       }));
 
-    console.log('排班员工列表: 共' + scheduledEmployees.value.length + '人');
-    console.log('员工职位示例:', scheduledEmployees.value.slice(0, 5).map(e => e.realName + ':' + e.position));
   } catch (error) {
     console.error('获取排班数据失败:', error);
     scheduledEmployees.value = [];
@@ -646,10 +643,8 @@ const fetchWorkstationsWithArrangements = async () => {
       wsData = (res as any).data;
     }
     workstations.value = Array.isArray(wsData) ? wsData : [];
-    console.log('工位数据已加载: 共' + workstations.value.length + '个');
-    console.log('工位名称:', workstations.value.map(w => w.workstationId + ':' + w.workstationName));
   } catch (error) {
-    ElMessage.error('获取工位安排失败');
+    ElMessage.error({ message: '获取工位安排失败', showClose: true, duration: 3000 });
   } finally {
     loading.value = false;
   }
@@ -686,13 +681,10 @@ const openAssignDialog = (employee: ScheduledEmployee) => {
   // 回显已分配的工位
   const assignedWsIds = getAssignedWorkstations(employee.employeeId).map(ws => ws.workstationId);
 
-  console.log('打开分配弹窗: 员工ID=' + employee.employeeId + ', 姓名=' + employee.realName + ', 职位=' + employee.position + ', 已分配工位数=' + assignedWsIds.length);
-  console.log('工位列表:', workstations.value.map(w => w.workstationId + ':' + w.workstationName));
 
   // 如果没有已分配的工位，根据职位自动选中默认工位
   if (assignedWsIds.length === 0) {
     const defaultWsId = getDefaultWorkstationIdByPosition(employee.position);
-      console.log('根据职位获取默认工位: 职位=' + employee.position + ', 找到工位ID=' + defaultWsId);
     if (defaultWsId) {
       assignedWsIds.push(defaultWsId);
     }
@@ -763,13 +755,13 @@ const confirmAssign = async () => {
         // 如果是需要时间的工位（前台或特殊工时），需要传递开始和结束时间
         const isTimeRequired = isTimeRequiredWorkstation(ws.workstationName);
         if (isTimeRequired && (!singleStartTime.value || !singleEndTime.value)) {
-          ElMessage.warning('选择该工位时必须填写开始和结束时间');
+          ElMessage.warning({ message: '选择该工位时必须填写开始和结束时间', showClose: true, duration: 3000 });
           return;
         }
         // 特殊工时必须填写原因
         const isSpecialHours = ws.workstationName && ws.workstationName.trim().includes('特殊工时');
         if (isSpecialHours && !singleReason.value.trim()) {
-          ElMessage.warning('选择特殊工时工位时必须填写原因');
+          ElMessage.warning({ message: '选择特殊工时工位时必须填写原因', showClose: true, duration: 3000 });
           return;
         }
         const startTime = isTimeRequired ? singleStartTime.value : undefined;
@@ -812,11 +804,11 @@ const confirmAssign = async () => {
     singleStartTime.value = '';
     singleEndTime.value = '';
     singleReason.value = '';
-    ElMessage.success('分配成功');
+    ElMessage.success({ message: '分配成功', showClose: true, duration: 3000 });
     eventBus.emit('special-working-hours-changed');
     eventBus.emit('workstation-arrangement-changed');
   } catch (error) {
-    ElMessage.error('分配失败');
+    ElMessage.error({ message: '分配失败', showClose: true, duration: 3000 });
     // 重新加载数据
     fetchWorkstationsWithArrangements();
   }
@@ -824,12 +816,8 @@ const confirmAssign = async () => {
 
 // 打开批量分配弹窗（使用表格选中的员工）
 const openBatchAssignDialog = () => {
-  console.log('打开批量分配弹窗', {
-    tableSelectedCount: tableSelectedEmployees.value.length,
-    filteredCount: filteredEmployees.value.length
-  });
   if (tableSelectedEmployees.value.length === 0) {
-    ElMessage.warning('请先在表格中选择员工');
+    ElMessage.warning({ message: '请先在表格中选择员工', showClose: true, duration: 3000 });
     return;
   }
   selectedEmployeeIdsForBatch.value = tableSelectedEmployees.value.map(e => e.employeeId);
@@ -842,26 +830,22 @@ const openBatchAssignDialog = () => {
 
 // 确认批量分配
 const confirmBatchAssign = async () => {
-  console.log('确认批量分配', {
-    selectedEmployeeCount: selectedEmployeeIdsForBatch.value.length,
-    selectedWorkstationCount: batchSelectedWorkstationIds.value.length
-  });
   if (selectedEmployeeIdsForBatch.value.length === 0 || batchSelectedWorkstationIds.value.length === 0) {
-    ElMessage.warning('请选择员工和工位');
+    ElMessage.warning({ message: '请选择员工和工位', showClose: true, duration: 3000 });
     return;
   }
 
   // 检查是否选择了需要时间的工位（前台或特殊工时），如果是则必须填写开始和结束时间
   const timeRequiredWs = workstations.value.find(w => isTimeRequiredWorkstation(w.workstationName) && batchSelectedWorkstationIds.value.includes(w.workstationId));
   if (timeRequiredWs && (!batchStartTime.value || !batchEndTime.value)) {
-    ElMessage.warning('选择该工位时必须填写开始和结束时间');
+    ElMessage.warning({ message: '选择该工位时必须填写开始和结束时间', showClose: true, duration: 3000 });
     return;
   }
 
   // 检查是否选择了特殊工时工位，如果是则必须填写原因
   const specialHoursWs = workstations.value.find(w => w.workstationName && w.workstationName.trim().includes('特殊工时') && batchSelectedWorkstationIds.value.includes(w.workstationId));
   if (specialHoursWs && !batchReason.value.trim()) {
-    ElMessage.warning('选择特殊工时工位时必须填写原因');
+    ElMessage.warning({ message: '选择特殊工时工位时必须填写原因', showClose: true, duration: 3000 });
     return;
   }
 
@@ -924,11 +908,11 @@ const confirmBatchAssign = async () => {
     batchStartTime.value = '';
     batchEndTime.value = '';
     batchReason.value = '';
-    ElMessage.success(`已分配 ${selectedEmployeesForBatch.value.length} 名员工到 ${successCount} 个工位`);
+    ElMessage.success({ message: `已分配 ${selectedEmployeesForBatch.value.length} 名员工到 ${successCount} 个工位`, showClose: true, duration: 3000 });
     eventBus.emit('special-working-hours-changed');
     eventBus.emit('workstation-arrangement-changed');
   } catch (error) {
-    ElMessage.error('分配失败');
+    ElMessage.error({ message: '分配失败', showClose: true, duration: 3000 });
     fetchWorkstationsWithArrangements();
   }
 };
@@ -968,7 +952,7 @@ const unassignEmployee = async (employeeId: number, workstationId: number) => {
       }
     }
 
-    ElMessage.success('已取消分配');
+    ElMessage.success({ message: '已取消分配', showClose: true, duration: 3000 });
     eventBus.emit('special-working-hours-changed');
     eventBus.emit('workstation-arrangement-changed');
   } catch (error) {
@@ -976,7 +960,7 @@ const unassignEmployee = async (employeeId: number, workstationId: number) => {
     if (removedEmployee) {
       ws.employees.push(removedEmployee);
     }
-    ElMessage.error('取消分配失败');
+    ElMessage.error({ message: '取消分配失败', showClose: true, duration: 3000 });
   }
 };
 

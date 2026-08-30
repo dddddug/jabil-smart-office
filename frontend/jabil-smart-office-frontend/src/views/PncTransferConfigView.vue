@@ -190,7 +190,7 @@ const loadConfigs = async () => {
     configs.value = response || [];
   } catch (error) {
     console.error('加载配置失败:', error);
-    ElMessage.error('加载配置失败');
+    ElMessage.error({ message: '加载配置失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -238,7 +238,7 @@ const resetForm = () => {
 // 提交表单
 const handleSubmit = async () => {
   if (!form.configName.trim()) {
-    ElMessage.warning('请输入配置名称');
+    ElMessage.warning({ message: '请输入配置名称', showClose: true, duration: 3000 });
     return;
   }
 
@@ -257,17 +257,17 @@ const handleSubmit = async () => {
 
     if (isEdit.value && editingId.value) {
       await updateConfig(editingId.value, data);
-      ElMessage.success('配置更新成功');
+      ElMessage.success({ message: '配置更新成功', showClose: true, duration: 3000 });
     } else {
       await createConfig(data);
-      ElMessage.success('配置添加成功');
+      ElMessage.success({ message: '配置添加成功', showClose: true, duration: 3000 });
     }
 
     dialogVisible.value = false;
     loadConfigs();
   } catch (error: any) {
     console.error('保存配置失败:', error);
-    ElMessage.error((error as any).message || '保存配置失败');
+    ElMessage.error({ message: (error as any).message || '保存配置失败', showClose: true, duration: 3000 });
   } finally {
     submitting.value = false;
   }
@@ -288,13 +288,13 @@ const handleDelete = async (item: PncTransferConfig) => {
 
     if (item.id) {
       await deleteConfig(item.id);
-      ElMessage.success('配置删除成功');
+      ElMessage.success({ message: '配置删除成功', showClose: true, duration: 3000 });
       loadConfigs();
     }
   } catch (error: any) {
     if (error !== 'cancel') {
       console.error('删除配置失败:', error);
-      ElMessage.error((error as any).message || '删除配置失败');
+      ElMessage.error({ message: (error as any).message || '删除配置失败', showClose: true, duration: 3000 });
     }
   }
 };

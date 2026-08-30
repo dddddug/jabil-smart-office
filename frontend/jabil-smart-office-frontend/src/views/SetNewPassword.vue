@@ -86,17 +86,17 @@ const handleSetNewPassword = async () => {
 
         const data = await response.json();
         if (response.ok && data.code === 200) {
-          ElMessage.success('密码设置成功！请使用新密码登录。');
+          ElMessage.success({ message: '密码设置成功！请使用新密码登录。', showClose: true, duration: 3000 });
           emit('switch-view', 'login');
         } else {
-          ElMessage.error(data.message || '密码设置失败，请稍后重试。');
+          ElMessage.error({ message: data.message || '密码设置失败，请稍后重试。', showClose: true, duration: 3000 });
         }
       } else {
-        ElMessage.error('请完整填写表单。');
+        ElMessage.error({ message: '请完整填写表单。', showClose: true, duration: 3000 });
       }
     });
   } catch (error) {
-    ElMessage.error('请求出错，请稍后重试。');
+    ElMessage.error({ message: '请求出错，请稍后重试。', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }

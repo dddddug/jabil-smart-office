@@ -94,6 +94,7 @@
                 </td>
                 <td class="text-center">
                   <button class="btn-action" @click="rePrint(doc)" title="补打">🖨️ 补打</button>
+                  <button class="btn-action" @click="reSendEmail(doc)" title="补发邮件">✉️ 补发</button>
                   <button class="btn-action" @click="viewDetail(doc)" title="查看">👁️</button>
                 </td>
               </tr>
@@ -272,6 +273,14 @@
                       <span>B模式</span>
                       <span class="mode-desc">P/N → GRN → Batch → 数量</span>
                     </label>
+                    <button
+                      type="button"
+                      class="btn-smart-count"
+                      :class="{ active: smartCountEnabled }"
+                      @click="toggleSmartCount"
+                    >
+                      {{ smartCountEnabled ? '📝 取消合并' : '🔢 智能计数' }}
+                    </button>
                   </div>
                   <div class="scan-input-row">
                     <input
@@ -303,53 +312,63 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(item, index) in pncForm.items" :key="index" :class="{ 'scan-active-row': currentFocusIndex === index }">
+                      <tr v-for="(item, index) in mergedItems" :key="item._index" :class="{ 'scan-active-row': currentFocusIndex === item._index }">
                         <td class="text-center">{{ index + 1 }}</td>
                         <td>
                           <input
                             type="text"
-                            v-model="item.partNumber"
+                            :value="getItemPartNumber(item._index)"
+                            @input="setItemPartNumber(item._index, ($event.target as HTMLInputElement).value)"
                             placeholder="P/N"
-                            :class="{ 'scan-active-field': currentFocusIndex === index && currentFocusField === 'partNumber' }"
-                            @focus="currentFocusIndex = index; currentFocusField = 'partNumber'"
-                            @input="item.partNumber = item.partNumber?.toUpperCase()"
+                            :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'partNumber' }"
+                            @focus="currentFocusIndex = item._index; currentFocusField = 'partNumber'"
                           />
                         </td>
                         <td>
+                          <!-- 智能计数模式显示合并后的卷数 -->
+                          <span v-if="smartCountEnabled" class="smart-grn-display">{{ item._displayGrn }}</span>
+                          <!-- 普通模式显示GRN输入框 -->
                           <input
+                            v-else
                             type="text"
-                            v-model="item.grn"
+                            :value="getItemGrn(pncForm.items[item._index])"
+                            @input="setItemGrn(pncForm.items[item._index], ($event.target as HTMLInputElement).value.toUpperCase())"
                             placeholder="GRN"
-                            :class="{ 'scan-active-field': currentFocusIndex === index && currentFocusField === 'grn' }"
-                            @focus="currentFocusIndex = index; currentFocusField = 'grn'"
-                            @input="item.grn = item.grn?.toUpperCase()"
+                            :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'grn' }"
+                            @focus="currentFocusIndex = item._index; currentFocusField = 'grn'"
                           />
                         </td>
                         <td>
                           <input
                             type="text"
-                            v-model="item.batch"
+                            :value="getItemBatch(item._index)"
+                            @input="setItemBatch(item._index, ($event.target as HTMLInputElement).value)"
                             placeholder="Batch"
-                            :class="{ 'scan-active-field': currentFocusIndex === index && currentFocusField === 'batch' }"
-                            @focus="currentFocusIndex = index; currentFocusField = 'batch'"
+                            :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'batch' }"
+                            @focus="currentFocusIndex = item._index; currentFocusField = 'batch'"
                           />
                         </td>
                         <td>
+                          <!-- 智能计数模式显示合计数量 -->
+                          <span v-if="smartCountEnabled" class="smart-qty-display">{{ item._displayQty }}</span>
+                          <!-- 普通模式显示数量输入框 -->
                           <input
+                            v-else
                             type="number"
-                            v-model.number="item.quantity"
+                            :value="getItemQty(pncForm.items[item._index])"
+                            @input="setItemQty(pncForm.items[item._index], parseFloat(($event.target as HTMLInputElement).value) || 0)"
                             placeholder="数量"
                             min="0"
                             step="0.001"
-                            :class="{ 'scan-active-field': currentFocusIndex === index && currentFocusField === 'quantity' }"
-                            @focus="currentFocusIndex = index; currentFocusField = 'quantity'"
+                            :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'quantity' }"
+                            @focus="currentFocusIndex = item._index; currentFocusField = 'quantity'"
                           />
                         </td>
                         <td class="text-center">
-                          <button type="button" class="btn-icon btn-delete" @click="removeItem(index)" title="删除">🗑️</button>
+                          <button type="button" class="btn-icon btn-delete" @click="removeItem(item._index)" title="删除">🗑️</button>
                         </td>
                       </tr>
-                      <tr v-if="pncForm.items.length === 0">
+                      <tr v-if="mergedItems.length === 0">
                         <td colspan="6" class="empty-tip">暂无明细，请点击上方按钮添加</td>
                       </tr>
                     </tbody>
@@ -426,14 +445,22 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(item, index) in pncForm.items" :key="index">
+                      <tr v-for="(item, index) in mergedItems" :key="item._index">
                         <td class="text-center">{{ index + 1 }}</td>
                         <td>{{ item.partNumber || '-' }}</td>
-                        <td>{{ item.grn || '-' }}</td>
+                        <td>
+                          <!-- 智能计数模式显示合并后的GRN信息 -->
+                          <span v-if="smartCountEnabled" class="smart-grn-preview">{{ item._displayGrn }}</span>
+                          <span v-else>{{ (item as any).grn || '-' }}</span>
+                        </td>
                         <td>{{ item.batch || '-' }}</td>
-                        <td class="text-right">{{ item.quantity || '-' }}</td>
+                        <td class="text-right">
+                          <!-- 智能计数模式显示合计数量 -->
+                          <span v-if="smartCountEnabled" class="smart-qty-preview">{{ item._displayQty }}</span>
+                          <span v-else>{{ (item as any).quantity || '-' }}</span>
+                        </td>
                       </tr>
-                      <tr v-if="pncForm.items.length === 0">
+                      <tr v-if="mergedItems.length === 0">
                         <td colspan="5" class="empty-tip">暂无明细</td>
                       </tr>
                     </tbody>
@@ -461,12 +488,205 @@ import { createDocument, sendEmail, getDocuments, getDocumentById, PncTransferDo
 import { getDepartmentList, Department } from '../api/userManagement';
 import * as XLSX from 'xlsx';
 
-// PNC转仓表单数据
+// PNC转仓表单数据 - 基础项结构
+interface PNCFormItemBase {
+  batch: string;
+  partNumber: string;
+}
+
+// 智能计数模式下的单卷记录
+interface PNCRoll {
+  grn: string;
+  quantity: number;
+}
+
+// 普通模式的项
+interface PNCFormItemNormal extends PNCFormItemBase {
+  grn: string;
+  quantity: number;
+}
+
+// 智能计数模式的项
+interface PNCFormItemSmart extends PNCFormItemBase {
+  rolls: PNCRoll[];  // 多卷记录
+}
+
+// 联合类型
+type PNCFormItem = PNCFormItemNormal | PNCFormItemSmart;
+
 const pncForm = reactive({
   departmentId: '' as number | '',
   configId: '' as number | '',
   creatorName: '',
-  items: [] as { batch: string; partNumber: string; grn: string; quantity: number }[]
+  items: [] as PNCFormItem[]
+});
+
+// 智能计数模式
+const smartCountEnabled = ref(false);
+
+// 普通模式: 检查是否为智能计数模式项
+const isSmartItem = (item: PNCFormItem): item is PNCFormItemSmart => {
+  return smartCountEnabled.value && 'rolls' in item;
+};
+
+// 普通模式: 检查是否为普通模式项
+const isNormalItem = (item: PNCFormItem): item is PNCFormItemNormal => {
+  return !smartCountEnabled.value || !('rolls' in item);
+};
+
+// 获取项的显示数量
+const getItemDisplayQty = (item: PNCFormItem): number => {
+  if (isSmartItem(item)) {
+    return item.rolls.reduce((sum, r) => sum + r.quantity, 0);
+  }
+  return item.quantity;
+};
+
+// 获取项的显示GRN
+const getItemDisplayGrn = (item: PNCFormItem): string => {
+  if (isSmartItem(item)) {
+    const rollCount = item.rolls.length;
+    return `${rollCount}卷GRN`;
+  }
+  return (item as PNCFormItemNormal).grn;
+};
+
+// 获取项的GRN值（用于普通模式编辑）
+const getItemGrn = (item: PNCFormItem | undefined): string => {
+  if (!item) return '';
+  if (isSmartItem(item)) return '';
+  return (item as PNCFormItemNormal).grn;
+};
+
+// 设置项的GRN值（用于普通模式编辑）
+const setItemGrn = (item: PNCFormItem | undefined, value: string) => {
+  if (!item) return;
+  if (isNormalItem(item)) {
+    // 清理GRN前缀（如扫描枪输入的 9K12345678 -> 12345678）
+    item.grn = cleanGrnPrefix(value);
+  }
+};
+
+// 清理GRN前缀（处理扫描枪问题：9K开头）
+const cleanGrnPrefix = (value: string): string => {
+  if (!value) return '';
+  // 移除 9K 前缀（不区分大小写）
+  return value.replace(/^9K/i, '').trim();
+};
+
+// 清理数量前缀（处理扫描枪问题：Q开头）
+const cleanQtyPrefix = (value: string | number): number => {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  // 移除 Q 前缀并转换为数字
+  const cleaned = value.replace(/^Q/i, '').trim();
+  return parseFloat(cleaned) || 0;
+};
+
+// 获取项的数量值（用于普通模式编辑）
+const getItemQty = (item: PNCFormItem | undefined): number => {
+  if (!item) return 0;
+  if (isSmartItem(item)) return 0;
+  return (item as PNCFormItemNormal).quantity;
+};
+
+// 设置项的数量值（用于普通模式编辑）
+const setItemQty = (item: PNCFormItem | undefined, value: number) => {
+  if (!item) return;
+  if (isNormalItem(item)) {
+    item.quantity = value;
+  }
+};
+
+// 获取项的partNumber（用于v-model绑定）
+const getItemPartNumber = (index: number): string => {
+  const item = pncForm.items[index];
+  return item?.partNumber || '';
+};
+
+// 设置项的partNumber（用于v-model绑定）
+const setItemPartNumber = (index: number, value: string) => {
+  const item = pncForm.items[index];
+  if (item) {
+    item.partNumber = value.toUpperCase();
+  }
+};
+
+// 获取项的batch（用于v-model绑定）
+const getItemBatch = (index: number): string => {
+  const item = pncForm.items[index];
+  return item?.batch || '';
+};
+
+// 设置项的batch（用于v-model绑定）
+const setItemBatch = (index: number, value: string) => {
+  const item = pncForm.items[index];
+  if (item) {
+    item.batch = value;
+  }
+};
+
+// 合并后的明细列表（智能计数模式）
+const mergedItems = computed(() => {
+  if (!smartCountEnabled.value) {
+    return pncForm.items.map((item, index) => {
+      if (isNormalItem(item)) {
+        return {
+          partNumber: item.partNumber,
+          batch: item.batch,
+          grn: item.grn,
+          quantity: item.quantity,
+          _index: index,
+          _displayQty: item.quantity,
+          _displayGrn: item.grn,
+          _displayBatches: item.batch
+        };
+      }
+      return {
+        partNumber: item.partNumber,
+        batch: item.batch,
+        _index: index,
+        _displayQty: getItemDisplayQty(item),
+        _displayGrn: getItemDisplayGrn(item),
+        _displayBatches: item.batch
+      };
+    });
+  }
+
+  // 智能计数模式：按P/N + Batch合并
+  const merged: Array<{
+    partNumber: string;
+    batch: string;
+    rolls: PNCRoll[];
+    _index: number;
+    _displayQty: number;
+    _displayGrn: string;
+    _displayBatches: string;
+  }> = [];
+
+  pncForm.items.forEach((item, index) => {
+    if (!isSmartItem(item)) return;
+
+    // 查找是否已有相同P/N + Batch的合并项
+    const existing = merged.find(m => m.partNumber === item.partNumber && m.batch === item.batch);
+    if (existing) {
+      existing.rolls.push(...item.rolls);
+      existing._displayQty = existing.rolls.reduce((sum, r) => sum + r.quantity, 0);
+      existing._displayGrn = `${existing.rolls.length}卷GRN`;
+    } else {
+      merged.push({
+        partNumber: item.partNumber,
+        batch: item.batch,
+        rolls: [...item.rolls],
+        _index: index,
+        _displayQty: item.rolls.reduce((sum, r) => sum + r.quantity, 0),
+        _displayGrn: `${item.rolls.length}卷GRN`,
+        _displayBatches: item.batch
+      });
+    }
+  });
+
+  return merged;
 });
 
 // 获取当前登录用户
@@ -559,7 +779,7 @@ const toggleSelectAll = () => {
 // 批量打印
 const batchPrint = async () => {
   if (selectedDocs.value.length === 0) {
-    ElMessage.warning('请选择要打印的单据');
+    ElMessage.warning({ message: '请选择要打印的单据', showClose: true, duration: 3000 });
     return;
   }
 
@@ -567,17 +787,19 @@ const batchPrint = async () => {
     // 逐个打印选中的单据
     for (const doc of selectedDocs.value) {
       if (doc.id) {
-        const fullDoc = await getDocumentById(doc.id);
+        const result: any = await getDocumentById(doc.id);
+        // 从响应中提取实际单据数据
+        const fullDoc = result?.data || result;
         openPrintWindow(fullDoc);
         // 等待一下，避免打印窗口重叠
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
-    ElMessage.success(`已发送 ${selectedDocs.value.length} 份单据到打印机`);
+    ElMessage.success({ message: `已发送 ${selectedDocs.value.length} 份单据到打印机`, showClose: true, duration: 3000 });
     selectedDocs.value = [];
   } catch (error) {
     console.error('批量打印失败:', error);
-    ElMessage.error('批量打印失败');
+    ElMessage.error({ message: '批量打印失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -605,12 +827,13 @@ const loadHistory = async () => {
     if (historySearch.endDate) {
       params.endDate = historySearch.endDate;
     }
-    const response = await getDocuments(params);
-    historyList.value = response.items || [];
-    historyTotal.value = response.total || 0;
+    const res: any = await getDocuments(params);
+    // axios 拦截器返回 { code, message, data: { items, total } }
+    historyList.value = res?.data?.items || res?.items || [];
+    historyTotal.value = res?.data?.total || res?.total || 0;
   } catch (error) {
     console.error('加载历史记录失败:', error);
-    ElMessage.error('加载历史记录失败');
+    ElMessage.error({ message: '加载历史记录失败', showClose: true, duration: 3000 });
   } finally {
     loadingHistory.value = false;
   }
@@ -632,12 +855,14 @@ const formatDate = (dateStr: string | undefined) => {
 // 补打功能 - 直接打开打印窗口，不填充表单
 const rePrint = async (doc: PncTransferDocument) => {
   if (!doc.id) {
-    ElMessage.error('单据ID不存在');
+    ElMessage.error({ message: '单据ID不存在', showClose: true, duration: 3000 });
     return;
   }
   try {
     // 获取完整单据详情
-    const fullDoc = await getDocumentById(doc.id);
+    const result: any = await getDocumentById(doc.id);
+    // 从响应中提取实际单据数据
+    const fullDoc = result?.data || result;
 
     // 关闭历史记录面板
     showHistory.value = false;
@@ -647,7 +872,36 @@ const rePrint = async (doc: PncTransferDocument) => {
 
   } catch (error) {
     console.error('加载单据失败:', error);
-    ElMessage.error('加载单据失败');
+    ElMessage.error({ message: '加载单据失败', showClose: true, duration: 3000 });
+  }
+};
+
+// 补发邮件功能
+const reSendEmail = async (doc: PncTransferDocument) => {
+  if (!doc.id) {
+    ElMessage.error({ message: '单据ID不存在', showClose: true, duration: 3000 });
+    return;
+  }
+  try {
+    const emailResponse: any = await sendEmail(doc.id);
+    // 从响应中提取邮件数据（后端返回 { code, message, data } 格式）
+    const emailData = emailResponse?.data || emailResponse;
+    if (emailData?.to) {
+      // 打开邮件客户端 - 触发 Outlook
+      const subject = encodeURIComponent(emailData.subject || '');
+      const body = encodeURIComponent(emailData.body || '');
+      let mailtoLink = `mailto:${emailData.to}?subject=${subject}&body=${body}`;
+      if (emailData.cc) {
+        mailtoLink += `&cc=${encodeURIComponent(emailData.cc)}`;
+      }
+      window.open(mailtoLink, '_self');
+      ElMessage.success({ message: '已触发Outlook发送邮件', showClose: true, duration: 3000 });
+    } else {
+      ElMessage.warning({ message: '邮件数据获取失败，请检查邮件配置', showClose: true, duration: 3000 });
+    }
+  } catch (error) {
+    console.error('补发邮件失败:', error);
+    ElMessage.error({ message: '补发邮件失败: ' + (error instanceof Error ? error.message : '未知错误'), showClose: true, duration: 3000 });
   }
 };
 
@@ -808,12 +1062,13 @@ const openPrintWindow = (doc: PncTransferDocument) => {
 // 查看详情
 const viewDetail = async (doc: PncTransferDocument) => {
   try {
-    const fullDoc = await getDocumentById(doc.id!);
-    detailDialogDoc.value = fullDoc;
+    const result: any = await getDocumentById(doc.id!);
+    // 拦截器返回 { code, message, data: {...} }
+    detailDialogDoc.value = result?.data || result;
     showDetailDialog.value = true;
   } catch (error) {
     console.error('查看详情失败:', error);
-    ElMessage.error('查看详情失败');
+    ElMessage.error({ message: '查看详情失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -828,7 +1083,7 @@ const handleDetailPrint = () => {
 // 导出历史记录为Excel
 const exportHistory = async () => {
   if (historyList.value.length === 0) {
-    ElMessage.warning('暂无记录可导出');
+    ElMessage.warning({ message: '暂无记录可导出', showClose: true, duration: 3000 });
     return;
   }
 
@@ -866,10 +1121,10 @@ const exportHistory = async () => {
     // 下载文件
     XLSX.writeFile(workbook, fileName);
 
-    ElMessage.success('导出成功');
+    ElMessage.success({ message: '导出成功', showClose: true, duration: 3000 });
   } catch (error) {
     console.error('导出失败:', error);
-    ElMessage.error('导出失败');
+    ElMessage.error({ message: '导出失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -921,6 +1176,48 @@ const getFieldLabel = (field: string) => {
   return labels[field] || field;
 };
 
+// 切换智能计数模式
+const toggleSmartCount = () => {
+  smartCountEnabled.value = !smartCountEnabled.value;
+
+  // 切换模式时，转换现有数据
+  if (smartCountEnabled.value) {
+    // 转换为智能计数模式：将普通项转为带rolls数组的项
+    pncForm.items = pncForm.items.map(item => {
+      if (isNormalItem(item)) {
+        return {
+          batch: item.batch,
+          partNumber: item.partNumber,
+          rolls: item.grn ? [{ grn: item.grn, quantity: item.quantity }] : []
+        } as PNCFormItem;
+      }
+      return item;
+    });
+  } else {
+    // 转换为普通模式：取第一卷的数据
+    pncForm.items = pncForm.items.map(item => {
+      if (isSmartItem(item) && Array.isArray(item.rolls) && item.rolls.length > 0) {
+        const firstRoll = item.rolls[0];
+        return {
+          batch: item.batch,
+          partNumber: item.partNumber,
+          grn: firstRoll?.grn || '',
+          quantity: item.rolls.reduce((sum, r) => sum + r.quantity, 0)
+        } as PNCFormItem;
+      }
+      if (isSmartItem(item)) {
+        return {
+          batch: item.batch,
+          partNumber: item.partNumber,
+          grn: '',
+          quantity: 0
+        } as PNCFormItem;
+      }
+      return item;
+    });
+  }
+};
+
 // 处理扫码输入
 const handleScanInput = () => {
   const value = scanInput.value.trim();
@@ -934,6 +1231,12 @@ const handleScanInput = () => {
   const currentItem = pncForm.items[currentFocusIndex.value];
   if (!currentItem) return;
 
+  // 智能计数模式下的特殊处理
+  if (smartCountEnabled.value) {
+    handleScanInputSmartMode(value);
+    return;
+  }
+
   // 根据当前聚焦字段填入对应位置
   switch (currentFocusField.value) {
     case 'partNumber':
@@ -941,16 +1244,20 @@ const handleScanInput = () => {
       lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 P/N` };
       break;
     case 'grn':
-      currentItem.grn = value;
-      lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 GRN` };
+      if (isNormalItem(currentItem)) {
+        currentItem.grn = cleanGrnPrefix(value);
+        lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 GRN` };
+      }
       break;
     case 'batch':
       currentItem.batch = value;
       lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 Batch` };
       break;
     case 'quantity':
-      currentItem.quantity = parseFloat(value) || 0;
-      lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 数量` };
+      if (isNormalItem(currentItem)) {
+        currentItem.quantity = cleanQtyPrefix(value);
+        lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 数量` };
+      }
       break;
   }
 
@@ -963,6 +1270,98 @@ const handleScanInput = () => {
     addItem();
     currentFocusIndex.value = pncForm.items.length - 1;
     currentFocusField.value = 'partNumber';
+  }
+
+  // 清空扫码输入
+  scanInput.value = '';
+
+  // 聚焦回扫码输入框
+  nextTick(() => {
+    scanInputRef.value?.focus();
+  });
+};
+
+// 智能计数模式的扫码处理
+const handleScanInputSmartMode = (value: string) => {
+  const currentItem = pncForm.items[currentFocusIndex.value];
+  if (!currentItem) return;
+
+  // 智能计数模式下的字段处理
+  switch (currentFocusField.value) {
+    case 'partNumber': {
+      // P/N 扫描：查找是否有相同P/N + Batch的项
+      const upperValue = value.toUpperCase();
+      const currentBatch = currentItem.batch || '';
+      const existingIndex = pncForm.items.findIndex((item) => {
+        if (!isSmartItem(item)) return false;
+        return item.partNumber === upperValue && (item.batch || '') === currentBatch;
+      });
+
+      if (existingIndex !== -1 && existingIndex !== currentFocusIndex.value) {
+        // 找到相同P/N + Batch的项，切换到该项
+        currentFocusIndex.value = existingIndex;
+        const targetItem = pncForm.items[existingIndex] as PNCFormItemSmart;
+        currentFocusField.value = 'grn';
+        lastScanInfo.value = { value, target: `第${existingIndex + 1}行 [${targetItem.partNumber}] +GRN` };
+      } else {
+        // 无匹配项，在当前行填入P/N
+        currentItem.partNumber = upperValue;
+        currentFocusField.value = 'grn';
+        lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 P/N` };
+      }
+      break;
+    }
+    case 'batch': {
+      // Batch 扫描：查找是否有相同P/N + Batch的项
+      const upperValue = value.toUpperCase();
+      const currentPn = currentItem.partNumber || '';
+      const existingIndex = pncForm.items.findIndex((item) => {
+        if (!isSmartItem(item)) return false;
+        return (item.partNumber || '') === currentPn && item.batch === upperValue;
+      });
+
+      if (existingIndex !== -1 && existingIndex !== currentFocusIndex.value) {
+        // 找到相同P/N + Batch的项，切换到该项
+        currentFocusIndex.value = existingIndex;
+        const targetItem = pncForm.items[existingIndex] as PNCFormItemSmart;
+        currentFocusField.value = 'grn';
+        lastScanInfo.value = { value, target: `第${existingIndex + 1}行 [${targetItem.partNumber}] [${targetItem.batch}] +GRN` };
+      } else {
+        // 无匹配项，在当前行填入Batch
+        currentItem.batch = upperValue;
+        currentFocusField.value = 'grn';
+        lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 Batch` };
+      }
+      break;
+    }
+    case 'grn': {
+      // GRN 扫描：添加到当前项的rolls数组
+      if (isSmartItem(currentItem)) {
+        // 确保rolls数组存在
+        if (!currentItem.rolls) {
+          currentItem.rolls = [];
+        }
+        // 添加新卷记录（暂时数量为0，等待扫码）
+        currentItem.rolls.push({ grn: cleanGrnPrefix(value).toUpperCase(), quantity: 0 });
+        lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 GRN卷${currentItem.rolls.length}` };
+        // 保持在GRN字段，等待扫描数量
+        currentFocusField.value = 'quantity';
+      }
+      break;
+    }
+    case 'quantity': {
+      // 数量扫描：更新当前卷的数量
+      if (isSmartItem(currentItem) && currentItem.rolls && currentItem.rolls.length > 0) {
+        const currentRoll = currentItem.rolls[currentItem.rolls.length - 1];
+        if (currentRoll) {
+          currentRoll.quantity = cleanQtyPrefix(value);
+          lastScanInfo.value = { value, target: `第${currentFocusIndex.value + 1}行 GRN卷${currentItem.rolls.length} 数量` };
+        }
+        // 扫描数量后，继续等待下一个GRN
+        currentFocusField.value = 'grn';
+      }
+      break;
+    }
   }
 
   // 清空扫码输入
@@ -996,17 +1395,15 @@ const skipBatchAndGoToQuantity = () => {
 // 页面加载时获取配置
 const loadDepartments = async () => {
   try {
-    const response = await getDepartmentList({});
-    console.log('[loadDepartments] 响应:', response);
-    // 响应拦截器已自动解包 data，直接使用 response.departments
-    const data = response as { departments?: Department[] };
+    const res: any = await getDepartmentList({});
+    // axios 拦截器返回 { code, message, data: { departments: [...] } }
+    const data = res?.data || res || {};
     if (data && Array.isArray(data.departments)) {
       departmentList.value = data.departments;
-    } else if (Array.isArray(response)) {
+    } else if (Array.isArray(data)) {
       // 兼容直接返回数组的情况
-      departmentList.value = response as Department[];
+      departmentList.value = data;
     }
-    console.log('[loadDepartments] 部门列表:', departmentList.value);
   } catch (error) {
     console.error('加载部门失败:', error);
   }
@@ -1015,8 +1412,9 @@ const loadDepartments = async () => {
 // 加载活跃配置列表
 const loadActiveConfigs = async () => {
   try {
-    const response = await getActiveConfigs();
-    activeConfigs.value = response || [];
+    const res: any = await getActiveConfigs();
+    // axios 拦截器返回 { code, message, data: [...] }
+    activeConfigs.value = res?.data || res || [];
   } catch (error) {
     console.error('加载配置失败:', error);
   }
@@ -1053,27 +1451,32 @@ const removeItem = (index: number) => {
 const executePrint = async () => {
   // 验证PNC表单
   if (!pncForm.departmentId) {
-    ElMessage.warning('请选择转仓部门');
+    ElMessage.warning({ message: '请选择转仓部门', showClose: true, duration: 3000 });
     return;
   }
 
   if (!pncForm.configId) {
-    ElMessage.warning('请选择接收方配置');
+    ElMessage.warning({ message: '请选择接收方配置', showClose: true, duration: 3000 });
     return;
   }
 
   if (!pncForm.creatorName.trim()) {
-    ElMessage.warning('请输入创建人姓名');
+    ElMessage.warning({ message: '请输入创建人姓名', showClose: true, duration: 3000 });
     return;
   }
 
   // 过滤出有效的明细项（跳过空行）
-  const validItems = pncForm.items.filter(item =>
-    item && item.partNumber && item.partNumber.trim() && item.quantity && item.quantity > 0
-  );
+  const validItems = pncForm.items.filter(item => {
+    if (!item || !item.partNumber || !item.partNumber.trim()) return false;
+    // 智能计数模式检查rolls，普通模式检查quantity
+    if (smartCountEnabled.value) {
+      return isSmartItem(item) && item.rolls && item.rolls.some(r => r.grn && r.quantity > 0);
+    }
+    return isNormalItem(item) && item.quantity && item.quantity > 0;
+  });
 
   if (validItems.length === 0) {
-    ElMessage.warning('请添加至少一项有效的明细（P/N和数量不能为空）');
+    ElMessage.warning({ message: '请添加至少一项有效的明细（P/N和数量不能为空）', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1085,21 +1488,92 @@ const executePrint = async () => {
   submitting.value = true;
   try {
     // 创建单据
-    const response = await createDocument({
+    // 智能计数模式下，合并相同P/N + Batch的明细为一行
+    const printItems: Array<{
+      sequenceNo: number;
+      batch: string | undefined;
+      partNumber: string;
+      grn: string | undefined;
+      quantity: number;
+    }> = [];
+
+    let seqNo = 1;
+
+    if (smartCountEnabled.value) {
+      // 智能计数模式：先合并相同P/N + Batch的项
+      const mergedMap = new Map<string, {
+        batch: string;
+        partNumber: string;
+        rolls: { grn: string; quantity: number }[];
+      }>();
+
+      for (const item of pncForm.items) {
+        if (!isSmartItem(item) || !Array.isArray(item.rolls)) continue;
+        if (!item.partNumber) continue;
+
+        const key = `${item.partNumber}|${item.batch || ''}`;
+        const existing = mergedMap.get(key);
+        if (existing) {
+          existing.rolls.push(...item.rolls.filter(r => r.grn && r.quantity > 0));
+        } else {
+          mergedMap.set(key, {
+            batch: item.batch,
+            partNumber: item.partNumber,
+            rolls: item.rolls.filter(r => r.grn && r.quantity > 0)
+          });
+        }
+      }
+
+      // 生成打印数据
+      for (const [key, merged] of mergedMap) {
+        const validRolls = merged.rolls.filter(r => r.grn && r.quantity > 0);
+        if (validRolls.length === 0) continue;
+
+        const totalQty = validRolls.reduce((sum, r) => sum + r.quantity, 0);
+        const firstRoll = validRolls[0];
+        const grnDisplay = validRolls.length === 1
+          ? (firstRoll?.grn || '')
+          : `${validRolls.length}卷GRN`;
+
+        printItems.push({
+          sequenceNo: seqNo++,
+          batch: merged.batch || undefined,
+          partNumber: merged.partNumber,
+          grn: grnDisplay,
+          quantity: totalQty
+        });
+      }
+    } else {
+      // 普通模式
+      for (const item of pncForm.items) {
+        if (isNormalItem(item) && item.partNumber && item.quantity > 0) {
+          printItems.push({
+            sequenceNo: seqNo++,
+            batch: item.batch || undefined,
+            partNumber: item.partNumber,
+            grn: item.grn || undefined,
+            quantity: item.quantity
+          });
+        }
+      }
+    }
+
+    if (printItems.length === 0) {
+      ElMessage.warning({ message: '请添加至少一项有效的明细（P/N和数量不能为空）', showClose: true, duration: 3000 });
+      submitting.value = false;
+      return;
+    }
+
+    const response: any = await createDocument({
       configId: pncForm.configId as number,
       departmentId: pncForm.departmentId as number,
       departmentName: selectedDepartmentName.value,
       creatorName: pncForm.creatorName,
-      items: pncForm.items.map((item, index) => ({
-        sequenceNo: index + 1,
-        batch: item.batch || undefined,
-        partNumber: item.partNumber,
-        grn: item.grn || undefined,
-        quantity: item.quantity
-      }))
+      items: printItems
     });
 
-    const doc = response;
+    // 从响应中提取实际单据数据（后端返回 { code, message, data } 格式）
+    const doc = response?.data || response;
 
     // 打开打印窗口（新窗口打印，与补打功能一致）
     openPrintWindow(doc);
@@ -1109,7 +1583,10 @@ const executePrint = async () => {
       if (!doc.id) {
         throw new Error('单据ID不存在');
       }
-      const emailData = await sendEmail(doc.id);
+      const emailResponse: any = await sendEmail(doc.id);
+
+      // 从响应中提取邮件数据
+      const emailData = emailResponse?.data || emailResponse;
 
       // 打开邮件客户端 - 前端自行构建 mailto 链接，避免编码问题
       if (emailData.to) {
@@ -1122,11 +1599,11 @@ const executePrint = async () => {
         window.open(mailtoLink, '_self');
       }
 
-      ElMessage.success(`转仓单 ${doc.transferNo} 已创建并发送邮件`);
+      ElMessage.success({ message: `转仓单 ${doc.transferNo} 已创建并发送邮件`, showClose: true, duration: 3000 });
     } catch (emailError: unknown) {
       console.error('发送邮件失败:', emailError);
       const message = emailError instanceof Error ? emailError.message : '未知错误';
-      ElMessage.warning(`转仓单 ${doc.transferNo} 已创建并触发打印，但邮件发送失败: ${message}`);
+      ElMessage.warning({ message: `转仓单 ${doc.transferNo} 已创建并触发打印，但邮件发送失败: ${message}`, showClose: true, duration: 3000 });
     }
 
     // 重置表单
@@ -1138,7 +1615,7 @@ const executePrint = async () => {
   } catch (error: unknown) {
     console.error('创建单据失败:', error);
     const message = error instanceof Error ? error.message : '创建单据失败';
-    ElMessage.error(message);
+    ElMessage.error({ message: message, showClose: true, duration: 3000 });
   } finally {
     submitting.value = false;
   }
@@ -1392,6 +1869,56 @@ onMounted(async () => {
   font-size: 11px;
   color: #64748b;
   margin-left: 4px;
+}
+
+.btn-smart-count {
+  margin-left: auto;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #0ea5e9;
+  border-radius: 6px;
+  color: #0369a1;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-smart-count:hover {
+  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.2);
+}
+
+.btn-smart-count.active {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.btn-smart-count.active:hover {
+  background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%);
+}
+
+/* 智能计数模式下的显示样式 */
+.smart-grn-display,
+.smart-qty-display {
+  display: block;
+  font-weight: 600;
+  color: #0284c7;
+  font-size: 12px;
+  padding: 2px 4px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.smart-grn-preview,
+.smart-qty-preview {
+  font-weight: 600;
+  color: #0284c7;
 }
 
 .scan-hint {

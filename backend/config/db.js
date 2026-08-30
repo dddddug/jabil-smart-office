@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // The DB environment variables are loaded from .env and should not be printed in production.
-// console.log('Backend DB_PASSWORD:', process.env.DB_PASSWORD); // Do not log sensitive info
+        ('Backend DB_PASSWORD:', process.env.DB_PASSWORD); // Do not log sensitive info
 
 const pool = new Pool({
   user: process.env.DB_USER,
@@ -33,7 +33,6 @@ pool.on('error', (err, client) => {
 });
 
 pool.on('connect', () => {
-  console.log('New database connection established');
 });
 
 export default pool;

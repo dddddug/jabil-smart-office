@@ -14,10 +14,10 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT d.*, p.name as plant_name, u.real_name as manager_name, u.id as manager_id
-      FROM ${DEPT_TABLE} d 
-      JOIN ${PLANT_TABLE} p ON d.plant_id = p.id 
+      FROM ${DEPT_TABLE} d
+      JOIN ${PLANT_TABLE} p ON d.plant_id = p.id
       LEFT JOIN ${USER_TABLE} u ON d.manager_id = u.id
-      ORDER BY d.id
+      ORDER BY d.parent_id NULLS FIRST, d.id
     `);
     const departments = result.rows.map(row => ({
       id: row.id,
@@ -27,6 +27,7 @@ router.get('/', authenticateToken, async (req, res) => {
       description: row.description,
       managerId: row.manager_id,
       managerName: row.manager_name,
+      parentId: row.parent_id,
       createdAt: dayjs(row.created_at).format('YYYY-MM-DD')
     }));
     res.json({ code: 200, message: '获取成功', data: { departments } });
@@ -67,10 +68,10 @@ router.get('/plants/:plantId/departments', authenticateToken, async (req, res) =
 router.post('/', authenticateToken, async (req, res) => {
 
   try {
-    const { plantId, name, description, managerId } = req.body;
+    const { plantId, name, description, managerId, parentId } = req.body;
     const result = await pool.query(
-      `INSERT INTO ${DEPT_TABLE} (plant_id, name, description, manager_id) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [plantId, name, description, managerId || null]
+      `INSERT INTO ${DEPT_TABLE} (plant_id, name, description, manager_id, parent_id) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [plantId, name, description, managerId || null, parentId || null]
     );
     const newDept = result.rows[0];
     
@@ -86,6 +87,7 @@ router.post('/', authenticateToken, async (req, res) => {
         name: newDept.name,
         description: newDept.description,
         managerId: newDept.manager_id,
+        parentId: newDept.parent_id,
         createdAt: dayjs(newDept.created_at).format('YYYY-MM-DD')
       }
     });
@@ -99,10 +101,10 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { plantId, name, description, managerId } = req.body;
+    const { plantId, name, description, managerId, parentId } = req.body;
     const result = await pool.query(
-      `UPDATE ${DEPT_TABLE} SET plant_id = $1, name = $2, description = $3, manager_id = $4 WHERE id = $5 RETURNING *`,
-      [plantId, name, description, managerId || null, id]
+      `UPDATE ${DEPT_TABLE} SET plant_id = $1, name = $2, description = $3, manager_id = $4, parent_id = $5 WHERE id = $6 RETURNING *`,
+      [plantId, name, description, managerId || null, parentId || null, id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: '部门不存在' });
@@ -121,6 +123,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         name: updatedDept.name,
         description: updatedDept.description,
         managerId: updatedDept.manager_id,
+        parentId: updatedDept.parent_id,
         createdAt: dayjs(updatedDept.created_at).format('YYYY-MM-DD')
       }
     });

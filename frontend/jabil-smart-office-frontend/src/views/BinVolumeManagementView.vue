@@ -400,10 +400,10 @@ const deleteBin = (bin: Bin) => {
       if (selectedBin.value && selectedBin.value.id === bin.id) {
         selectedBin.value = null;
       }
-      ElMessage.success('料箱删除成功！');
+      ElMessage.success({ message: '料箱删除成功！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消删除');
+      ElMessage.info({ message: '已取消删除', showClose: true, duration: 3000 });
     });
 };
 
@@ -427,7 +427,7 @@ const resetSearch = () => {
 };
 
 const exportData = () => {
-  ElMessage.info('导出料箱容量数据');
+  ElMessage.info({ message: '导出料箱容量数据', showClose: true, duration: 3000 });
 };
 
 const prevPage = () => {

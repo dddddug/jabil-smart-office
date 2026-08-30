@@ -19,6 +19,7 @@ export const validationMiddleware = (req, res, next) => {
       value: err.value,
     }));
 
+    console.error('验证失败详情:', JSON.stringify(errorDetails, null, 2));
     throw BadRequestError('请求参数验证失败', errorDetails);
   }
 

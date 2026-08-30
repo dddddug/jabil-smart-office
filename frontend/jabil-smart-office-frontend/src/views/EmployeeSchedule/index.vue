@@ -585,7 +585,7 @@ import {
 } from '../../types/schedule';
 
 import { useSchedulePeriod } from '../../composables/useSchedulePeriod';
-import { useShiftUtils, getWorkHours } from '../../composables/useShiftUtils';
+import { useShiftUtils, getWorkHoursWithConfig } from '../../composables/useShiftUtils';
 import { useEmployeeData } from '../../composables/useEmployeeData';
 import { useScheduleOperations } from '../../composables/useScheduleOperations';
 import { useTemporaryData } from '../../composables/useTemporaryData';
@@ -764,7 +764,7 @@ const {
 } = useBreak7Check({
     currentPeriodStart,
     customRangeEnd,
-  getWorkHours,
+  getWorkHours: getWorkHoursWithConfig,
   calculateEmployeeOvertimeHours
 });
 
@@ -833,7 +833,7 @@ const getEmployeeHours = (
   daysArray.forEach(day => {
     const scheduleItem = employee.schedule?.[day.date];
     if (scheduleItem && scheduleItem.shift) {
-      scheduleHours += getWorkHours(scheduleItem.shift);
+      scheduleHours += getWorkHoursWithConfig(scheduleItem.shift);
     }
   });
 
@@ -1068,7 +1068,7 @@ fetchEmployees = async () => {
         let scheduleHours = 0;
         Object.values(emp.schedule || {}).forEach((scheduleInfo: ScheduleItem) => {
           const shift = scheduleInfo?.shift || '';
-          scheduleHours += getWorkHours(shift);
+          scheduleHours += getWorkHoursWithConfig(shift);
         });
 
         const overtimeHours = 0;

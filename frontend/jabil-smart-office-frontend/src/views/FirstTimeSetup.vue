@@ -165,15 +165,15 @@ const handleChangePassword = async () => {
         user.mustChangePassword = false;
         localStorage.setItem('user', JSON.stringify(user));
       }
-      ElMessage.success('密码修改成功');
+      ElMessage.success({ message: '密码修改成功', showClose: true, duration: 3000 });
       currentStep.value = 2;
     } else {
       loading.value = false;
-      ElMessage.error(data.message || '密码修改失败');
+      ElMessage.error({ message: data.message || '密码修改失败', showClose: true, duration: 3000 });
     }
   } catch (error) {
     loading.value = false;
-    ElMessage.error('请求失败，请稍后重试');
+    ElMessage.error({ message: '请求失败，请稍后重试', showClose: true, duration: 3000 });
   }
 };
 
@@ -206,16 +206,16 @@ const handleSetSecurityQuestion = async () => {
         user.hasSecurityQuestion = true;
         localStorage.setItem('user', JSON.stringify(user));
       }
-      ElMessage.success('安全问题设置成功');
+      ElMessage.success({ message: '安全问题设置成功', showClose: true, duration: 3000 });
       localStorage.setItem('hasSkippedSetup', 'true');
       router.push('/');
     } else {
       loading.value = false;
-      ElMessage.error(data.message || '安全问题设置失败');
+      ElMessage.error({ message: data.message || '安全问题设置失败', showClose: true, duration: 3000 });
     }
   } catch (error) {
     loading.value = false;
-    ElMessage.error('请求失败，请稍后重试');
+    ElMessage.error({ message: '请求失败，请稍后重试', showClose: true, duration: 3000 });
   }
 };
 </script>

@@ -1,0 +1,2337 @@
+<template>
+  <div class="warehouse-return-container">
+    <!-- 页头 -->
+    <div class="page-header">
+      <div class="breadcrumb">
+        <span class="breadcrumb-item">首页</span>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-item">业务中心</span>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-item active">回仓申请</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-refresh" @click="loadStats" :disabled="isLoading">
+          <span :class="{ 'spin': isLoading }">[REFRESH]</span>
+          {{ isLoading ? '加载中...' : '刷新' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-cards">
+      <div
+        class="stat-card stat-card-orange"
+        :class="{ 'stat-card-active': selectedStatus === 'pending_receiving' }"
+        @click="filterByStatus('pending_receiving')"
+      >
+        <div class="stat-icon-bg">
+          <span class="stat-icon">[LIST]</span>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stats.pendingReceiving }}</div>
+          <div class="stat-label">待接收</div>
+        </div>
+      </div>
+      <div
+        class="stat-card stat-card-blue"
+        :class="{ 'stat-card-active': selectedStatus === 'received' }"
+        @click="filterByStatus('received')"
+      >
+        <div class="stat-icon-bg">
+          <span class="stat-icon">[BOX]</span>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stats.received }}</div>
+          <div class="stat-label">待对账</div>
+        </div>
+      </div>
+      <div
+        class="stat-card stat-card-yellow"
+        :class="{ 'stat-card-active': selectedStatus === 'processing' }"
+        @click="filterByStatus('processing')"
+      >
+        <div class="stat-icon-bg">
+          <span class="stat-icon">[WARN]</span>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stats.processing }}</div>
+          <div class="stat-label">待处理</div>
+        </div>
+      </div>
+      <div
+        class="stat-card stat-card-green"
+        :class="{ 'stat-card-active': selectedStatus === 'closed' }"
+        @click="filterByStatus('closed')"
+      >
+        <div class="stat-icon-bg">
+          <span class="stat-icon">[OK]</span>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stats.closed }}</div>
+          <div class="stat-label">已完结</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <div class="tabs-container">
+      <div class="tabs-header">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          :class="['tab-btn', { active: activeTab === tab.key }]"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 提交管理页签 -->
+    <div v-show="activeTab === 'submit'" class="tab-content">
+      <div class="table-card">
+        <div class="table-card-header">
+          <div class="table-card-title">[IMPORT] {{ currentTabTitle }}</div>
+          <div class="table-card-actions">
+            <button class="btn btn-primary" @click="openCreateDialog">
+              [ADD] 新建回仓申请
+            </button>
+            <button class="btn btn-secondary" @click="exportData">[EXPORT] 导出</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- 搜索栏 -->
+          <div class="search-bar">
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>单号</label>
+                <input type="text" v-model="searchQuery.returnNo" placeholder="请输入单号">
+              </div>
+            </div>
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>Bay号</label>
+                <input type="text" v-model="searchQuery.bayNo" placeholder="请输入Bay号">
+              </div>
+            </div>
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>日期范围</label>
+                <div class="date-range-inputs">
+                  <input type="date" v-model="searchQuery.startDate">
+                  <span class="date-separator">至</span>
+                  <input type="date" v-model="searchQuery.endDate">
+                </div>
+              </div>
+            </div>
+            <div class="search-actions">
+              <button class="btn btn-primary" @click="handleSearch">查询</button>
+              <button class="btn btn-secondary" @click="resetSearch">重置</button>
+            </div>
+          </div>
+
+          <!-- 数据表格 -->
+          <div class="table-container" v-loading="isLoading">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>回仓单号</th>
+                  <th>Bay号</th>
+                  <th>接收Building</th>
+                  <th>提交人</th>
+                  <th>提交时间</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="doc in documents" :key="doc.id">
+                  <td>{{ doc.returnNo }}</td>
+                  <td>{{ doc.bayNo }}</td>
+                  <td>{{ doc.receiveBuilding }}</td>
+                  <td>{{ doc.submitterName }}</td>
+                  <td>{{ formatDate(doc.createdAt) }}</td>
+                  <td>
+                    <span class="status-badge" :style="getStatusStyle(doc.status)">
+                      {{ getStatusText(doc.status, doc.pendingCount) }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn view" @click="viewDocument(doc)">查看</button>
+                      <button
+                        v-if="canEdit(doc)"
+                        class="action-btn edit"
+                        @click="editDocument(doc)"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        v-if="doc.status === 'pending_receiving' && canPrint(doc)"
+                        class="action-btn print"
+                        @click="printApplication(doc)"
+                      >
+                        打印
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="documents.length === 0 && !isLoading">
+                  <td colspan="7" class="empty-cell">暂无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 分页 -->
+          <div class="pagination-container">
+            <div class="pagination-info">
+              共 {{ total }} 条记录，第 {{ currentPage }} / {{ totalPages }} 页
+            </div>
+            <div class="pagination-controls">
+              <button
+                class="btn btn-pagination"
+                :disabled="currentPage === 1"
+                @click="changePage(currentPage - 1)"
+              >
+                上一页
+              </button>
+              <button
+                v-for="page in visiblePages"
+                :key="page"
+                :class="['btn btn-pagination', { active: currentPage === page }]"
+                @click="changePage(page)"
+              >
+                {{ page }}
+              </button>
+              <button
+                class="btn btn-pagination"
+                :disabled="currentPage === totalPages"
+                @click="changePage(currentPage + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 仓库操作页签 -->
+    <div v-show="activeTab === 'warehouse'" class="tab-content">
+      <div class="table-card">
+        <div class="table-card-header">
+          <div class="table-card-title">🏭 {{ currentTabTitle }}</div>
+          <div class="table-card-actions">
+            <button class="btn btn-secondary" @click="exportData">[EXPORT] 导出</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- 搜索栏 -->
+          <div class="search-bar">
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>单号</label>
+                <input type="text" v-model="searchQuery.returnNo" placeholder="请输入单号">
+              </div>
+            </div>
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>Bay号</label>
+                <input type="text" v-model="searchQuery.bayNo" placeholder="请输入Bay号">
+              </div>
+            </div>
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>提交人</label>
+                <input type="text" v-model="searchQuery.submitterName" placeholder="请输入提交人">
+              </div>
+            </div>
+            <div class="search-item">
+              <div class="search-item-wrapper">
+                <label>日期范围</label>
+                <div class="date-range-inputs">
+                  <input type="date" v-model="searchQuery.startDate">
+                  <span class="date-separator">至</span>
+                  <input type="date" v-model="searchQuery.endDate">
+                </div>
+              </div>
+            </div>
+            <div class="search-actions">
+              <button class="btn btn-primary" @click="handleSearch">查询</button>
+              <button class="btn btn-secondary" @click="resetSearch">重置</button>
+            </div>
+          </div>
+
+          <!-- 数据表格 -->
+          <div class="table-container" v-loading="isLoading">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>回仓单号</th>
+                  <th>Bay号</th>
+                  <th>接收Building</th>
+                  <th>提交人</th>
+                  <th>提交时间</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="doc in documents" :key="doc.id">
+                  <td>{{ doc.returnNo }}</td>
+                  <td>{{ doc.bayNo }}</td>
+                  <td>{{ doc.receiveBuilding }}</td>
+                  <td>{{ doc.submitterName }}</td>
+                  <td>{{ formatDate(doc.createdAt) }}</td>
+                  <td>
+                    <span class="status-badge" :style="getStatusStyle(doc.status)">
+                      {{ getStatusText(doc.status, doc.pendingCount) }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="action-btn view" @click="viewDocument(doc)">查看</button>
+                      <button
+                        v-if="doc.status === 'pending_receiving'"
+                        class="action-btn receive"
+                        @click="handleReceive(doc)"
+                      >
+                        接收
+                      </button>
+                      <button
+                        v-if="doc.status === 'received'"
+                        class="action-btn reconcile"
+                        @click="openReconcileDialog(doc)"
+                      >
+                        对账
+                      </button>
+                      <button
+                        v-if="canPrintTransfer(doc)"
+                        class="action-btn print"
+                        @click="printTransferOrder(doc)"
+                      >
+                        打印转仓单
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="documents.length === 0 && !isLoading">
+                  <td colspan="7" class="empty-cell">暂无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 分页 -->
+          <div class="pagination-container">
+            <div class="pagination-info">
+              共 {{ total }} 条记录，第 {{ currentPage }} / {{ totalPages }} 页
+            </div>
+            <div class="pagination-controls">
+              <button
+                class="btn btn-pagination"
+                :disabled="currentPage === 1"
+                @click="changePage(currentPage - 1)"
+              >
+                上一页
+              </button>
+              <button
+                v-for="page in visiblePages"
+                :key="page"
+                :class="['btn btn-pagination', { active: currentPage === page }]"
+                @click="changePage(page)"
+              >
+                {{ page }}
+              </button>
+              <button
+                class="btn btn-pagination"
+                :disabled="currentPage === totalPages"
+                @click="changePage(currentPage + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 配置管理页签 -->
+    <div v-show="activeTab === 'config'" class="tab-content">
+      <div class="table-card">
+        <div class="table-card-header">
+          <div class="table-card-title">⚙️ {{ currentTabTitle }}</div>
+        </div>
+        <div class="card-body">
+          <!-- 邮件抄送配置 -->
+          <div class="config-section">
+            <h3 class="config-title">📧 邮件抄送配置</h3>
+            <p class="config-desc">配置退回邮件的默认抄送人员，多个邮箱用逗号分隔</p>
+            <div class="config-form">
+              <div class="form-item">
+                <label>抄送邮箱：</label>
+                <input
+                  type="text"
+                  v-model="emailCcInput"
+                  placeholder="如：user1@example.com, user2@example.com"
+                  style="width: 400px"
+                >
+              </div>
+              <div class="form-actions">
+                <button class="btn btn-primary" @click="saveEmailCc">保存邮件配置</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Building 配置 -->
+          <div class="config-section">
+            <h3 class="config-title">🏢 接收Building配置</h3>
+            <p class="config-desc">配置回仓申请的接收Building下拉选项，支持启用/禁用和排序</p>
+            <div class="config-form">
+              <div class="building-list">
+                <div v-for="(building, index) in buildingConfigs" :key="index" class="building-item">
+                  <input
+                    type="checkbox"
+                    v-model="building.isActive"
+                    :disabled="buildingConfigs.filter(b => b.isActive).length <= 1 && building.isActive"
+                  >
+                  <input
+                    type="text"
+                    v-model="building.code"
+                    placeholder="编码"
+                    class="building-code-input"
+                  >
+                  <input
+                    type="text"
+                    v-model="building.name"
+                    placeholder="名称"
+                    class="building-name-input"
+                  >
+                  <button class="btn btn-sm btn-danger" @click="removeBuilding(index)">删除</button>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn-secondary" @click="addBuilding">[ADD] 添加Building</button>
+                <button class="btn btn-primary" @click="saveBuildings">保存Building配置</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 新建/编辑弹窗 -->
+    <div v-if="showCreateDialog" class="dialog-overlay" @click.self="closeCreateDialog">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h3>{{ isEditing ? '编辑回仓申请' : '新建回仓申请' }}</h3>
+          <button class="dialog-close" @click="closeCreateDialog">[X]</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-row">
+            <div class="form-item">
+              <label class="required">Bay号：</label>
+              <input
+                type="text"
+                v-model="formData.bayNo"
+                placeholder="请输入Bay号"
+                :disabled="isEditing"
+              >
+            </div>
+            <div class="form-item">
+              <label class="required">接收Building：</label>
+              <select v-model="formData.receiveBuilding" :disabled="isEditing">
+                <option value="">请选择</option>
+                <option v-for="b in buildings" :key="b.code" :value="b.code">
+                  {{ b.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-item file-upload">
+            <label>物料清单：</label>
+            <div class="upload-area">
+              <button class="btn btn-secondary" @click="downloadTemplate">
+                [IMPORT] 下载模板
+              </button>
+              <input
+                type="file"
+                ref="fileInput"
+                accept=".xlsx,.xls"
+                @change="handleFileUpload"
+                style="display: none"
+              >
+              <button class="btn btn-primary" @click="$refs.fileInput.click()">
+                [EXPORT] 导入Excel
+              </button>
+            </div>
+            <p class="upload-tip">提示：Material、Qty、Bay号三列为必填，Qty不能为0或负数</p>
+          </div>
+
+          <!-- 物料清单预览 -->
+          <div v-if="formData.items.length > 0" class="items-preview">
+            <div class="preview-header">
+              <span>已导入 {{ formData.items.length }} 条物料</span>
+              <button class="btn btn-secondary btn-sm" @click="clearItems">清空</button>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>物料号</th>
+                  <th>数量</th>
+                  <th>Bay号</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in formData.items" :key="index">
+                  <td>{{ item.material }}</td>
+                  <td>{{ item.qty }}</td>
+                  <td>{{ item.bayNo }}</td>
+                  <td>
+                    <button class="action-btn delete" @click="removeItem(index)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-secondary" @click="closeCreateDialog">取消</button>
+          <button class="btn btn-primary" @click="submitForm" :disabled="isSubmitting">
+            {{ isSubmitting ? '提交中...' : '提交' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <div v-if="showDetailDialog" class="dialog-overlay" @click.self="closeDetailDialog">
+      <div class="dialog dialog-large">
+        <div class="dialog-header">
+          <h3>回仓申请详情</h3>
+          <button class="dialog-close" @click="closeDetailDialog">[X]</button>
+        </div>
+        <div class="dialog-body">
+          <div class="detail-info">
+            <div class="detail-row">
+              <div class="detail-item">
+                <label>回仓单号：</label>
+                <span>{{ currentDocument?.returnNo }}</span>
+              </div>
+              <div class="detail-item">
+                <label>Bay号：</label>
+                <span>{{ currentDocument?.bayNo }}</span>
+              </div>
+              <div class="detail-item">
+                <label>接收Building：</label>
+                <span>{{ currentDocument?.receiveBuilding }}</span>
+              </div>
+            </div>
+            <div class="detail-row">
+              <div class="detail-item">
+                <label>提交人：</label>
+                <span>{{ currentDocument?.submitterName }} ({{ currentDocument?.submitterAccount }})</span>
+              </div>
+              <div class="detail-item">
+                <label>提交时间：</label>
+                <span>{{ formatDate(currentDocument?.createdAt) }}</span>
+              </div>
+              <div class="detail-item">
+                <label>状态：</label>
+                <span class="status-badge" :style="getStatusStyle(currentDocument?.status)">
+                  {{ getStatusText(currentDocument?.status, currentDocument?.pendingCount) }}
+                </span>
+              </div>
+            </div>
+            <div v-if="currentDocument?.receivedBy" class="detail-row">
+              <div class="detail-item">
+                <label>接收人：</label>
+                <span>{{ currentDocument?.receivedBy }}</span>
+              </div>
+              <div class="detail-item">
+                <label>接收时间：</label>
+                <span>{{ formatDate(currentDocument?.receivedAt) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 物料明细 -->
+          <div class="detail-section">
+            <h4>物料明细</h4>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>物料号</th>
+                  <th>数量</th>
+                  <th>Bay号</th>
+                  <th>目标库位</th>
+                  <th>类型</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in currentDocument?.items" :key="item.id">
+                  <td>{{ item.material }}</td>
+                  <td>{{ item.qty }}</td>
+                  <td>{{ item.bayNo }}</td>
+                  <td>{{ item.toSloc || '-' }}</td>
+                  <td>{{ item.type || '-' }}</td>
+                  <td>
+                    <span class="match-status" :class="'status-' + item.matchStatus">
+                      {{ getMatchStatusText(item.matchStatus) }}
+                    </span>
+                  </td>
+                </tr>
+                <tr v-if="!currentDocument?.items?.length">
+                  <td colspan="6" class="empty-cell">暂无物料明细</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 对账日志 -->
+          <div v-if="reconciliationLogs.length > 0" class="detail-section">
+            <h4>对账日志</h4>
+            <div class="log-list">
+              <div v-for="log in reconciliationLogs" :key="log.id" class="log-item">
+                <div class="log-header">
+                  <span class="log-operator">{{ log.operatorName }}</span>
+                  <span class="log-time">{{ formatDate(log.operatedAt) }}</span>
+                </div>
+                <div class="log-content">
+                  <div v-if="hasMatchedItems(log)" class="log-section success">
+                    匹配成功：{{ getMatchedCount(log) }} 条
+                  </div>
+                  <div v-if="hasListOnlyItems(log)" class="log-section warning">
+                    清单有SAP无：{{ getListOnlyCount(log) }} 条
+                  </div>
+                  <div v-if="hasSapOnlyItems(log)" class="log-section info">
+                    SAP有清单无：{{ getSapOnlyCount(log) }} 条
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-secondary" @click="closeDetailDialog">关闭</button>
+          <button v-if="currentDocument?.status === 'pending_receiving'" class="btn btn-primary" @click="printApplication(currentDocument)">
+            [PRINT] 打印回仓申请单
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对账弹窗 -->
+    <div v-if="showReconcileDialog" class="dialog-overlay" @click.self="closeReconcileDialog">
+      <div class="dialog dialog-large">
+        <div class="dialog-header">
+          <h3>对账 - {{ currentDocument?.returnNo }}</h3>
+          <button class="dialog-close" @click="closeReconcileDialog">[X]</button>
+        </div>
+        <div class="dialog-body">
+          <!-- 对账结果统计 -->
+          <div v-if="reconcileResult" class="reconcile-summary">
+            <div class="summary-item success">
+              <span class="summary-count">{{ reconcileResult.summary?.matched || 0 }}</span>
+              <span class="summary-label">匹配成功</span>
+            </div>
+            <div class="summary-item warning">
+              <span class="summary-count">{{ reconcileResult.summary?.listOnly || 0 }}</span>
+              <span class="summary-label">清单有SAP无</span>
+            </div>
+            <div class="summary-item info">
+              <span class="summary-count">{{ reconcileResult.summary?.sapOnly || 0 }}</span>
+              <span class="summary-label">SAP有清单无</span>
+            </div>
+            <div v-if="reconcileResult.summary?.isFullMatch" class="full-match-badge">
+              🎉 100% 匹配成功
+            </div>
+          </div>
+
+          <!-- 对账结果Tabs -->
+          <div v-if="reconcileResult" class="reconcile-tabs">
+            <div class="reconcile-tab-header">
+              <button
+                :class="['reconcile-tab', { active: reconcileTab === 'matched' }]"
+                @click="reconcileTab = 'matched'"
+              >
+                [OK] 匹配成功 ({{ reconcileResult.matchedItems?.length || 0 }})
+              </button>
+              <button
+                :class="['reconcile-tab', { active: reconcileTab === 'listOnly' }]"
+                @click="reconcileTab = 'listOnly'"
+              >
+                [WARN] 清单有SAP无 ({{ reconcileResult.listOnlyItems?.length || 0 }})
+              </button>
+              <button
+                :class="['reconcile-tab', { active: reconcileTab === 'sapOnly' }]"
+                @click="reconcileTab = 'sapOnly'"
+              >
+                [INFO] SAP有清单无 ({{ reconcileResult.sapOnlyItems?.length || 0 }})
+              </button>
+            </div>
+
+            <!-- 匹配成功列表 -->
+            <div v-show="reconcileTab === 'matched'" class="reconcile-tab-content">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>物料号</th>
+                    <th>数量</th>
+                    <th>Bay号</th>
+                    <th>目标库位</th>
+                    <th>类型</th>
+                    <th>事务</th>
+                    <th>
+                      <input
+                        type="checkbox"
+                        v-model="selectAllMatched"
+                        @change="toggleSelectMatched"
+                      >
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in reconcileResult.matchedItems" :key="item.id || item.sap_item_id">
+                    <td>{{ item.material }}</td>
+                    <td>{{ item.qty }}</td>
+                    <td>{{ item.bay_no || item.bayNo }}</td>
+                    <td>{{ item.to_sloc || item.toSloc }}</td>
+                    <td>{{ item.type }}</td>
+                    <td>{{ item.trans }}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        :value="item.id"
+                        v-model="selectedMatchedItems"
+                      >
+                    </td>
+                  </tr>
+                  <tr v-if="!reconcileResult.matchedItems?.length">
+                    <td colspan="7" class="empty-cell">无匹配成功的明细</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 清单有SAP无列表 -->
+            <div v-show="reconcileTab === 'listOnly'" class="reconcile-tab-content">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>物料号</th>
+                    <th>数量</th>
+                    <th>Bay号</th>
+                    <th>
+                      <input
+                        type="checkbox"
+                        v-model="selectAllListOnly"
+                        @change="toggleSelectListOnly"
+                      >
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in reconcileResult.listOnlyItems" :key="item.id">
+                    <td>{{ item.material }}</td>
+                    <td>{{ item.qty }}</td>
+                    <td>{{ item.bay_no || item.bayNo }}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        :value="item.id"
+                        v-model="selectedListOnlyItems"
+                      >
+                    </td>
+                  </tr>
+                  <tr v-if="!reconcileResult.listOnlyItems?.length">
+                    <td colspan="4" class="empty-cell">无异常明细</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- SAP有清单无列表 -->
+            <div v-show="reconcileTab === 'sapOnly'" class="reconcile-tab-content">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>物料号</th>
+                    <th>数量</th>
+                    <th>源库位</th>
+                    <th>目标库位</th>
+                    <th>类型</th>
+                    <th>
+                      <input
+                        type="checkbox"
+                        v-model="selectAllSapOnly"
+                        @change="toggleSelectSapOnly"
+                      >
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in reconcileResult.sapOnlyItems" :key="item.sap_item_id">
+                    <td>{{ item.material }}</td>
+                    <td>{{ item.qty }}</td>
+                    <td>{{ item.bay_no || item.from_sloc }}</td>
+                    <td>{{ item.to_sloc }}</td>
+                    <td>{{ item.type }}</td>
+                    <td>
+                      <input
+                        type="checkbox"
+                        :value="item.sap_item_id"
+                        v-model="selectedSapOnlyItems"
+                      >
+                    </td>
+                  </tr>
+                  <tr v-if="!reconcileResult.sapOnlyItems?.length">
+                    <td colspan="6" class="empty-cell">无SAP独有明细</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-secondary" @click="closeReconcileDialog">取消</button>
+          <!-- 100%匹配时显示Close按钮 -->
+          <button
+            v-if="reconcileResult?.summary?.isFullMatch"
+            class="btn btn-primary"
+            @click="handleCloseAll"
+          >
+            [OK] Close 完结
+          </button>
+          <template v-else>
+            <!-- 退回按钮 -->
+            <button
+              v-if="selectedListOnlyItems.length > 0"
+              class="btn btn-warning"
+              @click="openReturnDialog"
+            >
+              [WARN] 退回选中 ({{ selectedListOnlyItems.length }})
+            </button>
+            <!-- 关闭匹配成功项 -->
+            <button
+              v-if="selectedMatchedItems.length > 0"
+              class="btn btn-success"
+              @click="handleCloseMatched"
+            >
+              [OK] 关闭选中匹配项 ({{ selectedMatchedItems.length }})
+            </button>
+            <!-- 确认SAP独有项 -->
+            <button
+              v-if="selectedSapOnlyItems.length > 0"
+              class="btn btn-info"
+              @click="handleConfirmSapOnly"
+            >
+              [INFO] 确认SAP独有项 ({{ selectedSapOnlyItems.length }})
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 退回原因弹窗 -->
+    <div v-if="showReturnDialog" class="dialog-overlay" @click.self="closeReturnDialog">
+      <div class="dialog">
+        <div class="dialog-header">
+          <h3>填写退回原因</h3>
+          <button class="dialog-close" @click="closeReturnDialog">[X]</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-item">
+            <label class="required">退回原因：</label>
+            <textarea
+              v-model="returnReason"
+              rows="4"
+              placeholder="请填写退回原因，将通知提交人"
+            ></textarea>
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-secondary" @click="closeReturnDialog">取消</button>
+          <button
+            class="btn btn-warning"
+            @click="handleReturn"
+            :disabled="!returnReason.trim()"
+          >
+            [WARN] 确认退回
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, computed, onMounted } from 'vue';
+import { ElMessage } from 'element-plus';
+import * as api from '../api/warehouseReturn';
+import { usePermission } from '../composables/usePermission';
+
+const { user, hasRole } = usePermission();
+
+// 状态
+const isLoading = ref(false);
+const isSubmitting = ref(false);
+const activeTab = ref('submit');
+const tabs = [
+  { key: 'submit', label: '提交管理' },
+  { key: 'warehouse', label: '仓库操作' },
+  { key: 'config', label: '配置管理' }
+];
+
+// 统计数据
+const stats = reactive({
+  pendingReceiving: 0,
+  received: 0,
+  processing: 0,
+  closed: 0
+});
+
+// 搜索和分页
+const searchQuery = reactive({
+  returnNo: '',
+  bayNo: '',
+  submitterName: '',
+  startDate: '',
+  endDate: ''
+});
+const currentPage = ref(1);
+const pageSize = ref(10);
+const total = ref(0);
+const selectedStatus = ref('');
+
+// 文档列表
+const documents = ref([]);
+const buildings = ref([]);
+
+// 当前文档
+const currentDocument = ref(null);
+const reconciliationLogs = ref([]);
+
+// 弹窗状态
+const showCreateDialog = ref(false);
+const showDetailDialog = ref(false);
+const showReconcileDialog = ref(false);
+const showReturnDialog = ref(false);
+const isEditing = ref(false);
+
+// 表单数据
+const formData = reactive({
+  bayNo: '',
+  receiveBuilding: '',
+  items: []
+});
+
+// 对账相关
+const reconcileResult = ref(null);
+const reconcileTab = ref('matched');
+const selectedMatchedItems = ref([]);
+const selectedListOnlyItems = ref([]);
+const selectedSapOnlyItems = ref([]);
+const selectAllMatched = ref(false);
+const selectAllListOnly = ref(false);
+const selectAllSapOnly = ref(false);
+const returnReason = ref('');
+
+// 邮件抄送
+const emailCcInput = ref('');
+
+// Building 配置
+const buildingConfigs = ref([]);
+
+// 计算属性
+const currentTabTitle = computed(() => {
+  const tab = tabs.find(t => t.key === activeTab.value);
+  return tab?.label || '';
+});
+
+const totalPages = computed(() => {
+  return Math.ceil(total.value / pageSize.value) || 1;
+});
+
+const visiblePages = computed(() => {
+  const pages = [];
+  const start = Math.max(1, currentPage.value - 2);
+  const end = Math.min(totalPages.value, currentPage.value + 2);
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  return pages;
+});
+
+// 状态文本映射
+const statusTextMap = {
+  pending_receiving: '待仓库接收',
+  received: '仓库已接收',
+  reconciled_full_match: '对账完成-匹配成功',
+  reconciled_partial_return: '对账完成-部分退回',
+  reconciled_diff: '对账差异-人工确认中',
+  partial_close: '部分完结',
+  closed: '已完结'
+};
+
+const matchStatusTextMap = {
+  pending: '待匹配',
+  matched: '已匹配',
+  returned: '已退回',
+  closed: '已关闭'
+};
+
+// 方法
+const loadStats = async () => {
+  try {
+    const res = await api.getStats();
+    if (res?.data?.code === 200) {
+      Object.assign(stats, res.data.data);
+    }
+  } catch (err) {
+    console.error('加载统计数据失败:', err);
+  }
+};
+
+const loadDocuments = async () => {
+  isLoading.value = true;
+  try {
+    const params = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      ...searchQuery
+    };
+    if (selectedStatus.value) {
+      params.status = selectedStatus.value;
+    }
+    const res = await api.getDocuments(params);
+    if (res?.data?.code === 200) {
+      documents.value = res.data.data.items || [];
+      total.value = res.data.data.pagination?.total || 0;
+    }
+  } catch (err) {
+    console.error('加载单据列表失败:', err);
+    ElMessage.error('加载数据失败');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const loadBuildings = async () => {
+  try {
+    const res = await api.getBuildings();
+    if (res?.data?.code === 200) {
+      buildings.value = res.data.data || [];
+    }
+  } catch (err) {
+    console.error('加载Building列表失败:', err);
+  }
+};
+
+const loadEmailCcConfig = async () => {
+  try {
+    const res = await api.getEmailCcConfig();
+    if (res?.data?.code === 200) {
+      const configs = res.data.data || [];
+      emailCcInput.value = configs.map(c => c.email).filter(e => e).join(', ');
+    }
+  } catch (err) {
+    console.error('加载邮件抄送配置失败:', err);
+  }
+};
+
+const loadReconciliationLogs = async (id) => {
+  try {
+    const res = await api.getDocumentLogs(id);
+    if (res?.data?.code === 200) {
+      reconciliationLogs.value = res.data.data || [];
+    }
+  } catch (err) {
+    console.error('加载对账日志失败:', err);
+  }
+};
+
+const handleSearch = () => {
+  currentPage.value = 1;
+  loadDocuments();
+};
+
+const resetSearch = () => {
+  Object.keys(searchQuery).forEach(key => {
+    searchQuery[key] = '';
+  });
+  selectedStatus.value = '';
+  handleSearch();
+};
+
+const filterByStatus = (status) => {
+  selectedStatus.value = status;
+  handleSearch();
+};
+
+const changePage = (page) => {
+  currentPage.value = page;
+  loadDocuments();
+};
+
+// 弹窗操作
+const openCreateDialog = () => {
+  isEditing.value = false;
+  formData.bayNo = '';
+  formData.receiveBuilding = '';
+  formData.items = [];
+  showCreateDialog.value = true;
+};
+
+const closeCreateDialog = () => {
+  showCreateDialog.value = false;
+};
+
+const editDocument = async (doc) => {
+  try {
+    const res = await api.getDocumentById(doc.id);
+    if (res?.data?.code === 200) {
+      const data = res.data.data;
+      isEditing.value = true;
+      formData.bayNo = data.bayNo;
+      formData.receiveBuilding = data.receiveBuilding;
+      formData.items = data.items?.map(item => ({
+        material: item.material,
+        qty: item.qty,
+        bayNo: item.bayNo
+      })) || [];
+      showCreateDialog.value = true;
+    }
+  } catch (err) {
+    console.error('加载单据详情失败:', err);
+    ElMessage.error('加载单据详情失败');
+  }
+};
+
+const viewDocument = async (doc) => {
+  try {
+    const res = await api.getDocumentById(doc.id);
+    if (res?.data?.code === 200) {
+      currentDocument.value = res.data.data;
+      await loadReconciliationLogs(doc.id);
+      showDetailDialog.value = true;
+    }
+  } catch (err) {
+    console.error('加载单据详情失败:', err);
+    ElMessage.error('加载单据详情失败');
+  }
+};
+
+const closeDetailDialog = () => {
+  showDetailDialog.value = false;
+  currentDocument.value = null;
+  reconciliationLogs.value = [];
+};
+
+// Excel导入
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    // 使用 xlsx 库解析
+    const XLSX = await import('xlsx');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+
+      // 解析并校验
+      const items = [];
+      const errors = [];
+
+      jsonData.forEach((row, index) => {
+        const material = String(row.Material || row.material || '').trim();
+        const qty = parseFloat(row.Qty || row.qty || 0);
+        const bayNo = String(row.BayNo || row.Bay || row.bayNo || row.bay || '').trim();
+
+        if (!material) {
+          errors.push(`第${index + 2}行：物料号不能为空`);
+          return;
+        }
+        if (!qty || qty <= 0) {
+          errors.push(`第${index + 2}行：数量必须大于0`);
+          return;
+        }
+        if (!bayNo) {
+          errors.push(`第${index + 2}行：Bay号不能为空`);
+          return;
+        }
+
+        items.push({ material, qty, bayNo });
+      });
+
+      if (errors.length > 0) {
+        ElMessage.error(errors.join('\n'));
+        return;
+      }
+
+      formData.items = items;
+      ElMessage.success(`成功导入 ${items.length} 条物料`);
+    };
+    reader.readAsArrayBuffer(file);
+  } catch (err) {
+    console.error('解析Excel失败:', err);
+    ElMessage.error('解析Excel文件失败');
+  }
+
+  // 清空input
+  event.target.value = '';
+};
+
+const downloadTemplate = () => {
+  // 生成模板Excel
+  const templateData = [
+    { Material: 'M001', Qty: 100, BayNo: 'B01' },
+    { Material: 'M002', Qty: 50, BayNo: 'B02' }
+  ];
+
+  import('xlsx').then(XLSX => {
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '物料清单');
+    XLSX.writeFile(wb, '回仓申请物料清单模板.xlsx');
+  });
+};
+
+const clearItems = () => {
+  formData.items = [];
+};
+
+const removeItem = (index) => {
+  formData.items.splice(index, 1);
+};
+
+// 提交表单
+const submitForm = async () => {
+  if (!formData.bayNo) {
+    ElMessage.error('请填写Bay号');
+    return;
+  }
+  if (!formData.receiveBuilding) {
+    ElMessage.error('请选择接收Building');
+    return;
+  }
+  if (formData.items.length === 0) {
+    ElMessage.error('请导入物料清单');
+    return;
+  }
+
+  isSubmitting.value = true;
+  try {
+    const data = {
+      bayNo: formData.bayNo,
+      receiveBuilding: formData.receiveBuilding,
+      items: formData.items
+    };
+
+    let res;
+    if (isEditing.value && currentDocument.value) {
+      res = await api.updateDocument(currentDocument.value.id, data);
+    } else {
+      res = await api.createDocument(data);
+    }
+
+    if (res?.data?.code === 200) {
+      ElMessage.success(res.data.message || '提交成功');
+      closeCreateDialog();
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('提交失败:', err);
+    ElMessage.error(err.response?.data?.message || '提交失败');
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+// 接收单据
+const handleReceive = async (doc) => {
+  try {
+    const res = await api.receiveDocument(doc.id);
+    if (res?.data?.code === 200) {
+      ElMessage.success('单据已接收');
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('接收失败:', err);
+    ElMessage.error(err.response?.data?.message || '接收失败');
+  }
+};
+
+// 对账
+const openReconcileDialog = async (doc) => {
+  try {
+    // 先获取单据详情
+    const detailRes = await api.getDocumentById(doc.id);
+    if (detailRes?.data?.code === 200) {
+      currentDocument.value = detailRes.data.data;
+    }
+
+    // 执行对账
+    const res = await api.reconcileDocument(doc.id);
+    if (res?.data?.code === 200) {
+      reconcileResult.value = res.data.data;
+      selectedMatchedItems.value = [];
+      selectedListOnlyItems.value = [];
+      selectedSapOnlyItems.value = [];
+      reconcileTab.value = 'matched';
+      showReconcileDialog.value = true;
+    }
+  } catch (err) {
+    console.error('对账失败:', err);
+    ElMessage.error(err.response?.data?.message || '对账失败');
+  }
+};
+
+const closeReconcileDialog = () => {
+  showReconcileDialog.value = false;
+  reconcileResult.value = null;
+  currentDocument.value = null;
+};
+
+const toggleSelectMatched = () => {
+  if (selectAllMatched.value) {
+    selectedMatchedItems.value = reconcileResult.value?.matchedItems?.map(item => item.id) || [];
+  } else {
+    selectedMatchedItems.value = [];
+  }
+};
+
+const toggleSelectListOnly = () => {
+  if (selectAllListOnly.value) {
+    selectedListOnlyItems.value = reconcileResult.value?.listOnlyItems?.map(item => item.id) || [];
+  } else {
+    selectedListOnlyItems.value = [];
+  }
+};
+
+const toggleSelectSapOnly = () => {
+  if (selectAllSapOnly.value) {
+    selectedSapOnlyItems.value = reconcileResult.value?.sapOnlyItems?.map(item => item.sap_item_id) || [];
+  } else {
+    selectedSapOnlyItems.value = [];
+  }
+};
+
+// 退回
+const openReturnDialog = () => {
+  showReturnDialog.value = true;
+};
+
+const closeReturnDialog = () => {
+  showReturnDialog.value = false;
+  returnReason.value = '';
+};
+
+const handleReturn = async () => {
+  if (!returnReason.value.trim()) {
+    ElMessage.error('请填写退回原因');
+    return;
+  }
+
+  try {
+    const res = await api.returnItems(currentDocument.value.id, {
+      itemIds: selectedListOnlyItems.value,
+      reason: returnReason.value
+    });
+
+    if (res?.data?.code === 200) {
+      ElMessage.success('退回成功，邮件已发送');
+      closeReturnDialog();
+      closeReconcileDialog();
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('退回失败:', err);
+    ElMessage.error(err.response?.data?.message || '退回失败');
+  }
+};
+
+// 关闭匹配项
+const handleCloseMatched = async () => {
+  try {
+    const res = await api.closeItems(currentDocument.value.id, {
+      itemIds: selectedMatchedItems.value
+    });
+
+    if (res?.data?.code === 200) {
+      ElMessage.success('关闭成功');
+      closeReconcileDialog();
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('关闭失败:', err);
+    ElMessage.error(err.response?.data?.message || '关闭失败');
+  }
+};
+
+// 确认SAP独有项
+const handleConfirmSapOnly = async () => {
+  try {
+    const res = await api.confirmSapOnly(currentDocument.value.id, {
+      itemIds: selectedSapOnlyItems.value
+    });
+
+    if (res?.data?.code === 200) {
+      ElMessage.success('确认成功');
+      closeReconcileDialog();
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('确认失败:', err);
+    ElMessage.error(err.response?.data?.message || '确认失败');
+  }
+};
+
+// 100%匹配关闭全部
+const handleCloseAll = async () => {
+  try {
+    const matchedIds = reconcileResult.value?.matchedItems?.map(item => item.id) || [];
+    const res = await api.closeItems(currentDocument.value.id, {
+      itemIds: matchedIds
+    });
+
+    if (res?.data?.code === 200) {
+      ElMessage.success('单据已完结');
+      closeReconcileDialog();
+      loadDocuments();
+      loadStats();
+    }
+  } catch (err) {
+    console.error('关闭失败:', err);
+    ElMessage.error(err.response?.data?.message || '关闭失败');
+  }
+};
+
+// 打印
+const printApplication = (doc) => {
+  window.open(`/api/warehouse-return/preview/application/${doc.id}`, '_blank');
+};
+
+const printTransferOrder = (doc) => {
+  window.open(`/api/warehouse-return/preview/transfer/${doc.id}`, '_blank');
+};
+
+// 导出
+const exportData = () => {
+  ElMessage.info('导出功能开发中');
+};
+
+// 邮件抄送配置
+const saveEmailCc = async () => {
+  try {
+    const emails = emailCcInput.value
+      .split(',')
+      .map(e => e.trim())
+      .filter(e => e);
+
+    const configs = emails.map(email => ({
+      email,
+      emailType: 'cc'
+    }));
+
+    const res = await api.saveEmailCcConfig({ configs });
+    if (res?.data?.code === 200) {
+      ElMessage.success('保存成功');
+    }
+  } catch (err) {
+    console.error('保存失败:', err);
+    ElMessage.error(err.response?.data?.message || '保存失败');
+  }
+};
+
+// Building 配置相关方法
+const loadBuildingConfigs = async () => {
+  try {
+    const res = await api.getAllBuildingConfigs();
+    if (res?.data?.code === 200) {
+      buildingConfigs.value = res.data.data || [];
+    }
+  } catch (err) {
+    console.error('加载Building配置失败:', err);
+  }
+};
+
+const addBuilding = () => {
+  buildingConfigs.value.push({
+    code: '',
+    name: '',
+    isActive: true
+  });
+};
+
+const removeBuilding = (index: number) => {
+  // 如果只剩一个启用的，不允许删除
+  const activeCount = buildingConfigs.value.filter(b => b.isActive).length;
+  if (activeCount <= 1 && buildingConfigs.value[index].isActive) {
+    ElMessage.warning('至少需要保留一个启用的Building');
+    return;
+  }
+  buildingConfigs.value.splice(index, 1);
+};
+
+const saveBuildings = async () => {
+  try {
+    // 校验
+    for (let i = 0; i < buildingConfigs.value.length; i++) {
+      const b = buildingConfigs.value[i];
+      if (!b.code.trim()) {
+        ElMessage.warning(`第${i + 1}行：编码不能为空`);
+        return;
+      }
+      if (!b.name.trim()) {
+        ElMessage.warning(`第${i + 1}行：名称不能为空`);
+        return;
+      }
+    }
+
+    const res = await api.saveBuildingConfigs({ buildings: buildingConfigs.value });
+    if (res?.data?.code === 200) {
+      ElMessage.success('保存成功');
+      // 重新加载 Building 列表
+      loadBuildings();
+    }
+  } catch (err) {
+    console.error('保存Building配置失败:', err);
+    ElMessage.error(err.response?.data?.message || '保存失败');
+  }
+};
+
+// 权限判断
+const canEdit = (doc) => {
+  // 只有退回状态且是本人的单据才能编辑
+  return doc.status === 'reconciled_partial_return';
+};
+
+const canPrint = (doc) => {
+  // 提交人可以打印
+  return doc.status === 'pending_receiving';
+};
+
+const canPrintTransfer = (doc) => {
+  // 对账完成后可以打印转仓单
+  return ['reconciled_full_match', 'reconciled_partial_return', 'partial_close'].includes(doc.status);
+};
+
+// 工具函数
+const formatDate = (date) => {
+  if (!date) return '-';
+  const d = new Date(date);
+  return d.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const getStatusText = (status, pendingCount) => {
+  if (status === 'partial_close' && pendingCount > 0) {
+    return `${pendingCount} 条待处理`;
+  }
+  return statusTextMap[status] || status;
+};
+
+const getStatusStyle = (status) => {
+  const colors = {
+    pending_receiving: { background: '#fff7e6', color: '#fa8c16' },
+    received: { background: '#e6f7ff', color: '#1890ff' },
+    reconciled_full_match: { background: '#f6ffed', color: '#52c41a' },
+    reconciled_partial_return: { background: '#fff7e6', color: '#fa8c16' },
+    reconciled_diff: { background: '#fff1f0', color: '#ff4d4f' },
+    partial_close: { background: '#f9f0ff', color: '#722ed1' },
+    closed: { background: '#d9d9d9', color: '#595959' }
+  };
+  return colors[status] || {};
+};
+
+const getMatchStatusText = (status) => {
+  return matchStatusTextMap[status] || status;
+};
+
+// 对账日志辅助函数
+const hasMatchedItems = (log) => {
+  return log.matchedItems && log.matchedItems.length > 0;
+};
+const getMatchedCount = (log) => {
+  return log.matchedItems ? log.matchedItems.length : 0;
+};
+const hasListOnlyItems = (log) => {
+  return log.listOnlyItems && log.listOnlyItems.length > 0;
+};
+const getListOnlyCount = (log) => {
+  return log.listOnlyItems ? log.listOnlyItems.length : 0;
+};
+const hasSapOnlyItems = (log) => {
+  return log.sapOnlyItems && log.sapOnlyItems.length > 0;
+};
+const getSapOnlyCount = (log) => {
+  return log.sapOnlyItems ? log.sapOnlyItems.length : 0;
+};
+
+// 初始化
+onMounted(() => {
+  loadStats();
+  loadDocuments();
+  loadBuildings();
+  loadEmailCcConfig();
+  loadBuildingConfigs();
+});
+</script>
+
+<style scoped>
+.warehouse-return-container {
+  padding: 20px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.breadcrumb {
+  font-size: 14px;
+  color: #666;
+}
+
+.breadcrumb-item.active {
+  color: #333;
+  font-weight: 500;
+}
+
+.breadcrumb-separator {
+  margin: 0 8px;
+}
+
+/* 统计卡片 */
+.stats-cards {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card-active {
+  border: 2px solid #1890ff;
+}
+
+.stat-card-orange { border-left: 4px solid #fa8c16; }
+.stat-card-blue { border-left: 4px solid #1890ff; }
+.stat-card-yellow { border-left: 4px solid #faad14; }
+.stat-card-green { border-left: 4px solid #52c41a; }
+
+.stat-icon-bg {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+}
+
+.stat-card-orange .stat-icon-bg { background: #fff7e6; }
+.stat-card-blue .stat-icon-bg { background: #e6f7ff; }
+.stat-card-yellow .stat-icon-bg { background: #fffbe6; }
+.stat-card-green .stat-icon-bg { background: #f6ffed; }
+
+.stat-icon {
+  font-size: 24px;
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* 标签页 */
+.tabs-container {
+  margin-bottom: 20px;
+}
+
+.tabs-header {
+  display: flex;
+  gap: 4px;
+  background: #fafafa;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.tab-btn {
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.3s;
+}
+
+.tab-btn:hover {
+  background: #fff;
+}
+
+.tab-btn.active {
+  background: #fff;
+  color: #1890ff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 表格卡片 */
+.table-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.table-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.table-card-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.card-body {
+  padding: 20px;
+}
+
+/* 搜索栏 */
+.search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.search-item {
+  flex: 0 0 auto;
+}
+
+.search-item-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-item-wrapper label {
+  font-size: 12px;
+  color: #666;
+}
+
+.search-item-wrapper input,
+.search-item-wrapper select {
+  height: 32px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 0 12px;
+  min-width: 150px;
+}
+
+.date-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-range-inputs input {
+  min-width: 120px;
+}
+
+.date-separator {
+  color: #999;
+}
+
+.search-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* 表格 */
+.table-container {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px 8px;
+  text-align: left;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.data-table th {
+  background: #fafafa;
+  font-weight: 500;
+  color: #333;
+}
+
+.data-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.empty-cell {
+  text-align: center;
+  color: #999;
+  padding: 40px !important;
+}
+
+/* 状态徽章 */
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.match-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.match-status.status-pending { background: #f0f0f0; color: #666; }
+.match-status.status-matched { background: #f6ffed; color: #52c41a; }
+.match-status.status-returned { background: #fff7e6; color: #fa8c16; }
+.match-status.status-closed { background: #d9d9d9; color: #595959; }
+
+/* 操作按钮 */
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.action-btn.view { background: #e6f7ff; color: #1890ff; }
+.action-btn.edit { background: #f6ffed; color: #52c41a; }
+.action-btn.delete { background: #fff1f0; color: #ff4d4f; }
+.action-btn.receive { background: #e6f7ff; color: #1890ff; }
+.action-btn.reconcile { background: #f9f0ff; color: #722ed1; }
+.action-btn.print { background: #f0f0f0; color: #666; }
+
+.action-btn:hover {
+  opacity: 0.8;
+}
+
+/* 分页 */
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.pagination-info {
+  color: #666;
+  font-size: 14px;
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-pagination {
+  min-width: 36px;
+  height: 32px;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-pagination:hover:not(:disabled) {
+  color: #1890ff;
+  border-color: #1890ff;
+}
+
+.btn-pagination.active {
+  background: #1890ff;
+  color: #fff;
+  border-color: #1890ff;
+}
+
+.btn-pagination:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 通用按钮 */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background: #1890ff;
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-warning {
+  background: #fa8c16;
+  color: #fff;
+}
+
+.btn-success {
+  background: #52c41a;
+  color: #fff;
+}
+
+.btn-info {
+  background: #1890ff;
+  color: #fff;
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-refresh {
+  background: transparent;
+  border: 1px solid #d9d9d9;
+}
+
+.spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 弹窗 */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background: #fff;
+  border-radius: 8px;
+  width: 500px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialog-large {
+  width: 900px;
+  max-height: 85vh;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.dialog-close {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+  color: #999;
+}
+
+.dialog-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 表单 */
+.form-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.form-item {
+  flex: 1;
+  margin-bottom: 16px;
+}
+
+.form-item label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+  color: #333;
+}
+
+.form-item label.required::before {
+  content: '*';
+  color: #ff4d4f;
+  margin-right: 4px;
+}
+
+.form-item input,
+.form-item select,
+.form-item textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.form-item input:disabled,
+.form-item select:disabled {
+  background: #f5f5f5;
+}
+
+.file-upload {
+  margin-bottom: 16px;
+}
+
+.upload-area {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* 物料预览 */
+.items-preview {
+  margin-top: 16px;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #333;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* 详情页 */
+.detail-info {
+  margin-bottom: 24px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.detail-item {
+  flex: 1;
+}
+
+.detail-item label {
+  color: #666;
+  margin-right: 8px;
+}
+
+.detail-section {
+  margin-top: 24px;
+}
+
+.detail-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.log-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.log-item {
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.log-operator {
+  font-weight: 500;
+}
+
+.log-time {
+  color: #999;
+  font-size: 12px;
+}
+
+.log-section {
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.log-section.success { background: #f6ffed; color: #52c41a; }
+.log-section.warning { background: #fff7e6; color: #fa8c16; }
+.log-section.info { background: #e6f7ff; color: #1890ff; }
+
+/* 对账弹窗 */
+.reconcile-summary {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.summary-item {
+  flex: 1;
+  text-align: center;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.summary-item.success { background: #f6ffed; }
+.summary-item.warning { background: #fff7e6; }
+.summary-item.info { background: #e6f7ff; }
+
+.summary-count {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.summary-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.full-match-badge {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #52c41a;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.reconcile-tabs {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.reconcile-tab-header {
+  display: flex;
+  background: #fafafa;
+}
+
+.reconcile-tab {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.reconcile-tab:hover {
+  background: #fff;
+}
+
+.reconcile-tab.active {
+  background: #fff;
+  border-bottom: 2px solid #1890ff;
+  color: #1890ff;
+}
+
+.reconcile-tab-content {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* 配置页 */
+.config-section {
+  padding: 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.config-section:last-child {
+  border-bottom: none;
+}
+
+.config-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.config-desc {
+  margin: 0 0 16px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.config-form {
+  max-width: 600px;
+}
+
+.building-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.building-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.building-code-input {
+  width: 120px !important;
+}
+
+.building-name-input {
+  width: 200px !important;
+}
+
+.btn-danger {
+  background: #fff1f0;
+  color: #ff4d4f;
+  border: 1px solid #ffccc7;
+}
+
+.btn-danger:hover {
+  background: #ff4d4f;
+  color: #fff;
+}
+
+.form-actions {
+  margin-top: 16px;
+}
+</style>

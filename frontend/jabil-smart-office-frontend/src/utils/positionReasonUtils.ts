@@ -28,7 +28,7 @@ export const loadPositionReasonsToCache = async (): Promise<void> => {
   }
 
   try {
-    const response = await fetch('/api/config/position-reasons/position-reasons', {
+    const response = await fetch('/api/config/position-reasons', {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('jabil-token')}`
       }

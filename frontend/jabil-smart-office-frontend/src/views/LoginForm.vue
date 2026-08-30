@@ -24,6 +24,16 @@
         {{ isLoggingIn ? '登录中...' : '立即登录' }}
       </el-button>
     </el-form-item>
+    <!-- 离线登录按钮 -->
+    <el-form-item v-if="offlineUsers.length > 0">
+      <el-divider>或</el-divider>
+      <el-select v-model="selectedOfflineUser" placeholder="选择离线账号登录" class="offline-select">
+        <el-option v-for="user in offlineUsers" :key="user.username" :label="user.username + ' - ' + user.nickname" :value="user.username" />
+      </el-select>
+      <el-button type="info" class="offline-button" @click="handleOfflineLogin" :disabled="!selectedOfflineUser">
+        离线登录
+      </el-button>
+    </el-form-item>
   </el-form>
 </template>
 
@@ -33,7 +43,19 @@ import type { FormInstance } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
-import { setToken } from '../utils/request'; // 导入 setToken 函数
+import { setToken } from '../utils/request';
+
+// 保存离线用户信息到 localStorage
+const OFFLINE_USERS_KEY = 'offlineUsers';
+
+interface OfflineUser {
+  username: string;
+  nickname: string;
+  token: string;
+  roleName: string;
+  plantId: number;
+  departmentId: number;
+}
 
 const emit = defineEmits(['switch-view']);
 const router = useRouter();
@@ -45,9 +67,46 @@ const loginForm = reactive({
   rememberUsername: false,
 });
 const isLoggingIn = ref(false);
+const offlineUsers = ref<OfflineUser[]>([]);
+const selectedOfflineUser = ref('');
+
+// 加载离线用户列表
+const loadOfflineUsers = () => {
+  try {
+    const stored = localStorage.getItem(OFFLINE_USERS_KEY);
+    if (stored) {
+      offlineUsers.value = JSON.parse(stored);
+    }
+  } catch (e) {
+    offlineUsers.value = [];
+  }
+};
+
+// 保存用户到离线列表
+const saveOfflineUser = (userData: any, token: string) => {
+  const offlineUser: OfflineUser = {
+    username: userData.username || userData.account,
+    nickname: userData.nickname || userData.name || userData.username,
+    token: token,
+    roleName: userData.roleName || userData.role_name || '',
+    plantId: userData.plantId || userData.plant_id || 0,
+    departmentId: userData.departmentId || userData.department_id || 0,
+  };
+
+  // 检查是否已存在
+  const existingIndex = offlineUsers.value.findIndex(u => u.username === offlineUser.username);
+  if (existingIndex >= 0) {
+    offlineUsers.value[existingIndex] = offlineUser;
+  } else {
+    offlineUsers.value.push(offlineUser);
+  }
+
+  localStorage.setItem(OFFLINE_USERS_KEY, JSON.stringify(offlineUsers.value));
+};
 
 // 页面加载时检查是否有记住的用户名
 onMounted(() => {
+  loadOfflineUsers();
   const rememberedUser = localStorage.getItem('rememberedUser');
   if (rememberedUser) {
     loginForm.username = rememberedUser;
@@ -81,9 +140,9 @@ const handleLogin = async () => {
 
           if (fullResponse.code === 200) {
             if (fullResponse.data && fullResponse.data.token) {
-              console.log('[LoginForm] Received Token from backend:', fullResponse.data.token);
               setToken(fullResponse.data.token);
-              console.log('[LoginForm] Token after setToken():', localStorage.getItem('jabil-token'));
+              // 保存到离线用户列表
+              saveOfflineUser(fullResponse.data.user, fullResponse.data.token);
             }
             if (fullResponse.data && fullResponse.data.user) {
               // 保存用户信息到 localStorage
@@ -93,28 +152,63 @@ const handleLogin = async () => {
               localStorage.setItem('userPlantId', String(fullResponse.data.user.plantId));
               localStorage.setItem('userDepartmentId', String(fullResponse.data.user.departmentId));
 
-              ElMessage.success('登录成功！');
+              ElMessage.success({ message: '登录成功！', showClose: true, duration: 3000 });
 
               // 判断是否需要首次设置：需要改密码 或 未设置安全问题
               const needsSetup = fullResponse.data.user.mustChangePassword || !fullResponse.data.user.hasSecurityQuestion;
               const targetRoute = needsSetup ? '/first-time-setup' : '/';
-              console.log('[LoginForm] Preparing to navigate to:', targetRoute);
               router.push(targetRoute);
             } else {
-              ElMessage.error('登录成功，但用户信息不完整，请联系管理员。');
+              ElMessage.error({ message: '登录成功，但用户信息不完整，请联系管理员。', showClose: true, duration: 5000 });
               router.push('/login');
             }
           } else {
-            ElMessage.error(fullResponse.message || '登录失败');
+            ElMessage.error({ message: fullResponse.message || '登录失败', showClose: true, duration: 3000 });
           }
         } catch (error: any) {
-
-          ElMessage.error(error.message || '登录请求失败');
+          // 如果是网络错误，提示离线登录
+          if (error.message.includes('Failed to fetch') || error.message.includes('网络')) {
+            ElMessage.warning({ message: '网络不可用，请使用离线登录', showClose: true, duration: 3000 });
+          } else {
+            ElMessage.error({ message: error.message || '登录请求失败', showClose: true, duration: 3000 });
+          }
         } finally {
           isLoggingIn.value = false;
         }
     }
   });
+};
+
+// 离线登录
+const handleOfflineLogin = () => {
+  if (!selectedOfflineUser.value) {
+    ElMessage.warning('请选择离线账号');
+    return;
+  }
+
+  const user = offlineUsers.value.find(u => u.username === selectedOfflineUser.value);
+  if (!user) {
+    ElMessage.error('用户信息不存在');
+    return;
+  }
+
+  // 使用缓存的信息登录
+  setToken(user.token);
+  localStorage.setItem('user', JSON.stringify({
+    username: user.username,
+    nickname: user.nickname,
+    roleName: user.roleName,
+    plantId: user.plantId,
+    departmentId: user.departmentId,
+  }));
+  localStorage.setItem('isLoggedIn', 'true');
+  localStorage.setItem('userRole', user.roleName);
+  localStorage.setItem('userPlantId', String(user.plantId));
+  localStorage.setItem('userDepartmentId', String(user.departmentId));
+  localStorage.setItem('offlineMode', 'true'); // 标记离线模式
+
+  ElMessage.success({ message: '离线登录成功！部分功能可能不可用', showClose: true, duration: 5000 });
+  router.push('/');
 };
 </script>
 
@@ -263,5 +357,14 @@ p {
 
 .login-button:hover::before {
   left: 100%;
+}
+
+.offline-select {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.offline-button {
+  width: 100%;
 }
 </style>

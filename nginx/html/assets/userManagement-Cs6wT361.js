@@ -1,1 +1,0 @@
-import{i as e}from"./request-BnKLBhAq.js";function t(t){return e({url:`/users`,method:`get`,params:t})}function n(t){return e({url:`/departments`,method:`get`,params:t})}export{t as n,n as t};

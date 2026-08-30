@@ -12,9 +12,24 @@ import { checkBreak7Rest1 } from '../utils/scheduleUtils.js';
 import { handleScheduleUpload } from '../services/batchUploadService.js';
 import { parseExcel } from '../utils/excelUtils.js';
 import { success, created, error as httpError, paginated } from '../utils/responseHelper.js';
-import { AppError, BadRequestError, NotFoundError } from '../middlewares/errorHandler.js';
+import { AppError, BadRequestError, NotFoundError, ForbiddenError } from '../middlewares/errorHandler.js';
 import { logInfo, logWarn, logError, logDatabase } from '../utils/logger.js';
 import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
+import permissionService from '../services/permissionService.js';
+
+/**
+ * 获取用户对 schedule 模块的数据范围
+ */
+const getUserScheduleDataScope = async (userId) => {
+  const effectivePerms = await permissionService.getEffectivePermissions(userId);
+  // 查找 schedule 模块的权限（数据库中模块名是 employee-schedule）
+  const schedulePerm = effectivePerms.find(p => p.module === 'employee-schedule');
+  if (schedulePerm) {
+    return schedulePerm.dataScope || 'self';
+  }
+  // 默认只能看自己的
+  return 'self';
+};
 
 /**
  * 获取员工排班和工时统计
@@ -22,8 +37,12 @@ import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartmen
 export const getEmployeesWithSchedule = async (req, res, next) => {
   try {
     const { plantId, departmentId, startDate, endDate } = req.query;
+    const currentUser = req.user;
 
-    // 1. 获取所有员工（不包括超级管理员）
+    // 1. 获取用户的数据范围权限
+    const dataScope = await getUserScheduleDataScope(currentUser.id);
+
+    // 2. 根据数据范围构建用户过滤条件
     let userWhere = ' WHERE u.username != \'admin\'';
     const userParams = [];
     let currentParamIndex = 1;
@@ -35,15 +54,49 @@ export const getEmployeesWithSchedule = async (req, res, next) => {
     const queryStart = startDate || monthStart;
     const queryEnd = endDate || monthEnd;
 
-    if (plantId) {
+    // 根据数据范围应用过滤条件
+    // 注意：如果前端传了 departmentId 或 plantId（手动筛选），优先使用前端参数
+    // 但数据范围会限制可选范围
+    if (dataScope === 'self') {
+      // 只能看自己
+      userWhere += ` AND u.id = $${currentParamIndex}`;
+      userParams.push(currentUser.id);
+      currentParamIndex++;
+    } else if (dataScope === 'dept') {
+      // 只能看自己部门
+      userWhere += ` AND u.department_id = $${currentParamIndex}`;
+      userParams.push(currentUser.departmentId);
+      currentParamIndex++;
+    } else if (dataScope === 'plant') {
+      // 只能看自己厂区
       userWhere += ` AND u.plant_id = $${currentParamIndex}`;
-      userParams.push(plantId);
+      userParams.push(currentUser.plantId);
+      currentParamIndex++;
+    }
+    // 'all' 是不添加任何过滤条件，可以看到所有
+
+    // 如果前端指定了 departmentId（手动筛选），需要确保在数据范围允许的范围内
+    if (departmentId) {
+      if (dataScope === 'self' && parseInt(departmentId) !== currentUser.departmentId) {
+        // 如果数据范围是"本人"但选择了其他部门，返回空结果
+        return success(res, { employees: [], total: 0, page: 1, pageSize: 50 });
+      }
+      // 如果数据范围是"部门"或更宽，不需要额外检查（前端筛选会自动限制在范围内）
+      userWhere += ` AND u.department_id = $${currentParamIndex}`;
+      userParams.push(departmentId);
       currentParamIndex++;
     }
 
-    if (departmentId) {
-      userWhere += ` AND u.department_id = $${currentParamIndex}`;
-      userParams.push(departmentId);
+    // 如果前端指定了 plantId（手动筛选），需要确保在数据范围允许的范围内
+    if (plantId) {
+      if (dataScope === 'self' && parseInt(plantId) !== currentUser.plantId) {
+        return success(res, { employees: [], total: 0, page: 1, pageSize: 50 });
+      }
+      if (dataScope === 'dept' && parseInt(plantId) !== currentUser.plantId) {
+        return success(res, { employees: [], total: 0, page: 1, pageSize: 50 });
+      }
+      userWhere += ` AND u.plant_id = $${currentParamIndex}`;
+      userParams.push(plantId);
       currentParamIndex++;
     }
 
@@ -192,6 +245,7 @@ export const getEmployeesWithSchedule = async (req, res, next) => {
         departmentName: user.department_name,
         position: user.position,
         level: user.level,
+        employeeHireDate: user.hire_date ? dayjs(user.hire_date).format('YYYY-MM-DD') : null,
         schedule: userSchedule,
         scheduleHours: scheduleHours,
         overtimeHours: overtimeHours,
@@ -220,6 +274,50 @@ export const saveSchedule = async (req, res, next) => {
 
     if (!employeeId || !scheduleDate || !shift) {
       throw BadRequestError('员工ID、排班日期和班次不能为空');
+    }
+
+    // 【权限检查】检查用户是否有编辑排班的权限
+    const currentUser = req.user;
+    const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+    const schedulePerm = effectivePerms.find(p => p.module === 'employee-schedule');
+
+    // 检查是否有编辑权限
+    if (!schedulePerm || !schedulePerm.canEdit) {
+      throw ForbiddenError('您没有编辑排班的权限');
+    }
+
+    // 【数据范围检查】检查目标员工是否在用户可管理的范围内
+    const userDataScope = schedulePerm.dataScope || 'self';
+    if (userDataScope !== 'all') {
+      // 获取目标员工的部门/厂区信息
+      const targetUserResult = await pool.query(
+        `SELECT department_id, plant_id FROM ${USER_TABLE} WHERE id = $1`,
+        [employeeId]
+      );
+
+      if (targetUserResult.rows.length === 0) {
+        throw BadRequestError('找不到目标员工');
+      }
+
+      const targetUser = targetUserResult.rows[0];
+
+      switch (userDataScope) {
+        case 'self':
+          if (parseInt(employeeId) !== currentUser.id) {
+            throw ForbiddenError('您只能编辑自己的排班');
+          }
+          break;
+        case 'dept':
+          if (targetUser.department_id !== currentUser.departmentId) {
+            throw ForbiddenError('您只能编辑本部门员工的排班');
+          }
+          break;
+        case 'plant':
+          if (targetUser.plant_id !== currentUser.plantId) {
+            throw ForbiddenError('您只能编辑本厂区员工的排班');
+          }
+          break;
+      }
     }
 
     // 检查是否存在
@@ -361,6 +459,50 @@ export const deleteSchedule = async (req, res, next) => {
 
     if (!employeeId || !scheduleDate) {
       throw BadRequestError('员工ID和排班日期不能为空');
+    }
+
+    // 【权限检查】检查用户是否有编辑排班的权限
+    const currentUser = req.user;
+    const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+    const schedulePerm = effectivePerms.find(p => p.module === 'employee-schedule');
+
+    // 检查是否有编辑权限
+    if (!schedulePerm || !schedulePerm.canEdit) {
+      throw ForbiddenError('您没有删除排班的权限');
+    }
+
+    // 【数据范围检查】检查目标员工是否在用户可管理的范围内
+    const userDataScope = schedulePerm.dataScope || 'self';
+    if (userDataScope !== 'all') {
+      // 获取目标员工的部门/厂区信息
+      const targetUserResult = await pool.query(
+        `SELECT department_id, plant_id FROM ${USER_TABLE} WHERE id = $1`,
+        [employeeId]
+      );
+
+      if (targetUserResult.rows.length === 0) {
+        throw BadRequestError('找不到目标员工');
+      }
+
+      const targetUser = targetUserResult.rows[0];
+
+      switch (userDataScope) {
+        case 'self':
+          if (parseInt(employeeId) !== currentUser.id) {
+            throw ForbiddenError('您只能删除自己的排班');
+          }
+          break;
+        case 'dept':
+          if (targetUser.department_id !== currentUser.departmentId) {
+            throw ForbiddenError('您只能删除本部门员工的排班');
+          }
+          break;
+        case 'plant':
+          if (targetUser.plant_id !== currentUser.plantId) {
+            throw ForbiddenError('您只能删除本厂区员工的排班');
+          }
+          break;
+      }
     }
 
     await pool.query(

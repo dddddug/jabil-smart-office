@@ -514,7 +514,7 @@ const expandedGroups = ref<string[]>([]);
 // Computed: 主菜单分组 (parent_code 为 null 且 sort_order >= 100 的是分组)
 const moduleGroups = computed(() => {
   return modules.value
-    .filter(m => m.parent_code === null && m.is_group === true)
+    .filter(m => m.parent_code === null)
     .sort((a, b) => a.sort_order - b.sort_order);
 });
 
@@ -669,14 +669,15 @@ const loadAllData = async () => {
       request.get<Role[]>('/roles', { params: { _t: Date.now() } }),
       request.get<User[]>('/permissions/manageable-users', { params: { _t: Date.now() } })
     ]);
-    console.log('modulesRes:', modulesRes);
-    console.log('permsRes:', permsRes);
-    console.log('rolesRes:', rolesRes);
-    console.log('usersRes:', usersRes);
-    modules.value = Array.isArray(modulesRes) ? modulesRes : [];
-    permissions.value = Array.isArray(permsRes) ? permsRes : [];
-    roles.value = Array.isArray(rolesRes) ? rolesRes : [];
-    manageableUsers.value = Array.isArray(usersRes) ? usersRes : [];
+    // axios 拦截器返回 { code, message, data: [...] }
+    const modulesData = (modulesRes as any)?.data || modulesRes;
+    const permsData = (permsRes as any)?.data || permsRes;
+    const rolesData = (rolesRes as any)?.data || rolesRes;
+    const usersData = (usersRes as any)?.data || usersRes;
+    modules.value = Array.isArray(modulesData) ? modulesData : [];
+    permissions.value = Array.isArray(permsData) ? permsData : [];
+    roles.value = Array.isArray(rolesData) ? rolesData : [];
+    manageableUsers.value = Array.isArray(usersData) ? usersData : [];
   } catch (err: any) {
     ElMessage.error({ message: err.message || '加载数据失败', showClose: true, duration: 3000 });
   } finally {
@@ -782,28 +783,26 @@ const loadRolePermissionsConfig = async () => {
     loading.value = true;
     // 取消所有防抖请求，确保这次请求能执行
     cancelDebouncedRequests();
-    const perms = await request.get<RolePermission[]>(`/permissions/roles/${selectedRoleId.value}`, {
+    const res = await request.get<RolePermission[]>(`/permissions/roles/${selectedRoleId.value}`, {
       params: { _t: Date.now() }
     });
-    console.log('loadRolePermissionsConfig - perms:', perms);
-    existingRolePermissions.value = perms || [];
+    const perms = (res as any)?.data || res || [];
+    existingRolePermissions.value = Array.isArray(perms) ? perms : [];
 
     // Initialize selected permissions from existing config
-    selectedPermissions.value = perms?.map(p => ({ permission_id: p.permission_id, code: p.code })) || [];
-    console.log('loadRolePermissionsConfig - selectedPermissions:', selectedPermissions.value);
-    console.log('loadRolePermissionsConfig - first perm object:', JSON.stringify(perms?.[0]));
+    selectedPermissions.value = Array.isArray(perms) ? perms.map(p => ({ permission_id: p.permission_id, code: p.code })) : [];
     originalPermissions.value = selectedPermissions.value.map(p => p.code);
-    console.log('loadRolePermissionsConfig - originalPermissions:', originalPermissions.value);
 
     // Initialize configs for each permission
     Object.keys(permissionConfigs).forEach(k => delete permissionConfigs[k]);
-    perms?.forEach(p => {
-      permissionConfigs[p.code] = {
-        data_scope: p.data_scope,
-        can_edit: p.can_edit
-      };
-    });
-    console.log('loadRolePermissionsConfig - permissionConfigs:', permissionConfigs);
+    if (Array.isArray(perms)) {
+      perms.forEach(p => {
+        permissionConfigs[p.code] = {
+          data_scope: p.data_scope,
+          can_edit: p.can_edit
+        };
+      });
+    }
   } catch (err: any) {
     ElMessage.error({ message: err.message || '加载角色权限失败', showClose: true, duration: 3000 });
   } finally {
@@ -819,7 +818,6 @@ const updatePermissionConfig = (perm: Permission) => {
 
 // 切换权限选中状态
 const togglePermissionSelection = (perm: Permission) => {
-  console.log('togglePermissionSelection called for:', perm.code);
   const idx = selectedPermissions.value.findIndex(p => p.code === perm.code);
   if (idx !== -1) {
     // 取消选中
@@ -834,7 +832,6 @@ const togglePermissionSelection = (perm: Permission) => {
 
 const isPermissionSelected = (perm: any) => {
   const selected = selectedPermissions.value.some(p => p.code === perm.code);
-  console.log(`isPermissionSelected(${perm.code}):`, selected, 'array length:', selectedPermissions.value.length);
   return selected;
 };
 
@@ -920,8 +917,9 @@ const loadUserPermissionsConfig = async () => {
 
   try {
     loading.value = true;
-    const directPerms = await request.get<UserPermission[]>(`/permissions/users/${selectedUserId.value}`);
-    selectedUserDirectPermissions.value = directPerms || [];
+    const res = await request.get<UserPermission[]>(`/permissions/users/${selectedUserId.value}`);
+    const directPerms = (res as any)?.data || res || [];
+    selectedUserDirectPermissions.value = Array.isArray(directPerms) ? directPerms : [];
 
     // For role permissions, we'd need to get them from the user's role
     // This is simplified - in a real app, you'd have an API to get role permissions for a user

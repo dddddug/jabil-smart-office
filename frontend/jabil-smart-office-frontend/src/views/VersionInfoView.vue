@@ -401,7 +401,7 @@ const loadVersionInfo = async () => {
       }
     }
   } catch (error) {
-    console.log('无法获取后端版本信息，使用默认值');
+    // console.log('无法获取后端版本信息');
     // 使用构建时注入的版本号作为默认值
     versionInfo.value.currentVersion = __APP_VERSION__ || '1.0.0';
     // 如果 API 调用失败，加载模拟数据

@@ -43,88 +43,15 @@
               </div>
             </div>
 
-            <!-- 每日平均费用卡片 -->
-            <div class="metric-card daily-cost-card">
-              <div class="metric-icon daily-cost-icon">
-                <i class="icon">💲</i>
+            <div class="metric-card ratio-card">
+              <div class="metric-icon ratio-icon">
+                <i class="icon">💱</i>
               </div>
               <div class="metric-content">
-                <div class="metric-label">{{ dimensionAwareMetrics.label }}</div>
-                <div class="metric-value">$ {{ formatNumber(keyMetrics.averageDailyCostUSD) }}</div>
+                <div class="metric-label">本月汇率</div>
+                <div class="metric-value">{{ exchangeRate.toFixed(4) }}</div>
                 <div class="metric-trend positive">
-                  <i class="trend-icon">🚀</i>
-                  {{ dimensionAwareMetrics.subtitle }}
-                </div>
-              </div>
-            </div>
-
-            <!-- 日度专属：累计消耗卡片 -->
-            <div v-if="currentTimeDimension === 'daily'" class="metric-card cumulative-card">
-              <div class="metric-icon cumulative-icon">
-                <i class="icon">📈</i>
-              </div>
-              <div class="metric-content">
-                <div class="metric-label">月累计消耗</div>
-                <div class="metric-value">$ {{ formatNumber(keyMetrics.cumulativeCost) }}</div>
-                <div class="metric-trend" :class="getCumulativeTrendClass()">
-                  <i class="trend-icon">{{ getCumulativeStatusIcon() }}</i>
-                  {{ getCumulativeStatusLabel() }}
-                </div>
-              </div>
-            </div>
-
-            <!-- 日度专属：预算进度卡片 -->
-            <div v-if="currentTimeDimension === 'daily'" class="metric-card progress-card">
-              <div class="metric-icon progress-icon">
-                <i class="icon">⏱️</i>
-              </div>
-              <div class="metric-content">
-                <div class="metric-label">预算进度</div>
-                <div class="metric-value">{{ keyMetrics.costProgressRatio.toFixed(1) }}%</div>
-                <div class="metric-progress">
-                  <div class="progress-bar-container">
-                    <div class="progress-bar-bg"></div>
-                    <div class="progress-bar-time" :style="{ width: (keyMetrics.timeProgressRatio * 100) + '%' }"></div>
-                    <div class="progress-bar-cost" :style="{ width: Math.min(keyMetrics.costProgressRatio * 100, 100) + '%' }"></div>
-                  </div>
-                  <div class="progress-labels">
-                    <span class="label-time">时间进度 {{ (keyMetrics.timeProgressRatio * 100).toFixed(0) }}%</span>
-                    <span class="label-cost">费用进度 {{ (keyMetrics.costProgressRatio * 100).toFixed(1) }}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 日度专属：滚动平均卡片 -->
-            <div v-if="currentTimeDimension === 'daily'" class="metric-card rolling-card">
-              <div class="metric-icon rolling-icon">
-                <i class="icon">📊</i>
-              </div>
-              <div class="metric-content">
-                <div class="metric-label">7日/30日均</div>
-                <div class="metric-value">
-                  <span class="avg-7">${{ formatNumber(keyMetrics.avg7Day) }}</span>
-                  <span class="avg-divider">/</span>
-                  <span class="avg-30">${{ formatNumber(keyMetrics.avg30Day) }}</span>
-                </div>
-                <div class="metric-trend" :class="getRollingTrendClass()">
-                  <i class="trend-icon">{{ getRollingTrendIcon() }}</i>
-                  {{ getRollingTrendLabel() }}
-                </div>
-              </div>
-            </div>
-
-            <!-- 日度专属：异常预警卡片 -->
-            <div v-if="currentTimeDimension === 'daily'" class="metric-card anomaly-card" :class="{ 'has-anomaly': keyMetrics.hasAnomaly }">
-              <div class="metric-icon anomaly-icon">
-                <i class="icon">{{ keyMetrics.hasAnomaly ? '🚨' : '✅' }}</i>
-              </div>
-              <div class="metric-content">
-                <div class="metric-label">异常检测</div>
-                <div class="metric-value">{{ keyMetrics.anomalyStatus }}</div>
-                <div class="metric-trend" :class="keyMetrics.anomalyStatus === 'normal' ? 'positive' : 'warning'">
-                  <i class="trend-icon">{{ keyMetrics.anomalyCount > 0 ? '⚠' : '✓' }}</i>
-                  {{ keyMetrics.anomalyCount > 0 ? keyMetrics.anomalyCount + ' 项异常' : '暂无异常' }}
+                  <i class="trend-icon">CNY/USD</i>
                 </div>
               </div>
             </div>
@@ -158,15 +85,24 @@
               </div>
             </div>
 
-            <div class="metric-card ratio-card">
-              <div class="metric-icon ratio-icon">
-                <i class="icon">💱</i>
+            <!-- 日度专属：预算进度卡片 -->
+            <div v-if="currentTimeDimension === 'daily'" class="metric-card progress-card">
+              <div class="metric-icon progress-icon">
+                <i class="icon">⏱️</i>
               </div>
               <div class="metric-content">
-                <div class="metric-label">本月汇率</div>
-                <div class="metric-value">{{ exchangeRate.toFixed(4) }}</div>
-                <div class="metric-trend positive">
-                  <i class="trend-icon">CNY/USD</i>
+                <div class="metric-label">预算进度</div>
+                <div class="metric-value">{{ keyMetrics.costProgressRatio.toFixed(1) }}%</div>
+                <div class="metric-progress">
+                  <div class="progress-bar-container">
+                    <div class="progress-bar-bg"></div>
+                    <div class="progress-bar-time" :style="{ width: (keyMetrics.timeProgressRatio * 100) + '%' }"></div>
+                    <div class="progress-bar-cost" :style="{ width: Math.min(keyMetrics.costProgressRatio * 100, 100) + '%' }"></div>
+                  </div>
+                  <div class="progress-labels">
+                    <span class="label-time">时间进度 {{ (keyMetrics.timeProgressRatio * 100).toFixed(0) }}%</span>
+                    <span class="label-cost">费用进度 {{ (keyMetrics.costProgressRatio * 100).toFixed(1) }}%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -319,7 +255,7 @@ import CostSummaryCharts from './cost-summary/CostSummaryCharts.vue';
 import CostSummaryTable from './cost-summary/CostSummaryTable.vue';
 import CostSummaryExportDialog from './cost-summary/CostSummaryExportDialog.vue';
 import { getCostSummary, recalculateCost } from '@/api/costSummary';
-import { getToken, removeToken } from '@/utils/request';
+import { getToken, removeToken, clearRequestCache } from '@/utils/request';
 
 interface KeyMetrics {
   availableBudget: number;
@@ -485,7 +421,7 @@ const pagination = reactive({
   pageSize: 10,
 });
 
-const currentTimeDimension = ref('weekly');
+const currentTimeDimension = ref('daily');
 
 const timeDimensionLabels: Record<string, string> = {
   daily: '日度费用分析看板',
@@ -508,8 +444,8 @@ const dimensionAwareMetrics = computed(() => {
 
   switch (dimension) {
     case 'daily':
-      label = '7日滚动均值';
-      subtitle = '最近7天平均消耗';
+      label = '今日日均可用费用';
+      subtitle = '预估费用/财月天数/汇率';
       periodLabel = '日度';
       break;
     case 'weekly':
@@ -550,6 +486,10 @@ const remainingStatusLabel = computed(() => {
 // 处理时间维度变化
 const handleTimeDimensionChange = (dimension: string) => {
   currentTimeDimension.value = dimension;
+  // 清除请求缓存，确保获取最新数据
+  clearRequestCache();
+  // 更新筛选参数中的时间维度
+  currentFilterParams.value = { ...currentFilterParams.value, timeDimension: dimension };
   // 重置分页并刷新数据
   pagination.currentPage = 1;
   fetchCostSummary();
@@ -632,17 +572,26 @@ const getRollingTrendLabel = (): string => {
 const fetchCostSummary = async () => {
   loading.value = true;
   try {
+    // 清空旧数据，防止显示错误数据
+    keyMetrics.availableBudget = 0;
+    keyMetrics.consumedCost = 0;
+    keyMetrics.remainingCost = 0;
+    keyMetrics.consumptionRatio = 0;
+    keyMetrics.averageDailyCostUSD = 0;
+    keyMetrics.cumulativeCost = 0;
+    keyMetrics.costProgressRatio = 0;
+    keyMetrics.timeProgressRatio = 0;
+    exchangeRate.value = 0;
+
     const params = {
       ...currentFilterParams.value,
       page: pagination.currentPage,
       pageSize: pagination.pageSize,
     };
-    // 拦截器已自动解包 data，res 直接是数据对象
-    const data = await getCostSummary(params);
+    // axios 拦截器返回 { code, message, data: {...} }
+    const res: any = await getCostSummary(params);
+    const data = res?.data || res || {};
     if (data) { // 检查数据是否存在，即使是空数据也可能是有效响应
-      console.log('[DEBUG] API response keys:', Object.keys(data));
-      console.log('[DEBUG] exchangeRate in API response:', data.exchangeRate, 'type:', typeof data.exchangeRate);
-      console.log('[DEBUG] data object:', JSON.stringify(data, null, 2).slice(0, 1000));
 
       // 基础指标
       keyMetrics.availableBudget = data.availableBudget;
@@ -651,7 +600,6 @@ const fetchCostSummary = async () => {
       keyMetrics.consumptionRatio = data.consumptionRatio * 100;
       keyMetrics.averageDailyCostUSD = data.averageDailyCostUSD;
       exchangeRate.value = data.exchangeRate || 0;
-      console.log('[DEBUG] exchangeRate after assignment:', exchangeRate.value);
 
       // 日度维度：累计与预算进度对比
       if (data.dailyBudgetProgress) {
@@ -737,6 +685,7 @@ const fetchCostSummary = async () => {
 };
 
 const handleFilterChange = (filters: any) => {
+  clearRequestCache(); // 清除缓存
   currentFilterParams.value = { ...filters, timeDimension: currentTimeDimension.value };
   pagination.currentPage = 1;
   fetchCostSummary();

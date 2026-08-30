@@ -198,7 +198,7 @@ const loadConfig = async () => {
     originalConfig.emailConfig = { ...emailConfig };
   } catch (error) {
     console.error('加载配置失败:', error);
-    ElMessage.error('加载配置失败');
+    ElMessage.error({ message: '加载配置失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -238,10 +238,10 @@ const saveConfig = async () => {
     originalConfig.configList = JSON.parse(JSON.stringify(configList.value));
     originalConfig.emailConfig = { ...emailConfig };
 
-    ElMessage.success('配置保存成功！');
+    ElMessage.success({ message: '配置保存成功！', showClose: true, duration: 3000 });
   } catch (error) {
     console.error('保存配置失败:', error);
-    ElMessage.error('保存配置失败');
+    ElMessage.error({ message: '保存配置失败', showClose: true, duration: 3000 });
   }
 };
 

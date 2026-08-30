@@ -25,24 +25,51 @@
               <span class="count-badge">{{ plant.totalEmployees || 0 }} 人</span>
             </div>
             <div v-if="expandedPlants.has(plant.id)" class="department-list" :ref="el => setDepartmentListRef(plant.id, el)">
-              <div 
-                class="department-item" 
-                v-for="(dept, index) in plant.departments" 
-                :key="dept.id"
-                :ref="el => setDepartmentItemRef(plant.id, index, el)"
-                :class="{ 'line-break': isLineBreak(plant.id, index) }"
-              >
-                <div class="department-header">
-                  <span class="dept-icon">📁</span>
-                  <div class="dept-info">
-                    <span class="dept-name">{{ dept.name }}</span>
-                    <div class="dept-meta">
-                      <span class="count-badge-mini">{{ dept.employees.length }} 人</span>
-                      <span v-if="dept.managerName" class="manager-name">👤 {{ dept.managerName }}</span>
+              <template v-for="(dept, index) in plant.departments" :key="dept.id">
+                <div
+                  class="department-item"
+                  :ref="el => setDepartmentItemRef(plant.id, index, el)"
+                  :class="{ 'line-break': isLineBreak(plant.id, index) }"
+                >
+                  <div class="department-header" :style="{ paddingLeft: '20px' }">
+                    <span v-if="dept.children && dept.children.length > 0" class="expand-icon" @click.stop="toggleDepartmentExpand(dept.id)">
+                      <span v-if="expandedDepartments.has(dept.id)">▼</span>
+                      <span v-else>▶</span>
+                    </span>
+                    <span class="dept-icon">📁</span>
+                    <div class="dept-info">
+                      <span class="dept-name">{{ dept.name }}</span>
+                      <div class="dept-meta">
+                        <span class="count-badge-mini">{{ dept.employees.length }} 人</span>
+                        <span v-if="dept.managerName" class="manager-name">👤 {{ dept.managerName }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+                <!-- 子部门 -->
+                <template v-if="dept.children && dept.children.length > 0 && expandedDepartments.has(dept.id)">
+                  <div
+                    v-for="child in dept.children"
+                    :key="child.id"
+                    class="department-item child-dept"
+                  >
+                    <div class="department-header" :style="{ paddingLeft: '40px' }">
+                      <span v-if="child.children && child.children.length > 0" class="expand-icon" @click.stop="toggleDepartmentExpand(child.id)">
+                        <span v-if="expandedDepartments.has(child.id)">▼</span>
+                        <span v-else>▶</span>
+                      </span>
+                      <span class="dept-icon">📂</span>
+                      <div class="dept-info">
+                        <span class="dept-name">{{ child.name }}</span>
+                        <div class="dept-meta">
+                          <span class="count-badge-mini">{{ child.employees.length }} 人</span>
+                          <span v-if="child.managerName" class="manager-name">👤 {{ child.managerName }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </template>
             </div>
           </div>
         </div>
@@ -200,11 +227,13 @@ interface Department {
   id: number;
   name: string;
   plantId: number;
+  parentId?: number;
 }
 
 interface DepartmentWithEmployees extends Department {
   employees: Employee[];
-  managerName: string; // 添加 managerName 属性
+  managerName: string;
+  children: DepartmentWithEmployees[];
 }
 
 interface PlantWithDepartments extends Plant {
@@ -264,25 +293,53 @@ const plantsWithDepartments = computed<PlantWithDepartments[]>(() => {
   const result: PlantWithDepartments[] = [];
 
   for (const plant of plants.value) {
-    const plantDepts: DepartmentWithEmployees[] = [];
-    const depts = departments.value.filter(d => d.plantId === plant.id);
+    const plantDepts = departments.value.filter(d => d.plantId === plant.id);
 
-    let totalPlantEmployees = 0;
-    
-    for (const dept of depts) {
-      const deptEmps = employees.value.filter(e => e.departmentId === dept.id);
-      totalPlantEmployees += deptEmps.length;
-      plantDepts.push({
+    // 构建树形结构
+    const deptMap = new Map<number, DepartmentWithEmployees>();
+    const rootDepts: DepartmentWithEmployees[] = [];
+
+    // 初始化所有部门
+    for (const dept of plantDepts) {
+      deptMap.set(dept.id, {
         ...dept,
-        employees: deptEmps,
-        managerName: '待定' // Added placeholder managerName
+        employees: [],
+        managerName: '待定',
+        children: []
       });
     }
 
+    // 建立父子关系
+    for (const dept of plantDepts) {
+      const deptWithEmps = deptMap.get(dept.id)!;
+      if (dept.parentId && deptMap.has(dept.parentId)) {
+        deptMap.get(dept.parentId)!.children.push(deptWithEmps);
+      } else {
+        rootDepts.push(deptWithEmps);
+      }
+    }
+
+    // 分配员工到部门
+    for (const emp of employees.value) {
+      const dept = deptMap.get(emp.departmentId);
+      if (dept) {
+        dept.employees.push(emp);
+      }
+    }
+
+    // 计算总人数
+    let totalPlantEmployees = 0;
+    const countEmployees = (depts: DepartmentWithEmployees[]) => {
+      for (const d of depts) {
+        totalPlantEmployees += d.employees.length;
+        countEmployees(d.children);
+      }
+    };
+    countEmployees(rootDepts);
+
     result.push({
       ...plant,
-      departments: plantDepts,
-      // 添加总人数信息
+      departments: rootDepts,
       totalEmployees: totalPlantEmployees
     });
   }
@@ -324,7 +381,7 @@ const loadPlants = async () => {
     if (error?.code === 'CANCELLED' || error?.name === 'AbortError') {
       return;
     }
-    ElMessage.error('加载厂区失败:' + error);
+    ElMessage.error({ message: '加载厂区失败:' + error, showClose: true, duration: 3000 });
     // 如果API失败，使用本地默认数据（必须与数据库 jso_org_plant_management 表一致）
     // 当前数据库数据: id 1=MPL PhaseV, 2=ENE A, 3=ENE B, 4=ENE C, 5=DYF, 6=IC, 7=MPL
     plants.value = [
@@ -353,7 +410,7 @@ const loadDepartments = async () => {
     if (error?.code === 'CANCELLED' || error?.name === 'AbortError') {
       return;
     }
-    ElMessage.error('加载部门失败:' + error);
+    ElMessage.error({ message: '加载部门失败:' + error, showClose: true, duration: 3000 });
     // 如果API失败，使用空数组（必须与数据库 jso_org_department_management 表一致）
     departments.value = [];
   }
@@ -388,7 +445,7 @@ const loadEmployees = async () => {
         }));
     }
   } catch (error) {
-    ElMessage.error('加载员工失败:' + error);
+    ElMessage.error({ message: '加载员工失败:' + error, showClose: true, duration: 3000 });
     // 如果API失败，使用空数组
     employees.value = [];
   } finally {
@@ -544,13 +601,13 @@ const saveEmployee = async () => {
       });
       if (response.ok) {
         await loadEmployees();
-        ElMessage.success('员工信息保存成功！');
+        ElMessage.success({ message: '员工信息保存成功！', showClose: true, duration: 3000 });
       } else {
-        ElMessage.error('保存员工失败！');
+        ElMessage.error({ message: '保存员工失败！', showClose: true, duration: 3000 });
       }
     }
   } catch (error) {
-    ElMessage.error('保存员工失败:' + error);
+    ElMessage.error({ message: '保存员工失败:' + error, showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
     editEmployeeDialogOpen.value = false;
@@ -769,6 +826,25 @@ onMounted(async () => {
   flex: 0 0 calc(20% - 24px);
   min-width: 180px;
   position: relative;
+}
+
+.department-item.child-dept {
+  flex: 0 0 calc(20% - 24px);
+  margin-left: 40px;
+}
+
+.department-item.child-dept .department-header {
+  background-color: #F0F9FF;
+  border-color: #93C5FD;
+}
+
+.department-item.child-dept .count-badge-mini {
+  background-color: #DBEAFE;
+  color: #1D4ED8;
+}
+
+.department-item.child-dept .dept-icon {
+  content: '📂';
 }
 
 .department-item::before {

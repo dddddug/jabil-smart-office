@@ -58,10 +58,10 @@
                 <td>{{ material.batchNumber }}</td>
                 <td>{{ material.quantity }}</td>
                 <td>{{ material.unit }}</td>
-                <td>{{ material.manufactureDate }}</td>
+                <td>{{ formatDate(material.manufactureDate) }}</td>
                 <td>
                   <span class="status-badge" :class="getExpirationClass(material.expirationDate)">
-                    {{ material.expirationDate }}
+                    {{ formatDate(material.expirationDate) }}
                   </span>
                 </td>
                 <td>
@@ -110,7 +110,7 @@
             </div>
             <div class="form-group">
               <label>原过期日期</label>
-              <input type="text" v-model="extensionForm.originalExpirationDate" disabled />
+              <input type="text" :value="formatDate(extensionForm.originalExpirationDate)" disabled />
             </div>
             <div class="form-group">
               <label>申请延期至 *</label>
@@ -151,9 +151,9 @@
               <tbody>
                 <tr v-for="record in currentMaterialExtensionRecords" :key="record.id">
                   <td>{{ record.applicant }}</td>
-                  <td>{{ record.applicationDate }}</td>
-                  <td>{{ record.originalExpirationDate }}</td>
-                  <td>{{ record.newExpirationDate }}</td>
+                  <td>{{ formatDate(record.applicationDate) }}</td>
+                  <td>{{ formatDate(record.originalExpirationDate) }}</td>
+                  <td>{{ formatDate(record.newExpirationDate) }}</td>
                   <td>{{ record.reason }}</td>
                   <td>
                     <span class="status-badge" :class="getStatusClass(record.status)">
@@ -362,6 +362,14 @@ const getStatusClass = (status: string) => {
   }
 };
 
+// 格式化日期为 DD/MM/YYYY 格式
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+};
+
 const extensionDialogVisible = ref(false);
 const extensionForm = reactive({
   materialId: '',
@@ -384,7 +392,7 @@ const applyForExtension = (material: ExpiredMaterial) => {
 
 const submitExtensionApplication = () => {
   if (!extensionForm.newExpirationDate || !extensionForm.reason) {
-    ElMessage.warning('请填写完整信息！');
+    ElMessage.warning({ message: '请填写完整信息！', showClose: true, duration: 3000 });
     return;
   }
 
@@ -412,7 +420,7 @@ const submitExtensionApplication = () => {
     }
   }
 
-  ElMessage.success('延期申请已提交！');
+  ElMessage.success({ message: '延期申请已提交！', showClose: true, duration: 3000 });
   extensionDialogVisible.value = false;
 };
 
@@ -452,11 +460,11 @@ const handleDeleteMaterial = (material: ExpiredMaterial) => {
         mockExtensionRequests.value = mockExtensionRequests.value.filter(
           (req) => req.materialId !== material.id
         );
-        ElMessage.success('物料删除成功！');
+        ElMessage.success({ message: '物料删除成功！', showClose: true, duration: 3000 });
       }
     })
     .catch(() => {
-      ElMessage.info('已取消删除');
+      ElMessage.info({ message: '已取消删除', showClose: true, duration: 3000 });
     });
 };
 </script>

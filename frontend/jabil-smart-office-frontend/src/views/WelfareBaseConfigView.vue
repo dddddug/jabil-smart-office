@@ -133,7 +133,7 @@ const loadWelfareConfigs = async () => {
         const data = (res as any)?.data || res;
         welfareConfigs.value = Array.isArray(data) ? data : [];
       } catch (error) {
-        ElMessage.error('加载福利配置失败: ' + error);
+        ElMessage.error({ message: '加载福利配置失败: ' + error, showClose: true, duration: 3000 });
       } finally {
         isLoading.value = false;
       }
@@ -155,7 +155,7 @@ const closeDialog = () => isDialogOpen.value = false;
 
 const saveWelfare = async () => {
   if (!currentWelfare.value.employee_type || currentWelfare.value.amount === undefined || !currentWelfare.value.startTime) {
-    ElMessage.error('请填写所有必填项！');
+    ElMessage.error({ message: '请填写所有必填项！', showClose: true, duration: 3000 });
     return;
   }
 
@@ -169,10 +169,10 @@ const saveWelfare = async () => {
     };
     await request.post('/config/welfare', welfareToSave);
     await loadWelfareConfigs();
-    ElMessage.success('福利配置保存成功！');
+    ElMessage.success({ message: '福利配置保存成功！', showClose: true, duration: 3000 });
     closeDialog();
   } catch (error) {
-    ElMessage.error('保存福利配置失败: ' + error);
+    ElMessage.error({ message: '保存福利配置失败: ' + error, showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -183,9 +183,9 @@ const deactivateWelfare = async (id: number) => {
   try {
     await request.put(`/config/welfare/${id}/deactivate`);
     await loadWelfareConfigs();
-    ElMessage.success('福利配置已停用！');
+    ElMessage.success({ message: '福利配置已停用！', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('停用福利配置失败: ' + error);
+    ElMessage.error({ message: '停用福利配置失败: ' + error, showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }

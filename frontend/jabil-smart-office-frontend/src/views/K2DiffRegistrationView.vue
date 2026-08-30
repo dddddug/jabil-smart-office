@@ -462,7 +462,6 @@ let barChart: echarts.ECharts | null = null;
 // 渲染环形图（根据筛选条件统计类型分布，使用后端聚合）
 const renderDonutChart = async () => {
   if (!donutChartRef.value) {
-    console.log('[Chart Debug] donutChartRef not ready');
     return;
   }
 
@@ -473,16 +472,15 @@ const renderDonutChart = async () => {
   // 根据搜索条件获取日期范围
   const startDate = searchParams.startDate || currentDate.value;
   const endDate = searchParams.endDate || currentDate.value;
-  console.log('[Chart Debug] renderDonutChart dates:', startDate, '-', endDate);
 
   try {
-    const typeStats = await getK2DiffTypeStats(startDate, endDate);
-    console.log('[Chart Debug] getK2DiffTypeStats returned:', typeStats);
-    const chartData: ChartDataItem[] = (typeStats || []).map(item => ({
+    const res: any = await getK2DiffTypeStats(startDate, endDate);
+    // axios 拦截器返回 { code, message, data: [...] }
+    const typeStats = res?.data || res || [];
+    const chartData: ChartDataItem[] = (typeStats as any[]).map((item: any) => ({
       name: item.name || '未分类',
       value: item.value
     }));
-    console.log('[Chart Debug] chartData:', chartData);
     donutChart.setOption(createPieChartOption(chartData, 'donut'));
   } catch (error) {
     console.error('获取类型统计失败:', error);
@@ -492,7 +490,6 @@ const renderDonutChart = async () => {
 // 渲染饼图（近7天类型分布，使用后端聚合）
 const renderPieChart = async () => {
   if (!pieChartRef.value) {
-    console.log('[Chart Debug] pieChartRef not ready');
     return;
   }
 
@@ -505,16 +502,15 @@ const renderPieChart = async () => {
   const endDate = formatLocalDate(today);
   const startDate = new Date(today);
   startDate.setDate(startDate.getDate() - 6);
-  console.log('[Chart Debug] renderPieChart dates:', formatLocalDate(startDate), '-', endDate);
 
   try {
-    const typeStats = await getK2DiffTypeStats(formatLocalDate(startDate), endDate);
-    console.log('[Chart Debug] getK2DiffTypeStats (pie) returned:', typeStats);
-    const chartData: ChartDataItem[] = (typeStats || []).map(item => ({
+    const res: any = await getK2DiffTypeStats(formatLocalDate(startDate), endDate);
+    // axios 拦截器返回 { code, message, data: [...] }
+    const typeStats = res?.data || res || [];
+    const chartData: ChartDataItem[] = (typeStats as any[]).map((item: any) => ({
       name: item.name || '未分类',
       value: item.value
     }));
-    console.log('[Chart Debug] pie chartData:', chartData);
     pieChart.setOption(createPieChartOption(chartData, 'pie'));
   } catch (error) {
     console.error('获取差异类型统计失败:', error);
@@ -836,13 +832,13 @@ const onTableProblemDescriptionChange = async (id: number) => {
       problemDescription: problemDescription || undefined,
       returnLocation: returnLocation || undefined
     });
-    ElMessage.success('更新成功');
+    ElMessage.success({ message: '更新成功', showClose: true, duration: 3000 });
     // 清除请求缓存并刷新列表
     clearRequestCache();
     await loadRegistrations();
   } catch (error) {
     console.error('更新失败:', error);
-    ElMessage.error('更新失败');
+    ElMessage.error({ message: '更新失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -859,7 +855,7 @@ const cancelAddRow = () => {
 const submitAddRow = async () => {
   const validation = validateForm();
   if (!validation.valid) {
-    ElMessage.warning(validation.message);
+    ElMessage.warning({ message: validation.message, showClose: true, duration: 3000 });
     if (validation.message?.includes('范围')) {
       qtyInput.value?.focus();
     }
@@ -869,7 +865,7 @@ const submitAddRow = async () => {
   try {
     const data = buildSubmitData(validation.qty);
     await createK2DiffRegistration(data);
-    ElMessage.success('登记成功');
+    ElMessage.success({ message: '登记成功', showClose: true, duration: 3000 });
     showAddRow.value = false;
     resetForm();
     // 清除请求缓存并强制刷新列表
@@ -879,7 +875,7 @@ const submitAddRow = async () => {
     loadStats();
   } catch (error) {
     console.error('登记失败:', error);
-    ElMessage.error((error as Error)?.message || '登记失败');
+    ElMessage.error({ message: (error as Error).message || '登记失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -893,7 +889,7 @@ const toUpperCase = (field: 'partNo' | 'grn') => {
 const submitAndContinue = async () => {
   const validation = validateForm();
   if (!validation.valid) {
-    ElMessage.warning(validation.message);
+    ElMessage.warning({ message: validation.message, showClose: true, duration: 3000 });
     if (validation.message?.includes('Part no')) {
       partNoInput.value?.focus();
     }
@@ -908,7 +904,7 @@ const submitAndContinue = async () => {
   try {
     const data = buildSubmitData(validation.qty);
     await createK2DiffRegistration(data);
-    ElMessage.success('登记成功');
+    ElMessage.success({ message: '登记成功', showClose: true, duration: 3000 });
     // 重置表单但保持新增行显示，准备下一行扫描
     formData.partNo = '';
     formData.grn = '';
@@ -925,7 +921,7 @@ const submitAndContinue = async () => {
     locationInput.value?.focus();
   } catch (error) {
     console.error('登记失败:', error);
-    ElMessage.error((error as Error)?.message || '登记失败');
+    ElMessage.error({ message: (error as Error).message || '登记失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -978,9 +974,11 @@ const formatDate = (dateStr: string | undefined) => {
 // 加载统计数据
 const loadStats = async () => {
   try {
-    const data = await getK2DiffStats();
-    stats.today = data.today;
-    stats.last7Days = data.last7Days;
+    const res: any = await getK2DiffStats();
+    // axios 拦截器返回 { code, message, data: { today, last7Days, daily } }
+    const data = res?.data || res || {};
+    stats.today = data.today || 0;
+    stats.last7Days = data.last7Days || 0;
     stats.daily = data.daily || [];
     // 更新图表
     renderAllCharts();
@@ -1018,17 +1016,18 @@ const loadRegistrations = async () => {
     if (searchParams.shift) params.shift = searchParams.shift;
 
     const response = await getK2DiffRegistrations(params);
-    console.log('[Chart Debug] registrations response:', response);
-    registrations.value = response.items || [];
+    // axios 拦截器返回 { code, message, data: { items, pagination } }
+    const res = response as any;
+    registrations.value = res?.data?.items || res?.items || [];
     // 初始化表格行编辑数据
     registrations.value.forEach((item) => {
       editingData[item.id!] = item.problemDescription || '';
     });
     // 从 pagination 对象中获取总数
-    pagination.total = response.pagination?.total || response.total || 0;
+    pagination.total = res?.data?.pagination?.total || res?.pagination?.total || res?.total || 0;
   } catch (error) {
     console.error('加载登记记录失败:', error);
-    ElMessage.error('加载数据失败');
+    ElMessage.error({ message: '加载数据失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -1055,7 +1054,6 @@ const loadConfig = async () => {
         }
       }
     });
-    console.log('加载配置成功:', configList.value.length, '条');
   } catch (error) {
     console.error('加载配置失败:', error);
   }
@@ -1109,12 +1107,12 @@ const showEditDialog = async (item: K2DiffRegistration) => {
 // 编辑保存
 const saveEdit = async () => {
   if (!formData.partNo.trim()) {
-    ElMessage.warning('请输入 Part no');
+    ElMessage.warning({ message: '请输入 Part no', showClose: true, duration: 3000 });
     return;
   }
 
   if (!editingId.value) {
-    ElMessage.error('编辑ID不存在');
+    ElMessage.error({ message: '编辑ID不存在', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1129,14 +1127,14 @@ const saveEdit = async () => {
       problemDescription: formData.problemDescription,
       returnLocation: finalReturnLocation
     });
-    ElMessage.success('更新成功');
+    ElMessage.success({ message: '更新成功', showClose: true, duration: 3000 });
     dialogVisible.value = false;
     clearRequestCache(); // 清除缓存，确保重新获取最新数据
     loadRegistrations();
     loadStats();
   } catch (error) {
     console.error('更新失败:', error);
-    ElMessage.error('操作失败');
+    ElMessage.error({ message: '操作失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -1154,14 +1152,14 @@ const confirmDelete = async (item: K2DiffRegistration) => {
     );
 
     await deleteK2DiffRegistration(item.id!);
-    ElMessage.success('删除成功');
+    ElMessage.success({ message: '删除成功', showClose: true, duration: 3000 });
     clearRequestCache(); // 清除缓存，确保重新获取最新数据
     loadRegistrations();
     loadStats();
   } catch (error) {
     if ((error as string) !== 'cancel') {
       console.error('删除失败:', error);
-      ElMessage.error('删除失败');
+      ElMessage.error({ message: '删除失败', showClose: true, duration: 3000 });
     }
   }
 };
@@ -1169,7 +1167,7 @@ const confirmDelete = async (item: K2DiffRegistration) => {
 // 发送邮件通知（合并当前筛选条件下的所有记录为一封邮件）
 const sendEmail = async () => {
   if (pagination.total === 0) {
-    ElMessage.warning('当前没有登记记录');
+    ElMessage.warning({ message: '当前没有登记记录', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1185,12 +1183,14 @@ const sendEmail = async () => {
       }
     );
 
-    // 收集所有记录的ID
-    const ids = registrations.value.map(item => item.id!);
-
     // 批量发送，所有记录合并为一封邮件
-    const response = await sendK2DiffBulkNotification(ids);
-    console.log('邮件响应:', response);
+    const response = await sendK2DiffBulkNotification({
+      startDate: searchParams.startDate,
+      endDate: searchParams.endDate,
+      partNo: searchParams.partNo,
+      grn: searchParams.grn,
+      shift: searchParams.shift
+    });
     if (response) {
       // 在前端构建 mailto 链接，避免 URL 编码在 JSON 序列化/反序列化过程中被破坏
       const subject = encodeURIComponent(response.subject || '');
@@ -1205,7 +1205,7 @@ const sendEmail = async () => {
   } catch (error) {
     if ((error as string) !== 'cancel') {
       console.error('发送邮件失败:', error);
-      ElMessage.error('发送邮件失败');
+      ElMessage.error({ message: '发送邮件失败', showClose: true, duration: 3000 });
     }
   }
 };
@@ -1224,9 +1224,9 @@ const handleExport = async () => {
 
     const res = await exportK2DiffRegistrations(params);
     downloadFile(res, 'K差异登记.xlsx');
-    ElMessage.success('导出成功');
+    ElMessage.success({ message: '导出成功', showClose: true, duration: 3000 });
   } catch (error: any) {
-    ElMessage.error('导出失败：' + (error.message || error));
+    ElMessage.error({ message: '导出失败：' + (error.message || error), showClose: true, duration: 3000 });
   }
 };
 

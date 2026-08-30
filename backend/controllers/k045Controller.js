@@ -11,6 +11,7 @@ import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logDebug } from '../utils/logger.js';
 import { notifyUser, notifyDepartment, createNotification, getUserIdsByDepartment } from '../utils/notificationHelper.js';
+import { getWCUserAssignment } from './daMaterialConfigController.js';
 
 // 单据状态枚举
 const DocumentStatus = {
@@ -19,6 +20,7 @@ const DocumentStatus = {
   REJECTED: 'rejected',             // 已拒绝
   RETURNED: 'returned',             // 已退回
   CANCELLED: 'cancelled',           // 已取消
+  MATERIAL_SENT: 'material_sent',    // 已发料（仓库发料）
   SIGNED: 'signed',                 // 已签收（分料部门签收）
   DISTRIBUTION_ENDED: 'distribution_ended', // 分料结束
   COMPLETED: 'completed',          // 已完成（提交人确认）
@@ -95,6 +97,7 @@ export const getDocuments = async (req, res, next) => {
         submitted_at,
         received_at,
         received_by,
+        material_sent_at,
         signed_at,
         signed_by,
         distribution_ended_at,
@@ -105,7 +108,13 @@ export const getDocuments = async (req, res, next) => {
         updated_at
       FROM ${K045_DOCUMENT_TABLE}
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY
+		CASE status
+		  WHEN 'completed' THEN 3
+							  WHEN 'received' THEN 2
+		  ELSE 1
+		END ASC,
+		created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, listParams);
 
@@ -128,6 +137,7 @@ export const getDocuments = async (req, res, next) => {
       submittedAt: row.submitted_at,
       receivedAt: row.received_at,
       receivedBy: row.received_by,
+      materialSentAt: row.material_sent_at,
       signedAt: row.signed_at,
       signedBy: row.signed_by,
       distributionEndedAt: row.distribution_ended_at,
@@ -172,6 +182,7 @@ export const getDocumentById = async (req, res, next) => {
         submitted_at,
         received_at,
         received_by,
+        material_sent_at,
         signed_at,
         signed_by,
         distribution_ended_at,
@@ -203,6 +214,7 @@ export const getDocumentById = async (req, res, next) => {
       submittedAt: row.submitted_at,
       receivedAt: row.received_at,
       receivedBy: row.received_by,
+      materialSentAt: row.material_sent_at,
       signedAt: row.signed_at,
       signedBy: row.signed_by,
       distributionEndedAt: row.distribution_ended_at,
@@ -660,8 +672,9 @@ export const signDocument = async (req, res, next) => {
       throw new AppError('单据不存在', 404);
     }
 
-    if (existingDoc.rows[0].status !== DocumentStatus.RECEIVED) {
-      throw BadRequestError('只能签收已接收的单据');
+    const currentStatus = existingDoc.rows[0].status;
+    if (currentStatus !== 'material_sent') {
+      throw BadRequestError('只能签收已发料的单据，当前状态：' + currentStatus);
     }
 
     const result = await pool.query(`
@@ -774,6 +787,140 @@ export const confirmComplete = async (req, res, next) => {
 };
 
 /**
+ * 发料完成（更新状态并返回邮件信息）
+ */
+export const sendMaterialNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // 检查单据是否存在
+    const existingDoc = await pool.query(
+      'SELECT * FROM ' + K045_DOCUMENT_TABLE + ' WHERE id = $1',
+      [id]
+    );
+
+    if (existingDoc.rows.length === 0) {
+      throw new AppError('单据不存在', 404);
+    }
+
+    const doc = existingDoc.rows[0];
+
+    // 检查状态是否为 RECEIVED（已接收）才能发料
+    if (doc.status !== DocumentStatus.RECEIVED) {
+      throw BadRequestError('只能对已接收的单据进行发料操作');
+    }
+
+    // 更新状态为已发料
+    const result = await pool.query(`
+      UPDATE ${K045_DOCUMENT_TABLE}
+      SET status = $1, material_sent_at = NOW(), updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [DocumentStatus.MATERIAL_SENT, id]);
+
+    // 获取配送地点配置的邮箱（从JSON配置中解析）
+    let recipientEmails = '';
+    try {
+      const value = await pool.query(
+        `SELECT config_value FROM jso_k045_notification_config WHERE config_key = 'delivery_locations'`
+      );
+      if (value.rows.length > 0 && value.rows[0].config_value) {
+        const locations = JSON.parse(value.rows[0].config_value);
+        const deliveryConfig = locations.find(loc =>
+          loc.location === doc.delivery_location ||
+          loc.departments === doc.delivery_location
+        );
+        if (deliveryConfig && deliveryConfig.email) {
+          recipientEmails = deliveryConfig.email;
+        }
+        // 调试日志
+        logDebug('配送地点邮箱配置查询', {
+          deliveryLocation: doc.delivery_location,
+          locationsCount: locations.length,
+          matchedConfig: deliveryConfig,
+          recipientEmails
+        });
+      }
+    } catch (err) {
+      logDebug('获取配送地点邮箱失败', { deliveryLocation: doc.delivery_location, error: err.message });
+    }
+
+    // 获取提交人邮箱
+    let submitterEmail = '';
+    try {
+      // 先尝试精确匹配
+      let userResult = await pool.query(
+        `SELECT email FROM ${USER_TABLE} WHERE real_name = $1 OR username = $1 LIMIT 1`,
+        [doc.submitter_name]
+      );
+      // 如果没找到，尝试模糊匹配（去掉空格）
+      if (userResult.rows.length === 0 || !userResult.rows[0].email) {
+        const trimmedName = doc.submitter_name ? doc.submitter_name.trim() : '';
+        if (trimmedName) {
+          userResult = await pool.query(
+            `SELECT email FROM ${USER_TABLE} WHERE TRIM(real_name) = $1 OR TRIM(username) = $1 LIMIT 1`,
+            [trimmedName]
+          );
+        }
+      }
+      if (userResult.rows.length > 0 && userResult.rows[0].email) {
+        submitterEmail = userResult.rows[0].email;
+      }
+    } catch (err) {
+      logDebug('获取提交人邮箱失败', { submitterName: doc.submitter_name, error: err.message });
+    }
+
+    // 获取W/C用户分配配置的邮箱（抄送）
+    let wcEmails = '';
+    try {
+      const wcAssignments = await getWCUserAssignment();
+      const wcConfig = wcAssignments.find(wc => wc.wcName === doc.wc_name);
+      if (wcConfig && wcConfig.assignedUsers) {
+        const userIds = Array.isArray(wcConfig.assignedUsers) ? wcConfig.assignedUsers : [];
+        if (userIds.length > 0) {
+          const usersResult = await pool.query(
+            `SELECT email FROM ${USER_TABLE} WHERE id = ANY($1) AND email IS NOT NULL AND email != ''`,
+            [userIds]
+          );
+          wcEmails = usersResult.rows.map(r => r.email).filter(e => e).join(',');
+        }
+      }
+    } catch (err) {
+      logDebug('获取W/C用户邮箱失败', { wcName: doc.wc_name, error: err.message });
+    }
+
+    // 合并抄送邮箱（W/C用户 + 提交人）
+    const ccEmails = [wcEmails, submitterEmail].filter(e => e).join(',');
+
+    // 生成邮件内容
+    const subject = `K045单据发料完成通知 - ${doc.document_no}`;
+    const body = `您好 ${doc.submitter_name}，\n\n` +
+      `您的 K045 单据 ${doc.document_no} 已完成发料。\n\n` +
+      `配送地点：${doc.delivery_location}\n\n` +
+      `---\n` +
+      `Jabil Smart Office\n` +
+      `单据管理系统`;
+
+    logInfo('K045单据发料完成', { id, documentNo: doc.document_no, deliveryLocation: doc.delivery_location, wcEmails, submitterEmail });
+
+    success(res, {
+      id: doc.id,
+      documentNo: doc.document_no,
+      wcName: doc.wc_name,
+      deliveryLocation: doc.delivery_location,
+      recipientEmails,
+      ccEmails,
+      subject,
+      body,
+      status: DocumentStatus.MATERIAL_SENT
+    }, '发料完成');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * 发送邮件通知 - 生成 mailto 链接
  */
 export const sendNotification = async (req, res, next) => {
@@ -795,10 +942,21 @@ export const sendNotification = async (req, res, next) => {
     // 获取提交人邮箱
     let submitterEmail = '';
     try {
-      const userResult = await pool.query(
+      // 先尝试精确匹配
+      let userResult = await pool.query(
         `SELECT email FROM ${USER_TABLE} WHERE real_name = $1 OR username = $1 LIMIT 1`,
         [doc.submitter_name]
       );
+      // 如果没找到，尝试模糊匹配（去掉空格）
+      if (userResult.rows.length === 0 || !userResult.rows[0].email) {
+        const trimmedName = doc.submitter_name ? doc.submitter_name.trim() : '';
+        if (trimmedName) {
+          userResult = await pool.query(
+            `SELECT email FROM ${USER_TABLE} WHERE TRIM(real_name) = $1 OR TRIM(username) = $1 LIMIT 1`,
+            [trimmedName]
+          );
+        }
+      }
       if (userResult.rows.length > 0 && userResult.rows[0].email) {
         submitterEmail = userResult.rows[0].email;
       }
@@ -919,10 +1077,13 @@ export const getStats = async (req, res, next) => {
       SELECT
         COUNT(CASE WHEN status = 'submitted' THEN 1 END) as submitted,
         COUNT(CASE WHEN status = 'received' THEN 1 END) as received,
+        COUNT(CASE WHEN status = 'material_sent' THEN 1 END) as material_sent,
         COUNT(CASE WHEN status = 'signed' THEN 1 END) as signed,
         COUNT(CASE WHEN status = 'distribution_ended' THEN 1 END) as distribution_ended,
+        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected,
         COUNT(CASE WHEN status = 'returned' THEN 1 END) as returned,
+        COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
         COUNT(CASE WHEN status = 'withdrawn' THEN 1 END) as withdrawn,
         COUNT(*) as total
       FROM ${K045_DOCUMENT_TABLE}
@@ -931,10 +1092,13 @@ export const getStats = async (req, res, next) => {
     const stats = {
       submitted: parseInt(result.rows[0].submitted) || 0,
       received: parseInt(result.rows[0].received) || 0,
+      materialSent: parseInt(result.rows[0].material_sent) || 0,
       signed: parseInt(result.rows[0].signed) || 0,
       distributionEnded: parseInt(result.rows[0].distribution_ended) || 0,
+      completed: parseInt(result.rows[0].completed) || 0,
       rejected: parseInt(result.rows[0].rejected) || 0,
       returned: parseInt(result.rows[0].returned) || 0,
+      cancelled: parseInt(result.rows[0].cancelled) || 0,
       withdrawn: parseInt(result.rows[0].withdrawn) || 0,
       total: parseInt(result.rows[0].total) || 0
     };
@@ -1003,6 +1167,7 @@ export default {
   signDocument,
   endDistribution,
   confirmComplete,
+  sendMaterialNotification,
   sendNotification,
   rushDocument,
   deleteDocument,

@@ -34,6 +34,7 @@ export default defineConfig({
   preview: {
     host: '0.0.0.0',
     port: 80,
+    allowedHosts: ['cnhuanb5947', 'cnhuanb5947.local'],
     proxy: {
       '/api': {
         target: 'http://localhost:3002',

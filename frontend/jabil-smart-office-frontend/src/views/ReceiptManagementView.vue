@@ -206,9 +206,9 @@ const loadReceipts = async () => {
     const res = await response.json();
     const data = res?.data || res;
     receipts.value = data?.receipts || [];
-    ElMessage.success('单据数据加载成功');
+    ElMessage.success({ message: '单据数据加载成功', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('加载单据数据失败，请检查后端服务。');
+    ElMessage.error({ message: '加载单据数据失败，请检查后端服务。', showClose: true, duration: 3000 });
     // Fallback to local mock data if API fails (for development/demo)
     receipts.value = [
       { id: 1, receiptNo: 'REC202406001', type: 'delivery', status: 'pending', source: '供应商A', remark: '电子元件一批' },
@@ -292,14 +292,14 @@ const saveReceipt = async () => {
       if (index !== -1) {
         receipts.value[index] = data?.receipt;
       }
-      ElMessage.success('单据更新成功');
+      ElMessage.success({ message: '单据更新成功', showClose: true, duration: 3000 });
     } else {
       receipts.value.unshift(data?.receipt);
-      ElMessage.success('单据新增成功');
+      ElMessage.success({ message: '单据新增成功', showClose: true, duration: 3000 });
     }
     closeReceiptDialog();
   } catch (error) {
-    ElMessage.error('保存失败，请稍后重试');
+    ElMessage.error({ message: '保存失败，请稍后重试', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -327,9 +327,9 @@ const confirmReceipt = async (receipt: Receipt) => {
     if (index !== -1) {
       receipts.value[index] = data.receipt; // Assuming API returns updated receipt
     }
-    ElMessage.success('单据确认接收成功');
+    ElMessage.success({ message: '单据确认接收成功', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('确认接收失败，请稍后重试');
+    ElMessage.error({ message: '确认接收失败，请稍后重试', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -357,15 +357,15 @@ const deleteReceipt = async () => {
           }
           receipts.value = receipts.value.filter(r => r.id !== selectedReceipt.value!.id);
           selectedReceipt.value = null;
-          ElMessage.success('删除成功');
+          ElMessage.success({ message: '删除成功', showClose: true, duration: 3000 });
         } catch (error) {
-          ElMessage.error('删除失败，请稍后重试');
+          ElMessage.error({ message: '删除失败，请稍后重试', showClose: true, duration: 3000 });
         } finally {
           isLoading.value = false;
         }
       })
       .catch(() => {
-        ElMessage.info('已取消删除');
+        ElMessage.info({ message: '已取消删除', showClose: true, duration: 3000 });
       });
   }
 };
@@ -380,7 +380,7 @@ const toggleSelectAll = () => {
 
 const batchConfirm = async () => {
   if (selectedIds.value.length === 0) {
-    ElMessage.warning('请选择要批量确认接收的单据');
+    ElMessage.warning({ message: '请选择要批量确认接收的单据', showClose: true, duration: 3000 });
     return;
   }
 
@@ -409,22 +409,22 @@ const batchConfirm = async () => {
         // Assuming the API returns the updated receipts or a success message
         // Reloading data to reflect changes
         await loadReceipts();
-        ElMessage.success('批量确认接收成功');
+        ElMessage.success({ message: '批量确认接收成功', showClose: true, duration: 3000 });
         selectedIds.value = [];
         selectAll.value = false;
       } catch (error) {
-        ElMessage.error('批量确认失败，请稍后重试');
+        ElMessage.error({ message: '批量确认失败，请稍后重试', showClose: true, duration: 3000 });
       } finally {
         isLoading.value = false;
       }
     })
     .catch(() => {
-      ElMessage.info('已取消批量确认');
+      ElMessage.info({ message: '已取消批量确认', showClose: true, duration: 3000 });
     });
 };
 
 const exportData = () => {
-  ElMessage.warning('导出功能暂未实现。');
+  ElMessage.warning({ message: '导出功能暂未实现。', showClose: true, duration: 3000 });
 };
 
 const handleSearch = () => {

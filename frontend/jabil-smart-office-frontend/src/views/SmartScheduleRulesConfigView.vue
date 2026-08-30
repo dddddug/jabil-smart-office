@@ -253,8 +253,9 @@ const positionReasonsDirty = ref(false);
 
 const loadPositionReasons = async () => {
   try {
-    const data = await request.get('/config/position-reasons/position-reasons');
-    positionReasons.value = data || [];
+    const res: any = await request.get('/config/position-reasons');
+    // 后端返回 { code: 200, data: [...] }
+    positionReasons.value = res?.data || res || [];
   } catch {
     positionReasons.value = [];
   }
@@ -283,13 +284,13 @@ const removePositionReason = (index: number) => {
 
 const savePositionReasons = async () => {
   try {
-    await request.post('/config/position-reasons/position-reasons', {
+    await request.post('/config/position-reasons', {
       reasons: positionReasons.value
     });
     positionReasonsDirty.value = false;
-    ElMessage.success('岗位原因配置保存成功！');
+    ElMessage.success({ message: '岗位原因配置保存成功！', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('保存失败');
+    ElMessage.error({ message: '保存失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -300,17 +301,17 @@ const resetPositionReasons = () => {
     type: 'warning',
   }).then(async () => {
     try {
-      await request.post('/config/position-reasons/position-reasons', {
+      await request.post('/config/position-reasons', {
         reasons: []
       });
       positionReasons.value = [];
       positionReasonsDirty.value = false;
-      ElMessage.success('岗位原因配置已重置');
+      ElMessage.success({ message: '岗位原因配置已重置', showClose: true, duration: 3000 });
     } catch {
-      ElMessage.error('重置失败');
+      ElMessage.error({ message: '重置失败', showClose: true, duration: 3000 });
     }
   }).catch(() => {
-    ElMessage.info('已取消重置');
+    ElMessage.info({ message: '已取消重置', showClose: true, duration: 3000 });
   });
 };
 
@@ -326,10 +327,10 @@ const saveRules = () => {
     }
   )
     .then(() => {
-      ElMessage.success('智能排班规则配置保存成功！');
+      ElMessage.success({ message: '智能排班规则配置保存成功！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消保存');
+      ElMessage.info({ message: '已取消保存', showClose: true, duration: 3000 });
     });
 };
 
@@ -345,10 +346,10 @@ const resetRules = () => {
   )
     .then(() => {
       Object.assign(scheduleRules, initialScheduleRules);
-      ElMessage.success('智能排班规则已重置');
+      ElMessage.success({ message: '智能排班规则已重置', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消重置');
+      ElMessage.info({ message: '已取消重置', showClose: true, duration: 3000 });
     });
 };
 

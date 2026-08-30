@@ -29,8 +29,6 @@ async function runMigrations() {
   const client = await pool.connect();
 
   try {
-    console.log('开始运行数据库迁移...');
-    console.log(`数据库: ${process.env.DB_NAME}`);
 
     // 读取迁移文件
     const migrationsDir = path.resolve(__dirname, './database/migrations');
@@ -38,21 +36,16 @@ async function runMigrations() {
       .filter(f => f.endsWith('.sql'))
       .sort();
 
-    console.log(`找到 ${files.length} 个迁移文件`);
 
     for (const file of files) {
-      console.log(`\n执行迁移: ${file}`);
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
 
       try {
         await client.query(sql);
-        console.log(`✓ ${file} 执行成功`);
       } catch (err) {
         if (err.code === '42710' || err.code === '42P07' || err.code === '23505') {
           // 索引已存在或表已存在，忽略
-          console.log(`⚠ ${file} (部分已存在，跳过)`);
         } else if (err.code === '23505') {
-          console.log(`⚠ ${file} (数据已存在，跳过)`);
         } else {
           console.error(`✗ ${file} 执行失败:`, err.message);
           throw err;
@@ -60,7 +53,6 @@ async function runMigrations() {
       }
     }
 
-    console.log('\n✓ 所有迁移执行完成!');
   } catch (err) {
     console.error('\n✗ 迁移执行失败:', err.message);
     process.exit(1);

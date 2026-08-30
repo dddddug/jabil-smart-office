@@ -51,12 +51,15 @@ export const updateDAMaterialConfigs = async (req, res, next) => {
     for (const config of configs) {
       const { configKey, configValue } = config;
 
+      // 使用 INSERT ... ON CONFLICT DO UPDATE 支持插入新记录
       const result = await pool.query(`
-        UPDATE ${CONFIG_TABLE}
-        SET config_value = $1, updated_at = NOW()
-        WHERE config_key = $2
+        INSERT INTO ${CONFIG_TABLE} (config_key, config_value, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (config_key) DO UPDATE SET
+          config_value = EXCLUDED.config_value,
+          updated_at = NOW()
         RETURNING id, config_key, config_value
-      `, [configValue, configKey]);
+      `, [configKey, configValue]);
 
       if (result.rows.length > 0) {
         updatedConfigs.push(result.rows[0]);
@@ -118,6 +121,18 @@ export const getControlTypes = async () => {
   return value.split(',').map(s => s.trim()).filter(s => s);
 };
 
+/**
+ * 获取 W/C 用户分配配置
+ */
+export const getWCUserAssignment = async () => {
+  const value = await getDAMaterialConfigValue('wc_department_assignment', '[]');
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    return [];
+  }
+};
+
 export default {
   getDAMaterialConfigs,
   updateDAMaterialConfigs,
@@ -125,5 +140,6 @@ export default {
   getDAMaterialReturnNotificationEmail,
   isDAMaterialReturnNotificationEnabled,
   isDAMaterialAutoNotifyOnReturn,
-  getControlTypes
+  getControlTypes,
+  getWCUserAssignment
 };

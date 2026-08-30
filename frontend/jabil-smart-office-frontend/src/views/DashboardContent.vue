@@ -1,21 +1,26 @@
 <template>
   <div class="dashboard-content">
-    <div class="page-header">
-      <div class="breadcrumb">
-        <span class="breadcrumb-item">首页</span>
-        <span class="breadcrumb-separator">/</span>
-        <span class="breadcrumb-item active">控制面板</span>
-      </div>
-      <div class="header-actions">
-        <button class="btn btn-refresh" @click="refreshAll" :disabled="isLoading">
-          <span :class="{ 'spin': isLoading }">🔄</span>
-          {{ isLoading ? '加载中...' : '刷新数据' }}
-        </button>
-      </div>
-    </div>
+    <!-- 无权限时的背景页面 -->
+    <div v-if="!hasDashboardPermission" class="no-permission-bg"></div>
 
-    <!-- 统计数据卡片 -->
-    <div class="stats-cards">
+    <!-- 有权限时显示正常仪表盘内容 -->
+    <div v-else class="dashboard-main">
+      <div class="page-header">
+        <div class="breadcrumb">
+          <span class="breadcrumb-item">首页</span>
+          <span class="breadcrumb-separator">/</span>
+          <span class="breadcrumb-item active">控制面板</span>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-refresh" @click="refreshAll" :disabled="isLoading">
+            <span :class="{ 'spin': isLoading }">🔄</span>
+            {{ isLoading ? '加载中...' : '刷新数据' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 统计数据卡片 -->
+      <div class="stats-cards">
       <div class="stat-card stat-card-blue">
         <div class="stat-icon">👥</div>
         <div class="stat-info">
@@ -147,16 +152,30 @@
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import {
   getDashboardStats,
   getTodaySchedule,
   getPendingApprovals
 } from '../api/dashboard';
+import { usePermission } from '../composables/usePermission';
+
+const route = useRoute();
+
+// 权限控制 - 不在这里加载权限，由父组件 DashboardView 统一加载
+const { userMenuPermissions } = usePermission();
+
+// 检查是否有仪表盘权限
+const hasDashboardPermission = computed(() => {
+  // 权限已加载且包含 dashboard 才认为有权限
+  return userMenuPermissions.value.length > 0 && userMenuPermissions.value.includes('dashboard');
+});
 
 // 统计数据
 const stats = ref({
@@ -268,7 +287,7 @@ const loadPendingApprovals = async () => {
 // 刷新所有数据
 const refreshAll = () => {
   loadAllData();
-  ElMessage.success('数据已刷新');
+  ElMessage.success({ message: '数据已刷新', showClose: true, duration: 3000 });
 };
 
 // 格式化数字
@@ -336,20 +355,33 @@ const getTypeIcon = (type: string): string => {
 
 // 处理审批
 const handleApprove = (approval: any) => {
-  ElMessage.success(`已同意 ${approval.employeeName} 的申请`);
+  ElMessage.success({ message: `已同意 ${approval.employeeName} 的申请`, showClose: true, duration: 3000 });
   loadPendingApprovals();
 };
 
 const handleReject = (approval: any) => {
-  ElMessage.info(`已拒绝 ${approval.employeeName} 的申请`);
+  ElMessage.info({ message: `已拒绝 ${approval.employeeName} 的申请`, showClose: true, duration: 3000 });
   loadPendingApprovals();
 };
 
 // 组件挂载时加载数据
-onMounted(() => {
-  loadAllData();
-  // 每5分钟自动刷新
-  refreshInterval = window.setInterval(loadAllData, 5 * 60 * 1000);
+onMounted(async () => {
+  // 注意：权限由父组件 DashboardView 统一加载，这里只需要等待权限加载完成
+  // 如果权限还没加载，等待一下
+  if (userMenuPermissions.value.length === 0) {
+    // 等待权限加载（最多等3秒）
+    const startTime = Date.now();
+    while (userMenuPermissions.value.length === 0 && Date.now() - startTime < 3000) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  // 只有有仪表盘权限且当前在仪表盘路由时才加载数据
+  if (hasDashboardPermission.value) {
+    loadAllData();
+    // 每5分钟自动刷新
+    refreshInterval = window.setInterval(loadAllData, 5 * 60 * 1000);
+  } else {
+  }
 });
 
 // 组件卸载时清理定时器
@@ -362,10 +394,15 @@ onUnmounted(() => {
 
 <style scoped>
 .dashboard-content {
+  position: relative;
   padding: 0 24px 24px 24px;
   background-color: #F9FAFB;
   min-height: 100%;
   padding-top: 20px;
+}
+
+.dashboard-main {
+  width: 100%;
 }
 
 .page-header {
@@ -747,5 +784,46 @@ onUnmounted(() => {
 .btn-sm {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+/* 无仪表盘权限时的背景页面 */
+.no-permission-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  /* 仓库/工厂风格背景图片 */
+  background-image: url('/assets/warehouse-bg.png');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 深色遮罩层 */
+.no-permission-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(12, 18, 34, 0.8) 0%,
+    rgba(26, 31, 53, 0.7) 50%,
+    rgba(15, 23, 41, 0.8) 100%
+  );
+  z-index: 1;
+  pointer-events: none;
 }
 </style>

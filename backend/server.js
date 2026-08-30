@@ -60,11 +60,14 @@ import permissionRoutes from './routes/permissionRoutes.js'; // 权限管理路�
 import stockroomUrgentPullRoutes, { startScheduledRefresh } from './routes/stockroomUrgentPullRoutes.js'; // Stockroom Urgent Pull 路由
 import stockroomUrgentPullConfigRoutes from './routes/stockroomUrgentPullConfigRoutes.js'; // Stockroom Urgent Pull 配置路由
 import warehouseMonitorRoutes from './routes/warehouseMonitorRoutes.js'; // 仓库物料监控路由
+import materialPackageRoutes from './routes/materialPackageRoutes.js'; // 物料包装信息路由
 import temporaryOvertimeRoutes from './routes/temporaryOvertimeRoutes.js'; // 临时加班路由
 import temporaryLeaveRoutes from './routes/temporaryLeaveRoutes.js'; // 临时请假路由
+import class33MaterialsRoutes from './routes/class33MaterialsRoutes.js'; // 33类物料清单路由
+import warehouseReturnRoutes from './routes/warehouseReturnRoutes.js'; // 回仓申请路由
 
-// 导入模块化的定时任务
-import { initScheduledTasks, checkAndDeactivateUsers, processTransferDates } from './scripts/scheduledTasks.js';
+// 导入统一定时任务
+import { initScheduledTasks } from './scripts/scheduledTasks.js';
 
 // 导入共享的数据库连接
 import pool from './config/db.js';
@@ -162,8 +165,11 @@ app.use('/api/permissions', permissionRoutes); // 权限管理路由
 app.use('/api/stockroom-urgent-pull', stockroomUrgentPullRoutes); // Stockroom Urgent Pull 路由
 app.use('/api/stockroom-urgent-pull-config', stockroomUrgentPullConfigRoutes); // Stockroom Urgent Pull 配置路由
 app.use('/api/warehouse-monitor', warehouseMonitorRoutes); // 仓库物料监控路由
+app.use('/api/material-package', materialPackageRoutes); // 物料包装信息路由
 app.use('/api/temporary-overtime', temporaryOvertimeRoutes); // 临时加班路由
 app.use('/api/temporary-leave', temporaryLeaveRoutes); // 临时请假路由
+app.use('/api/class33-materials', class33MaterialsRoutes); // 33类物料清单路由
+app.use('/api/warehouse-return', warehouseReturnRoutes); // 回仓申请路由
 
 
 // 确保 uploads 目录存在
@@ -264,15 +270,14 @@ const runMigrations = async () => {
 // 测试数据库连接并初始化
 pool.connect(async (err) => {
   if (err) {
-    console.error('数据库连接失败:', err);
-    process.exit(1);
+    console.error('数据库连接失败:', err.message);
+    console.log('服务器将继续启动，但某些功能可能不可用...');
+    startServerWithoutDb();
   } else {
     try {
       await initDatabase();
       // Initial calls for scheduled tasks are now handled by initScheduledTasks()
       // However, if we want to run initial checks immediately after DB init, we can call them here
-      await checkAndDeactivateUsers(); // Initial check on server start
-      await processTransferDates();    // Initial check on server start
 
       // 同步前端菜单配置到数据库
       try {
@@ -317,7 +322,34 @@ pool.connect(async (err) => {
 
     } catch (dbError) {
       console.error('数据库初始化或启动检查失败:', dbError);
-      process.exit(1);
+      startServerWithoutDb();
     }
   }
 });
+
+// 不依赖数据库启动服务器
+function startServerWithoutDb() {
+  console.log('正在启动服务器（无数据库连接）...');
+
+  // 全局错误处理
+  app.use(handleError);
+
+  // 404 处理
+  app.use(notFoundHandler);
+
+  // ========== 启动服务 ==========
+  app.listen(PORT, () => {
+    console.log('========================================');
+    console.log(`服务器已启动，但数据库功能不可用`);
+    console.log(`后端服务端口: ${PORT}`);
+    console.log(`前端访问: http://cnhuanb5947:${PORT}/`);
+    console.log('========================================');
+  });
+
+  const shutdown = () => {
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}

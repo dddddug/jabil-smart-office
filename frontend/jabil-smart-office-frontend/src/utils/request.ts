@@ -90,22 +90,22 @@ const updateLoadingState = (isLoading: boolean): void => {
 // 防抖执行函数
 const executeDebouncedRequest = (key: string): void => {
   const entry = debounceMap.get(key);
-  if (!entry || !entry.timer || !entry.config) return;
+  if (!entry) return;
 
-  clearTimeout(entry.timer);
-  entry.timer = null;
+  const config = entry.config; // 保存当前的 config 引用
+  const resolve = entry.resolve;
+  const reject = entry.reject;
+
+  // 清理
+  if (entry.timer) clearTimeout(entry.timer);
+  debounceMap.delete(key);
+
+  if (!config) return;
 
   // 实际执行请求
-  service(entry.config)
-    .then(result => {
-      entry.resolve?.(result);
-    })
-    .catch(error => {
-      entry.reject?.(error);
-    })
-    .finally(() => {
-      debounceMap.delete(key);
-    });
+  service(config)
+    .then(result => resolve?.(result))
+    .catch(error => reject?.(error));
 };
 
 // 创建 axios 实例
@@ -133,10 +133,9 @@ service.request = function <T = any, R = T, D = any>(
         if (entry.timer) {
           clearTimeout(entry.timer);
         }
-        // 设置新的回调
+        // 创建新的 Promise 并覆盖之前的回调
         entry.resolve = resolve;
         entry.reject = reject;
-        entry.config = config;
         // 重新设置防抖定时器
         entry.timer = setTimeout(() => {
           executeDebouncedRequest(requestKey);
@@ -146,17 +145,13 @@ service.request = function <T = any, R = T, D = any>(
 
       // 创建新的防抖条目
       debounceMap.set(requestKey, {
-        timer: null,
+        timer: setTimeout(() => {
+          executeDebouncedRequest(requestKey);
+        }, DEBOUNCE_DELAY),
         resolve,
         reject,
         config
       });
-
-      // 立即设置防抖定时器
-      const entry = debounceMap.get(requestKey)!;
-      entry.timer = setTimeout(() => {
-        executeDebouncedRequest(requestKey);
-      }, DEBOUNCE_DELAY);
       return;
     }
 
@@ -188,7 +183,6 @@ service.interceptors.request.use(
         const cached = requestCache.get(requestKey)!;
         // 如果缓存数据在 TTL 内，使用缓存
         if (Date.now() - cached.timestamp < CACHE_TTL) {
-          console.log('[Request Interceptor] Using cached response for:', requestKey);
           // 返回一个已解决状态的 Promise，拦截请求
           return Promise.reject({
             __CACHED__: true,
@@ -240,7 +234,6 @@ service.interceptors.response.use(
     // Check if the response is a standard API response with code, message, data structure
     if (response.data && typeof response.data.code !== 'undefined') {
       const { code, message, data } = response.data;
-      console.log('[Response Interceptor] Response code:', code, 'Message:', message);
       if (code !== 200 && code !== 201) {
         return Promise.reject({
           code,
@@ -254,11 +247,10 @@ service.interceptors.response.use(
             data: response.data,
             timestamp: Date.now()
           });
-          console.log('[Response Interceptor] Caching response for:', requestKey);
         }
 
-        // 返回 data 部分
-        return data;
+        // 返回完整响应对象
+        return response.data;
       }
     } else {
       return response.data;
@@ -267,7 +259,6 @@ service.interceptors.response.use(
   error => {
     // 处理缓存命中 - 直接返回缓存数据
     if (error.__CACHED__ && error.__CACHED_DATA__) {
-      console.log('[Response Interceptor] Returning cached data for:', error.config?.url);
       return error.__CACHED_DATA__.data;
     }
 
@@ -281,7 +272,6 @@ service.interceptors.response.use(
 
     // 如果是被主动取消的请求，静默处理（不显示错误）
     if (axios.isCancel(error)) {
-      console.log('[Response Interceptor] Request cancelled, ignoring silently');
       return Promise.reject({ code: 'CANCELLED', message: '请求已取消', isCancelled: true, silent: true });
     }
 
@@ -298,7 +288,7 @@ service.interceptors.response.use(
         localStorage.removeItem('userDepartmentId'); // Clear user department ID
         // Force redirect to login page
         window.location.href = '/login';
-        ElMessage.error('认证失败或会话过期，请重新登录。');
+        ElMessage.error({ message: '认证失败或会话过期，请重新登录。', showClose: true, duration: 3000 });
       }
       return Promise.reject({
         code: code || error.response.status,
@@ -309,7 +299,7 @@ service.interceptors.response.use(
 
     // 网络错误处理
     if (!error.response) {
-      ElMessage.error('网络连接失败，请检查网络设置。');
+      ElMessage.error({ message: '网络连接失败，请检查网络设置。', showClose: true, duration: 3000 });
     }
 
     return Promise.reject({ message: error.message || '网络请求失败' });

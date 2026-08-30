@@ -3,8 +3,8 @@ import request from '@/utils/request';
 // 获取所有部门
 export function getDepartments() {
   return request.get('/departments').then((res: any) => {
-    // 拦截器已自动解包 data，直接使用 res
-    const data = res || {};
+    // 拦截器返回 { code, message, data: { departments: [...] } }
+    const data = res?.data || res || {};
     return data.departments || [];
   });
 }
@@ -12,8 +12,8 @@ export function getDepartments() {
 // 获取所有厂区
 export function getPlants() {
   return request.get('/plants').then((res: any) => {
-    // 拦截器已自动解包 data，直接使用 res
-    const data = res || {};
+    // 拦截器返回 { code, message, data: { plants: [...] } }
+    const data = res?.data || res || {};
     return data.plants || [];
   });
 }
@@ -21,8 +21,8 @@ export function getPlants() {
 // 获取所有岗位
 export function getPositions() {
   return request.get('/positions').then((res: any) => {
-    // 拦截器已自动解包 data，直接使用 res
-    const data = res || {};
+    // 拦截器返回 { code, message, data: { items: [...] } }
+    const data = res?.data || res || {};
     return data.items || [];
   });
 }

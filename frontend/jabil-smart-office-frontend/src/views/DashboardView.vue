@@ -1,5 +1,8 @@
 <template>
   <div class="dashboard-container">
+    <!-- 仓库背景（无仪表盘权限时显示） -->
+    <div v-if="!hasDashboardPermission" class="warehouse-background"></div>
+
     <header class="main-header">
       <div class="header-user-section">
         <div class="tabs-container">
@@ -11,8 +14,7 @@
           >
             <span class="tab-icon">{{ tab.icon }}</span>
             <span class="tab-title">{{ tab.title }}</span>
-            <span 
-              v-if="index !== 0" 
+            <span
               class="tab-close"
               @click.stop="closeTab(index)"
             >
@@ -23,47 +25,13 @@
         <div class="header-right-actions">
           <div class="header-actions">
             <span class="header-action" @click="router.push('/announcement-management')">🌐 系统公告</span>
-            <div class="notification-wrapper">
-              <span class="header-action notification-icon" @click="toggleNotificationPanel">
+            <div class="notification-wrapper" @click.stop>
+              <span class="header-action notification-icon" @click.stop="toggleNotificationPanel">
                 🔔
                 <span v-if="unreadNotificationsCount > 0" class="notification-badge">
                   {{ unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount }}
                 </span>
               </span>
-              <div v-if="showNotificationPanel" class="notification-panel">
-                <div class="notification-panel-header">
-                  <span class="notification-panel-title">通知中心</span>
-                  <span class="mark-all-read" @click="markAllAsRead">全部标为已读</span>
-                </div>
-                <div class="notification-tabs">
-                  <span 
-                    :class="['notification-tab', { active: activeNotificationTab === 'unread' }]"
-                    @click="activeNotificationTab = 'unread'"
-                  >
-                    未读 ({{ notifications.filter(n => !n.read).length }})
-                  </span>
-                  <span 
-                    :class="['notification-tab', { active: activeNotificationTab === 'read' }]"
-                    @click="activeNotificationTab = 'read'"
-                  >
-                    已读 ({{ notifications.filter(n => n.read).length }})
-                  </span>
-                </div>
-                <div class="notification-list">
-                  <div v-if="displayNotifications.length === 0" class="empty-notifications">
-                    暂无通知
-                  </div>
-                  <div v-else v-for="notification in displayNotifications" :key="notification.id" class="notification-item" @click="handleNotificationClick(notification)">
-                    <span class="notification-item-icon">{{ notification.icon }}</span>
-                    <div class="notification-item-content">
-                      <div class="notification-item-title">{{ notification.title }}</div>
-                      <div class="notification-item-message">{{ notification.message }}</div>
-                      <div class="notification-item-time">{{ notification.time }}</div>
-                    </div>
-                    <span v-if="!notification.read" class="unread-dot-small"></span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
           <div class="user-section">
@@ -93,12 +61,12 @@
         </div>
         <nav class="main-nav">
           <ul>
-            <li 
-              v-for="item in sidebarMenuItems" 
+            <li
+              v-for="item in filteredMenuItems"
               :key="item.name"
-              :class="{ 
-                'menu-header': item.isHeader, 
-                'divider': item.isDivider, 
+              :class="{
+                'menu-header': item.isHeader,
+                'divider': item.isDivider,
                 'active': item.routeName && isMenuItemActive(item.routeName),
                 'sub-menu': item.parent,
                 'hidden': !isMenuItemVisible(item)
@@ -123,13 +91,51 @@
       </aside>
       <main class="main-content">
         <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
+          <transition name="fade">
             <component :is="Component" v-if="Component" />
             <DashboardContent v-else />
           </transition>
         </router-view>
       </main>
     </div>
+
+    <!-- 通知面板使用 Teleport 移到 body 下，确保在最顶层 -->
+    <Teleport to="body">
+      <div v-if="showNotificationPanel" class="notification-panel">
+        <div class="notification-panel-header">
+          <span class="notification-panel-title">通知中心</span>
+          <span class="mark-all-read" @click="markAllAsRead">全部标为已读</span>
+        </div>
+        <div class="notification-tabs">
+          <span
+            :class="['notification-tab', { active: activeNotificationTab === 'unread' }]"
+            @click="activeNotificationTab = 'unread'"
+          >
+            未读 ({{ notifications.filter(n => !n.read).length }})
+          </span>
+          <span
+            :class="['notification-tab', { active: activeNotificationTab === 'read' }]"
+            @click="activeNotificationTab = 'read'"
+          >
+            已读 ({{ notifications.filter(n => n.read).length }})
+          </span>
+        </div>
+        <div class="notification-list">
+          <div v-if="displayNotifications.length === 0" class="empty-notifications">
+            暂无通知
+          </div>
+          <div v-else v-for="notification in displayNotifications" :key="notification.id" class="notification-item" @click="handleNotificationClick(notification)">
+            <span class="notification-item-icon">{{ notification.icon }}</span>
+            <div class="notification-item-content">
+              <div class="notification-item-title">{{ notification.title }}</div>
+              <div class="notification-item-message">{{ notification.message }}</div>
+              <div class="notification-item-time">{{ notification.time }}</div>
+            </div>
+            <span v-if="!notification.read" class="unread-dot-small"></span>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -140,6 +146,39 @@ import DashboardContent from './DashboardContent.vue';
 import request from '../utils/request'; // 导入 request 实例
 import { ElMessage } from 'element-plus'; // 导入 ElMessage 用于提示
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead as markAllReadApi } from '../api/notification';
+import { usePermission } from '../composables/usePermission';
+
+// 点击外部关闭通知面板
+let notificationClickOutsideHandler: ((e: MouseEvent) => void) | null = null;
+const setupNotificationClickOutside = (closeFn: () => void) => {
+  // 延迟设置，让当前的点击事件完成
+  setTimeout(() => {
+    notificationClickOutsideHandler = (event: MouseEvent) => {
+      const wrapper = document.querySelector('.notification-wrapper');
+      const panel = document.querySelector('.notification-panel');
+      if (wrapper && panel) {
+        if (!wrapper.contains(event.target as Node) && !panel.contains(event.target as Node)) {
+          closeFn();
+        }
+      }
+    };
+    document.addEventListener('click', notificationClickOutsideHandler);
+  }, 100);
+};
+const removeNotificationClickOutside = () => {
+  if (notificationClickOutsideHandler) {
+    document.removeEventListener('click', notificationClickOutsideHandler);
+    notificationClickOutsideHandler = null;
+  }
+};
+
+// 权限控制
+const { userMenuPermissions, loadEffectivePermissions, effectivePermissions } = usePermission();
+
+// 检查是否有仪表盘权限
+const hasDashboardPermission = computed(() => {
+  return userMenuPermissions.value.includes('dashboard');
+});
 
 interface Tab {
   title: string;
@@ -170,10 +209,10 @@ const handleLogout = async () => {
   try {
     // 向后端发送注销请求
     await request.post('/users/logout');
-    ElMessage.success('退出登录成功！');
+    ElMessage.success({ message: '退出登录成功！', showClose: true, duration: 3000 });
   } catch (error) {
     console.error('后端注销请求失败:', error);
-    ElMessage.error('退出登录失败，请重试。');
+    ElMessage.error({ message: '退出登录失败，请重试。', showClose: true, duration: 3000 });
   } finally {
     // 无论后端注销成功与否，都清除前端存储，确保前端状态一致
     localStorage.removeItem('jabil-token'); // Ensure token is removed
@@ -197,8 +236,9 @@ const activeNotificationTab = ref<'unread' | 'read'>('unread');
 // 加载未读数量（用于徽章显示）
 const loadUnreadCount = async () => {
   try {
-    const res = await getUnreadCount();
-    unreadCount.value = res?.count || 0;
+    const res: any = await getUnreadCount();
+    // 拦截器返回 { code, message, data: { count } }
+    unreadCount.value = res?.data?.count || res?.count || 0;
   } catch (error) {
     console.error('加载未读数量失败:', error);
     unreadCount.value = 0;
@@ -214,8 +254,25 @@ const displayNotifications = computed(() => {
   return notifications.value.filter(n => n.read);
 });
 
-const toggleNotificationPanel = () => {
+const toggleNotificationPanel = async () => {
+  // 如果正在打开，先移除旧的监听器
+  if (!showNotificationPanel.value) {
+    removeNotificationClickOutside();
+  }
   showNotificationPanel.value = !showNotificationPanel.value;
+  // 如果打开，设置点击外部关闭
+  if (showNotificationPanel.value) {
+    setupNotificationClickOutside(() => {
+      showNotificationPanel.value = false;
+    });
+  } else {
+    removeNotificationClickOutside();
+  }
+};
+
+// 测试点击
+const testClick = () => {
+  toggleNotificationPanel();
 };
 
 // 格式化时间显示
@@ -266,6 +323,34 @@ watch(showNotificationPanel, (newVal) => {
   }
 });
 
+// 从 localStorage 恢复标签页
+const savedTabs = localStorage.getItem('dashboard-tabs');
+const savedActiveTab = localStorage.getItem('dashboard-active-tab');
+
+const tabs = ref<Tab[]>(savedTabs ? JSON.parse(savedTabs) : [
+  { title: '仪表盘', icon: '📊', routeName: 'dashboard' }
+]);
+const activeTab = ref<number>(savedActiveTab ? parseInt(savedActiveTab) : 0);
+
+// 保存标签页到 localStorage
+const saveTabs = () => {
+  localStorage.setItem('dashboard-tabs', JSON.stringify(tabs.value));
+  localStorage.setItem('dashboard-active-tab', activeTab.value.toString());
+};
+
+// 权限加载完成后检查标签页权限
+// 注意：不使用 immediate:true，因为在 setup 阶段 DOM 还未准备好
+// 在 onMounted 中处理
+watch(userMenuPermissions, () => {
+  // 如果 tabs 列表为空，添加默认的仪表盘标签
+  if (tabs.value.length === 0) {
+    if (userMenuPermissions.value.includes('dashboard')) {
+      tabs.value.push({ title: '仪表盘', icon: '📊', routeName: 'dashboard' });
+    }
+  }
+  // 不再过滤已有标签，避免干扰当前打开的页面
+});
+
 // 标记单个通知为已读
 const handleNotificationClick = async (notification: any) => {
   if (!notification.read) {
@@ -286,26 +371,11 @@ const markAllAsRead = async () => {
     await markAllReadApi();
     notifications.value.forEach(n => n.read = true);
     unreadCount.value = 0;
-    ElMessage.success('已全部标记为已读');
+    ElMessage.success({ message: '已全部标记为已读', showClose: true, duration: 3000 });
   } catch (error) {
     console.error('标记全部已读失败:', error);
-    ElMessage.error('操作失败，请重试');
+    ElMessage.error({ message: '操作失败，请重试', showClose: true, duration: 3000 });
   }
-};
-
-// 从 localStorage 恢复标签页
-const savedTabs = localStorage.getItem('dashboard-tabs');
-const savedActiveTab = localStorage.getItem('dashboard-active-tab');
-
-const tabs = ref<Tab[]>(savedTabs ? JSON.parse(savedTabs) : [
-  { title: '仪表盘', icon: '📊', routeName: 'dashboard' }
-]);
-const activeTab = ref<number>(savedActiveTab ? parseInt(savedActiveTab) : 0);
-
-// 保存标签页到 localStorage
-const saveTabs = () => {
-  localStorage.setItem('dashboard-tabs', JSON.stringify(tabs.value));
-  localStorage.setItem('dashboard-active-tab', activeTab.value.toString());
 };
 
 const sidebarMenuItems = ref<MenuItem[]>([
@@ -315,11 +385,13 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '工位安排', icon: '🏭', routeName: 'station-arrangement', parent: '业务中心', expanded: false },
   { name: 'K045 单据管理', icon: '📦', routeName: 'k045', parent: '业务中心', expanded: false },
   { name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', parent: '业务中心', expanded: false },
+  { name: '回仓申请', icon: '📥', routeName: 'warehouse-return', parent: '业务中心', expanded: false },
   { name: '数据中心', isHeader: true, label: '数据中心', expanded: false, icon: '📊' },
   { name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', parent: '数据中心', expanded: false },
   { name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', parent: '数据中心', expanded: false },
   { name: '生产追踪', icon: '📊', routeName: 'production-tracking', parent: '数据中心', expanded: false },
   { name: '奖金评估', icon: '🎯', routeName: 'bonus-evaluation', parent: '数据中心', expanded: false },
+  { name: 'Stockroom Urgent Pull', icon: '📦', routeName: 'stockroom-urgent-pull', parent: '数据中心', expanded: false },
   { name: '人事中心', isHeader: true, label: '人事中心', expanded: false, icon: '👥' },
   { name: '员工花名册', icon: '👥', routeName: 'employee-roster', parent: '人事中心', expanded: false },
   { name: '请假公差', icon: '📝', routeName: 'leave-management', parent: '人事中心', expanded: false },
@@ -334,6 +406,8 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '过期料延期', icon: '⏰', routeName: 'expired-material-extension', parent: '仓储管理', expanded: false },
   { name: '6S管理', icon: '✨', routeName: '6s-management', parent: '仓储管理', expanded: false },
   { name: 'K**差异登记', icon: '📝', routeName: 'k2-diff-registration', parent: '仓储管理', expanded: false },
+  { name: '物料进出效期监控', icon: '📦', routeName: 'warehouse-monitor', parent: '仓储管理', expanded: false },
+  { name: '物料包装信息', icon: '📦', routeName: 'material-package', parent: '仓储管理', expanded: false },
   { name: '系统管理', isHeader: true, label: '系统管理', expanded: false, icon: '⚙️' },
   { name: '系统公告', icon: '📢', routeName: 'announcement-management', parent: '系统管理', expanded: false },
   { name: '用户管理', icon: '👤', routeName: 'user-management', parent: '系统管理', expanded: false },
@@ -343,10 +417,10 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '部门计算规则', icon: '📐', routeName: 'dept-calc-rules-config', parent: '规则配置', expanded: false },
   { name: '班次时长规则', icon: '⏰', routeName: 'shift-duration-rules-config', parent: '规则配置', expanded: false },
   { name: '智能排班规则', icon: '📋', routeName: 'smart-schedule-rules-config', parent: '规则配置', expanded: false },
-  { name: 'K045 规则配置', icon: '📄', routeName: 'k045-config', parent: '规则配置', expanded: false },
-  { name: '管控物料 规则配置', icon: '📋', routeName: 'da-material-config', parent: '规则配置', expanded: false },
+  { name: '物料模块 规则配置', icon: '📦', routeName: 'material-config', parent: '规则配置', expanded: false },
   { name: 'PNC转仓打印配置', icon: '📄', routeName: 'pnc-transfer-config', parent: '规则配置', expanded: false },
   { name: 'K**差异登记 规则配置', icon: '📝', routeName: 'k2-diff-config', parent: '规则配置', expanded: false },
+  { name: 'Stockroom Urgent Pull 配置', icon: '⚙️', routeName: 'stockroom-urgent-pull-config', parent: '规则配置', expanded: false },
   { name: '工位配置', icon: '🏭', routeName: 'workstation-config', parent: '规则配置', expanded: false },
   { name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', parent: '规则配置', expanded: false },
   { name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', parent: '规则配置', expanded: false },
@@ -373,10 +447,58 @@ const toggleMenuGroup = (item: MenuItem) => {
   });
 };
 
-const isMenuItemVisible = (item: MenuItem) => {
-  if (!item.parent) return true;
-  const parentItem = sidebarMenuItems.value.find(m => m.isHeader && m.label === item.parent);
-  return parentItem ? !!parentItem.expanded : true;
+// 检查分组是否有任何可见的子菜单
+const hasVisibleChildren = (groupLabel: string): boolean => {
+  return sidebarMenuItems.value.some(item =>
+    item.parent === groupLabel &&
+    item.routeName &&
+    userMenuPermissions.value.includes(item.routeName)
+  );
+};
+
+// 过滤后的菜单列表（移除无权限的分组头部和子菜单）
+const filteredMenuItems = computed(() => {
+  const headersWithChildren = new Set<string>();
+
+  // 第一遍：找出所有有可见子项的分组
+  sidebarMenuItems.value.forEach(item => {
+    if (item.isHeader && item.label && hasVisibleChildren(item.label)) {
+      headersWithChildren.add(item.label);
+    }
+  });
+
+  // 第二遍：过滤掉无权限的项
+  return sidebarMenuItems.value.filter(item => {
+    // 仪表盘（无父级）保留
+    if (!item.parent && !item.isHeader) {
+      return true;
+    }
+    // 分组头部：只保留有可见子项的
+    if (item.isHeader) {
+      return item.label && headersWithChildren.has(item.label);
+    }
+    // 子菜单：检查父分组是否有权限
+    if (item.parent) {
+      return headersWithChildren.has(item.parent);
+    }
+    return true;
+  });
+});
+
+const isMenuItemVisible = (item: MenuItem): boolean => {
+  // 分组头部根据展开状态显示
+  if (item.isHeader) {
+    return item.expanded === true;
+  }
+  // 子菜单项根据父菜单的展开状态显示
+  if (item.parent) {
+    const parentItem = sidebarMenuItems.value.find(m => m.isHeader && m.label === item.parent);
+    if (parentItem && parentItem.expanded) {
+      return userMenuPermissions.value.includes(item.routeName || '');
+    }
+    return false;
+  }
+  return true;
 };
 
 const switchTab = (index: number) => {
@@ -389,12 +511,14 @@ const switchTab = (index: number) => {
 };
 
 const closeTab = (index: number) => {
-  if (index === 0) return; // 不能关闭仪表盘标签
-  
   const isActive = activeTab.value === index;
   tabs.value.splice(index, 1);
-  
-  if (isActive && tabs.value.length > 0) {
+
+  if (tabs.value.length === 0) {
+    // 所有标签都关闭了，重定向到首页或显示空状态
+    activeTab.value = 0;
+    router.push({ name: 'login' });
+  } else if (isActive && tabs.value.length > 0) {
     // 如果关闭了当前活动标签，切换到前一个标签
     const newActiveIndex = Math.min(index, tabs.value.length - 1);
     activeTab.value = newActiveIndex;
@@ -459,7 +583,7 @@ const isMenuItemActive = (routeName: string) => {
   return route.name === routeName;
 };
 
-onMounted(() => {
+onMounted(async () => {
   const userStr = localStorage.getItem('user');
   if (userStr && userStr !== "undefined") {
     try {
@@ -476,10 +600,35 @@ onMounted(() => {
   // 清除旧的 lastRoute 避免干扰
   localStorage.removeItem('lastRoute');
 
-  // 清理无效的标签页（移除不存在的路由）
-  const validTabs = tabs.value.filter(tab =>
-    tab.routeName && router.hasRoute(tab.routeName)
-  );
+
+  // 【关键修复】等待权限加载完成后再清理标签页
+  // 这样可以确保 userMenuPermissions.value 已经包含正确的数据
+  await loadEffectivePermissions();
+
+  // 【修复】检查当前 URL 路径，如果已经在子页面（不是根路径 /），则不执行任何操作
+  // 这样可以防止刷新页面时从员工排班等页面跳转到仪表盘，也避免过滤掉当前页面的标签
+  const currentUrlPath = window.location.pathname;
+  if (currentUrlPath && currentUrlPath !== '/') {
+    return; // 重要：这里直接返回，不再过滤和保存 tabs
+  }
+
+  // 清理无效的标签页（移除不存在的路由和无权限的菜单）
+  // 【修复】员工排班页面刷新后关闭问题：
+  // 之前的问题是 loadEffectivePermissions() 是异步的，但代码立即用 userMenuPermissions.value 过滤标签
+  // 此时权限还没加载完成，导致当前页面的标签被错误删除，刷新后就"关闭"了
+  const validTabs = tabs.value.filter(tab => {
+    // 必须有路由名
+    if (!tab.routeName) return false;
+    // 路由必须存在
+    if (!router.hasRoute(tab.routeName)) return false;
+    // 必须有权限（仪表盘特殊处理）
+    if (tab.routeName !== 'dashboard') {
+      const hasPermission = userMenuPermissions.value.includes(tab.routeName);
+      return hasPermission;
+    }
+    return true;
+  });
+
 
   // 如果所有标签都被过滤掉了，只保留仪表盘
   if (validTabs.length === 0) {
@@ -491,8 +640,9 @@ onMounted(() => {
 
   // 确保 activeTab 不超出范围
   if (activeTab.value >= tabs.value.length) {
-    activeTab.value = 0;
+    activeTab.value = Math.max(0, validTabs.findIndex(t => t.routeName === 'dashboard'));
   }
+
 
   // 保存清理后的标签页
   saveTabs();
@@ -522,6 +672,7 @@ onBeforeUnmount(() => {
     clearInterval(unreadCountTimer);
     unreadCountTimer = null;
   }
+  removeNotificationClickOutside();
 });
 </script>
 
@@ -552,7 +703,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: stretch;
-  z-index: 1;
+  z-index: 101;
   margin-left: 240px;
 }
 
@@ -897,15 +1048,15 @@ onBeforeUnmount(() => {
 }
 
 .notification-panel {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: 360px;
+  position: fixed;
+  top: 52px;
+  right: 220px;
+  width: 380px;
+  max-height: 500px;
   background: white;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  margin-top: 8px;
-  z-index: 1000;
+  z-index: 99999;
   overflow: hidden;
 }
 
@@ -1025,5 +1176,23 @@ onBeforeUnmount(() => {
   text-align: center;
   color: #9CA3AF;
   font-size: 14px;
+}
+
+/* 无仪表盘权限时的白色背景 */
+.warehouse-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  background-color: #ffffff;
+}
+
+/* 确保主要内容在仓库背景之上 */
+.dashboard-layout,
+.main-header {
+  position: relative;
+  z-index: 2;
 }
 </style>

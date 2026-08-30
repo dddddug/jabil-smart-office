@@ -89,4 +89,53 @@ router.put('/:id/deactivate', authenticateToken, async (req, res) => {
   }
 });
 
+// 更新部门计算规则
+router.put('/:id', authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const { estimatedCost, exchangeRate, rateCoefficient, startTime, endTime } = req.body;
+
+    await client.query('BEGIN');
+
+    // 获取原规则信息
+    const oldRule = await client.query(
+      `SELECT plant_id, department_id, business_month FROM ${DEPT_RULES_TABLE} WHERE id = $1`,
+      [id]
+    );
+
+    if (oldRule.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: '规则不存在' });
+    }
+
+    const { plant_id, department_id, business_month } = oldRule.rows[0];
+
+    // 停用重叠的旧规则（排除当前规则）
+    await client.query(
+      `UPDATE ${DEPT_RULES_TABLE} SET end_time = $1
+       WHERE plant_id = $2 AND department_id = $3 AND business_month = $4
+       AND id != $5 AND (end_time IS NULL OR end_time > $1)`,
+      [startTime, plant_id, department_id, business_month, id]
+    );
+
+    // 更新当前规则
+    const result = await client.query(
+      `UPDATE ${DEPT_RULES_TABLE}
+       SET estimated_cost = $1, exchange_rate = $2, rate_coefficient = $3, start_time = $4, end_time = $5, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6 RETURNING *`,
+      [estimatedCost, exchangeRate, rateCoefficient, startTime, endTime || null, id]
+    );
+
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating department calculation rule:', error);
+    res.status(500).json({ message: 'Error updating department calculation rule', error });
+  } finally {
+    client.release();
+  }
+});
+
 export default router;

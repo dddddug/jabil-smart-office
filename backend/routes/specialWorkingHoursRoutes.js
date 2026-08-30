@@ -338,11 +338,15 @@ router.get('/export', authenticateToken, async (req, res) => {
       { header: '姓名', key: 'employeeName', width: 15 },
       { header: '开始时间', key: 'startTime', width: 15 },
       { header: '结束时间', key: 'endTime', width: 15 },
+      { header: '用时(小时)', key: 'hours', width: 15 },
       { header: '登记人', key: 'registeredBy', width: 15 }
     ];
 
     // 添加数据
     specialWorkingHours.forEach(row => {
+      const start = dayjs(row.start_time);
+      const end = dayjs(row.end_time);
+      const hours = end.diff(start, 'hour', true); // 计算小时数
       worksheet.addRow({
         date: dayjs(row.date).format('YYYY-MM-DD'),
         event: row.event,
@@ -350,6 +354,7 @@ router.get('/export', authenticateToken, async (req, res) => {
         employeeName: row.employee_name,
         startTime: dayjs(row.start_time).format('HH:mm'),
         endTime: dayjs(row.end_time).format('HH:mm'),
+        hours: hours.toFixed(1),
         registeredBy: row.registered_by
       });
     });

@@ -111,11 +111,17 @@
                 <input type="text" id="realName" v-model="currentUser.realName" />
               </div>
             </div>
-            <div class="form-row">
+            <div class="form-row" v-if="!isEditMode">
+              <div class="form-group">
+                <label for="password">密码 *</label>
+                <input type="password" id="password" v-model="currentUser.password" placeholder="6-100个字符" />
+              </div>
               <div class="form-group">
                 <label for="employeeId">工号</label>
                 <input type="text" id="employeeId" v-model="currentUser.employeeId" />
               </div>
+            </div>
+            <div class="form-row">
               <div class="form-group">
                 <label for="oldEmployeeId">旧工号</label>
                 <input type="text" id="oldEmployeeId" v-model="currentUser.oldEmployeeId" />
@@ -440,19 +446,12 @@ const importFile = ref<File | null>(null);
 const previewData = ref<ImportUser[]>([]);
 const importResults = ref<ImportResult | null>(null);
 
-watch(() => previewData.value.length, (newVal) => {
-  console.log('Watcher: previewData.value.length changed to', newVal);
+watch(() => previewData.value.length, () => {
 });
 
 const shouldShowConfirmButton = computed(() => {
   const isPreviewDataPopulated = (previewData.value?.length || 0) > 0;
   const hasNoImportResults = !importResults.value; // 明确检查 .value
-  console.log('Computed shouldShowConfirmButton:', {
-    isPreviewDataPopulated,
-    hasNoImportResults,
-    previewDataLength: previewData.value?.length,
-    importResultsValue: importResults.value
-  });
   return isPreviewDataPopulated && hasNoImportResults;
 });
 const currentUser = ref<User>({
@@ -479,7 +478,7 @@ const currentUser = ref<User>({
   employeeType: '',
 });
 const notification = ref<Notification>({ message: '', type: 'info' });
-let notificationTimer: any = null;
+let notificationTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 分页相关变量
 const currentPage = ref(1);
@@ -532,8 +531,9 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info' = 
 const loadUsers = async () => {
   isLoading.value = true;
   try {
-    // 拦截器已自动解包 data，res 直接是数据对象
-    const data = await request.get('/users');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await request.get('/users');
+    const data = res?.data || res || {};
     users.value = data?.items || data?.users || [];
   } catch (error) {
     console.error('获取用户失败:', error);
@@ -551,9 +551,11 @@ const loadDefaultUsers = () => {
 
 const loadRoles = async () => {
   try {
-    // 拦截器已自动解包 data，res 直接是数据对象
-    const data = await request.get('/roles');
-    availableRoles.value = data?.roles || [];
+    // axios 拦截器返回 { code, message, data: { items: [...] } }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await request.get('/roles');
+    const data = res?.data || res || {};
+    availableRoles.value = Array.isArray(data) ? data : (data?.items || data?.roles || []);
   } catch (error) {
     console.error('获取角色失败:', error);
     availableRoles.value = [
@@ -567,9 +569,10 @@ const loadRoles = async () => {
 
 const loadPlants = async () => {
   try {
-    // 拦截器已自动解包 data，res 直接是数据对象
-    const data = await request.get('/plants');
-    availablePlants.value = data?.plants || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await request.get('/plants');
+    const data = res?.data || res || {};
+    availablePlants.value = data?.items || data?.plants || [];
   } catch (error) {
     console.error('获取厂区失败:', error);
     // 如果API失败，使用空数组
@@ -579,9 +582,10 @@ const loadPlants = async () => {
 
 const loadDepartments = async () => {
   try {
-    // 拦截器已自动解包 data，res 直接是数据对象
-    const data = await request.get('/departments');
-    allDepartments.value = data?.departments || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res: any = await request.get('/departments');
+    const data = res?.data || res || {};
+    allDepartments.value = data?.items || data?.departments || [];
   } catch (error) {
     console.error('获取部门失败:', error);
     // 如果API失败，使用空数组
@@ -636,6 +640,14 @@ const saveUser = async () => {
     showNotification('请填写必填项', 'error');
     return;
   }
+  if (!isEditMode.value && (!currentUser.value.password || currentUser.value.password.length < 6)) {
+    showNotification('密码长度必须在6-100个字符之间', 'error');
+    return;
+  }
+  if (currentUser.value.phone && !/^1[3-9]\d{9}$/.test(currentUser.value.phone)) {
+    showNotification('手机号格式不正确（需为11位中国大陆手机号）', 'error');
+    return;
+  }
 
   isSaving.value = true;
   let savedUser = null;
@@ -665,6 +677,7 @@ const saveUser = async () => {
     } else {
       const response = await request.post('/users', {
         username: currentUser.value.username,
+        password: currentUser.value.password,
         realName: currentUser.value.realName,
         employeeId: currentUser.value.employeeId,
         oldEmployeeId: currentUser.value.oldEmployeeId,
@@ -705,17 +718,18 @@ const saveUser = async () => {
         }
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('保存用户失败:', error);
     console.error('错误详情:', JSON.stringify(error, null, 2));
     // 显示详细错误信息
-    const errorDetails = error?.details || [];
+    const err = error as { details?: Array<{ field?: string; message?: string }>; message?: string };
+    const errorDetails = err?.details || [];
     if (errorDetails.length > 0) {
       console.error('验证错误详情:', errorDetails);
-      const messages = errorDetails.map((d: any) => `${d.field || '未知字段'}: ${d.message}`).join('; ');
+      const messages = errorDetails.map((d) => `${d.field || '未知字段'}: ${d.message}`).join('; ');
       showNotification(`保存用户失败: ${messages}`, 'error');
     } else {
-      showNotification(error?.message || '保存用户失败，请检查后端服务', 'error');
+      showNotification(err?.message || '保存用户失败，请检查后端服务', 'error');
     }
   } finally {
     isSaving.value = false;
@@ -728,8 +742,7 @@ const resetPassword = async (userId: number) => {
   }
 
   try {
-    const response = await request.post(`/users/${userId}/admin-reset-password`);
-    if (!response.ok) throw new Error('重置密码失败');
+    await request.post(`/users/${userId}/admin-reset-password`);
     showNotification('密码已重置为123456', 'success');
   } catch (error) {
     console.error('重置密码失败:', error);
@@ -781,7 +794,6 @@ const openBatchImportDialog = () => {
   importFile.value = null;
   previewData.value = [];
   importResults.value = null;
-  console.log('openBatchImportDialog: importResults.value reset to', importResults.value);
 };
 
 const closeBatchImportDialog = () => {
@@ -789,7 +801,6 @@ const closeBatchImportDialog = () => {
   importFile.value = null;
   previewData.value = [];
   importResults.value = null;
-  console.log('closeBatchImportDialog: importResults.value reset to', importResults.value);
 };
 
 const downloadTemplate = () => {
@@ -869,7 +880,6 @@ const removeImportFile = () => {
   importFile.value = null;
   previewData.value = [];
   importResults.value = null;
-  console.log('removeImportFile: importResults.value reset to', importResults.value);
   if (fileInput.value) {
     fileInput.value.value = '';
   }
@@ -897,7 +907,6 @@ const parseExcel = (file: File) => {
     try {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const workbook = XLSX.read(data, { type: 'array' });
-      console.log('Excel Workbook read successfully:', workbook); // Added log
       
       // 获取第一个工作表
       const firstSheetName = workbook.SheetNames[0];
@@ -914,8 +923,7 @@ const parseExcel = (file: File) => {
       }
       
       // 转换为JSON
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-      console.log('Excel jsonData:', jsonData); // Added log
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][];
       
       if (jsonData.length < 2) {
         showNotification('文件格式错误，请使用模板文件', 'error');
@@ -924,48 +932,46 @@ const parseExcel = (file: File) => {
       }
 
       // 第一行为表头
-      const headers = jsonData[0];
+      const headers = jsonData[0] as (string | number | boolean | null | undefined)[];
       if (!headers) {
         showNotification('文件格式错误，请使用模板文件', 'error');
         console.error('Excel file has no headers.'); // Added log
         return;
       }
-      
+
       // 从第二行开始处理数据
       for (let i = 1; i < jsonData.length; i++) {
-        const row = jsonData[i];
+        const row = jsonData[i] as (string | number | boolean | null | undefined)[];
         if (!row || row.length === 0 || row.every(cell => cell === undefined || cell === null || String(cell).trim() === '')) {
-          console.log(`Skipping empty or invalid row at index ${i}:`, row); // Added log
           continue; // 跳过空行
         }
-        
+
         const user: ImportUser = {};
 
         // 根据表头映射字段
-        headers.forEach((header: string, index: number) => {
-          const value = row[index];
+        headers.forEach((header: string | number | boolean | null | undefined, idx: number) => {
+          const headerStr = String(header);
+          const value = row[idx];
           const cellValue = value !== undefined && value !== null ? String(value).trim() : '';
-          
-          if (header === '用户名') user.username = cellValue;
-          else if (header === 'SAP工号（工号）') user.employeeId = cellValue;
-          else if (header === '旧工号') user.oldEmployeeId = cellValue;
-          else if (header === '姓名') user.realName = cellValue;
-          else if (header === '性别') user.gender = cellValue;
-          else if (header === '岗位') user.position = cellValue;
-          else if (header === '级别') user.level = cellValue;
-          else if (header === '电话') user.phone = cellValue;
-          else if (header === '邮箱') user.email = cellValue;
-          else if (header === '入职日期') user.hireDate = convertExcelDate(cellValue);
-          else if (header === '离职日期') user.leaveDate = convertExcelDate(cellValue);
-          else if (header === 'IC卡号') user.icCardNumber = cellValue;
-          else if (header === '员工类型（3PL/Jabil）') user.employeeType = cellValue;
-          else if (header === '所属厂区') user.plantId = getPlantIdByName(cellValue);
-          else if (header === '所属部门') user.departmentId = getDepartmentIdByName(cellValue);
+
+          if (headerStr === '用户名') user.username = cellValue;
+          else if (headerStr === 'SAP工号（工号）') user.employeeId = cellValue;
+          else if (headerStr === '旧工号') user.oldEmployeeId = cellValue;
+          else if (headerStr === '姓名') user.realName = cellValue;
+          else if (headerStr === '性别') user.gender = cellValue;
+          else if (headerStr === '岗位') user.position = cellValue;
+          else if (headerStr === '级别') user.level = cellValue;
+          else if (headerStr === '电话') user.phone = cellValue;
+          else if (headerStr === '邮箱') user.email = cellValue;
+          else if (headerStr === '入职日期') user.hireDate = convertExcelDate(cellValue);
+          else if (headerStr === '离职日期') user.leaveDate = convertExcelDate(cellValue);
+          else if (headerStr === 'IC卡号') user.icCardNumber = cellValue;
+          else if (headerStr === '员工类型（3PL/Jabil）') user.employeeType = cellValue;
+          else if (headerStr === '所属厂区') user.plantId = getPlantIdByName(cellValue);
+          else if (headerStr === '所属部门') user.departmentId = getDepartmentIdByName(cellValue);
         });
-        console.log(`Parsed user from row ${i}:`, user); // Added log
         previewData.value.push(user);
       }
-      console.log('Final previewData after Excel parse:', previewData.value); // Added log
     } catch (error) {
       console.error('解析 Excel 失败:', error); // Enhanced log
       showNotification('文件解析失败，请检查文件格式', 'error');
@@ -1026,7 +1032,6 @@ const parseCSV = (file: File) => {
     try {
       const content = e.target?.result as string;
       const lines = content.split('\n').filter(line => line.trim());
-      console.log('CSV lines read:', lines); // Added log
       
       if (lines.length < 2) {
         showNotification('文件格式错误，请使用模板文件', 'error');
@@ -1042,12 +1047,10 @@ const parseCSV = (file: File) => {
         return;
       }
       const headers = parseCSVLine(firstLine);
-      console.log('CSV headers:', headers); // Added log
       
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
         if (!line) {
-          console.log(`Skipping empty CSV line at index ${i}.`); // Added log
           continue;
         }
         const values = parseCSVLine(line);
@@ -1072,10 +1075,8 @@ const parseCSV = (file: File) => {
           else if (header === '所属厂区') user.plantId = getPlantIdByName(value);
           else if (header === '所属部门') user.departmentId = getDepartmentIdByName(value);
         });
-        console.log(`Parsed user from CSV line ${i}:`, user); // Added log
         previewData.value.push(user);
       }
-      console.log('Final previewData after CSV parse:', previewData.value); // Added log
     } catch (error) {
       console.error('解析 CSV 失败:', error); // Enhanced log
       showNotification('文件解析失败，请检查文件格式', 'error');
@@ -1119,12 +1120,6 @@ const convertDate = (dateStr: string | undefined): string => {
   return dateStr;
 };
 
-const getRoleName = (roleId?: number) => {
-  if (!roleId) return '-';
-  const role = availableRoles.value.find(r => r.id === roleId);
-  return role?.name || '-';
-};
-
 const getPlantName = (plantId?: number) => {
   if (!plantId) return '-';
   const plant = availablePlants.value.find(p => p.id === plantId);
@@ -1135,12 +1130,6 @@ const getDepartmentName = (departmentId?: number) => {
   if (!departmentId) return '-';
   const dept = allDepartments.value.find(d => d.id === departmentId);
   return dept?.name || '-';
-};
-
-const getRoleIdByName = (name: string | undefined) => {
-  if (!name) return undefined;
-  const role = availableRoles.value.find(r => r.name === name);
-  return role?.id;
 };
 
 const getPlantIdByName = (name: string | undefined) => {
@@ -1156,8 +1145,6 @@ const getDepartmentIdByName = (name: string | undefined) => {
 };
 
 const confirmImport = async () => {
-  console.log('confirmImport: current previewData.value.length =', previewData.value.length);
-  console.log('confirmImport: current importResults.value =', importResults.value);
   if (previewData.value.length === 0) {
     showNotification('没有可导入的数据', 'error');
     return;

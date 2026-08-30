@@ -178,6 +178,37 @@ export const getAllUsers = async (req, res, next) => {
     const params = [];
     let paramIndex = 1;
 
+    // 获取当前用户的数据范围权限
+    const currentUser = req.user;
+    let userDataScope = 'all'; // 默认为全部权限
+    try {
+      const permissionService = (await import('../services/permissionService.js')).default;
+      const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+      // 查找用户花名册相关的权限，使用第一个找到的数据范围
+      const rosterPerm = effectivePerms.find(p => p.module === 'employee-roster');
+      if (rosterPerm) {
+        userDataScope = rosterPerm.dataScope || 'self';
+      }
+    } catch (permErr) {
+      console.error('获取用户数据范围失败:', permErr);
+    }
+
+    // 根据数据范围应用过滤条件
+    if (userDataScope === 'self') {
+      // 只看自己
+      whereClause += ` AND u.id = $${paramIndex++}`;
+      params.push(currentUser.id);
+    } else if (userDataScope === 'dept') {
+      // 看自己部门的人
+      whereClause += ` AND u.department_id = $${paramIndex++}`;
+      params.push(currentUser.departmentId);
+    } else if (userDataScope === 'plant') {
+      // 看自己厂区的人
+      whereClause += ` AND u.plant_id = $${paramIndex++}`;
+      params.push(currentUser.plantId);
+    }
+    // 'all' 不添加过滤条件
+
     if (status) {
       whereClause += ` AND u.status = $${paramIndex++}`;
       params.push(status);
@@ -280,7 +311,7 @@ export const getApprovers = async (req, res, next) => {
 export const createUser = async (req, res, next) => {
   const client = await pool.connect();
   try {
-    let { username, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, status, gender, position, level, phone, hireDate, leaveDate, icCardNumber, employeeType } = req.body;
+    let { username, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, status, gender, position, level, phone, email, hireDate, leaveDate, icCardNumber, employeeType } = req.body;
 
     // Normalize integer fields to null if they are empty strings or undefined
     roleId = (roleId === '' || roleId === undefined) ? null : roleId;
@@ -309,9 +340,9 @@ export const createUser = async (req, res, next) => {
     await client.query('BEGIN');
 
     const result = await client.query(
-      `INSERT INTO ${USER_TABLE} (username, password, real_name, employee_id, old_employee_id, role_id, plant_id, department_id, status, gender, position, level, phone, hire_date, leave_date, ic_card_number, employee_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
-      [username, hashedPassword, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, finalStatus, gender, position, level, phone, processedHireDate, processedLeaveDate, icCardNumber, employeeType]
+      `INSERT INTO ${USER_TABLE} (username, password, real_name, employee_id, old_employee_id, role_id, plant_id, department_id, status, gender, position, level, phone, email, hire_date, leave_date, ic_card_number, employee_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING *`,
+      [username, hashedPassword, realName, employeeId, oldEmployeeId, roleId, plantId, departmentId, finalStatus, gender, position, level, phone, email, processedHireDate, processedLeaveDate, icCardNumber, employeeType]
     );
     const newUser = result.rows[0];
 
@@ -362,6 +393,7 @@ export const createUser = async (req, res, next) => {
       position: newUser.position,
       level: newUser.level,
       phone: newUser.phone,
+      email: newUser.email,
       hireDate: newUser.hire_date,
       leaveDate: newUser.leave_date,
       icCardNumber: newUser.ic_card_number,

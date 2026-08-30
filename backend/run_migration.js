@@ -23,15 +23,12 @@ async function migrate() {
       ALTER TABLE jso_system_user_management
       ADD COLUMN IF NOT EXISTS email VARCHAR(255)
     `);
-    console.log('✓ 已添加 email 字段到 jso_system_user_management 表');
 
     // 创建索引
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_user_email ON jso_system_user_management(email)
     `);
-    console.log('✓ 已创建 email 索引');
 
-    console.log('\n迁移完成！');
   } catch (error) {
     console.error('迁移失败:', error.message);
   } finally {

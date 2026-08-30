@@ -153,19 +153,19 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
     if (changes.length > 0) {
       try {
         await request.post('/schedule/batch-update', { schedules: changes });
-        ElMessage.success('排班粘贴成功！');
+        ElMessage.success({ message: '排班粘贴成功！', showClose: true, duration: 3000 });
         await fetchEmployees(); // Refresh data
         clearSelection();
       } catch (error: any) {
         console.error('粘贴排班失败:', error);
-        ElMessage.error('粘贴排班失败: ' + (error.message || '未知错误'));
+        ElMessage.error({ message: '粘贴排班失败: ' + (error.message || '未知错误'), showClose: true, duration: 3000 });
       }
     }
   };
 
   const handleClearSchedule = async (employees: Employee[], closeMenu: () => void, fetchEmps: () => Promise<void>) => {
     if (selectedCells.value.length === 0) {
-      ElMessage.warning('请先选择要清空的排班单元格！');
+      ElMessage.warning({ message: '请先选择要清空的排班单元格！', showClose: true, duration: 3000 });
       return;
     }
 
@@ -188,17 +188,17 @@ export function useScheduleOperations(params: UseScheduleOperationsParams) {
 
         try {
           await request.post('/schedule/batch-update', { schedules: changes });
-          ElMessage.success('排班清空成功！');
+          ElMessage.success({ message: '排班清空成功！', showClose: true, duration: 3000 });
           await fetchEmps(); // Refresh data
           clearSelection();
           closeMenu();
         } catch (error: any) {
           console.error('清空排班失败:', error);
-          ElMessage.error('清空排班失败: ' + (error.message || '未知错误'));
+          ElMessage.error({ message: '清空排班失败: ' + (error.message || '未知错误'), showClose: true, duration: 3000 });
         }
       })
       .catch(() => {
-        ElMessage.info('已取消清空');
+        ElMessage.info({ message: '已取消清空', showClose: true, duration: 3000 });
       });
   };
 

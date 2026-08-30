@@ -142,6 +142,19 @@ const isLoading = ref(false);
 const notification = ref<Notification>({ message: '', type: 'info' });
 let notificationTimer: any = null;
 
+// 获取带授权头的 fetch
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('jabil-token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {})
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers });
+};
+
 // 显示通知
 const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
   if (notificationTimer) {
@@ -157,13 +170,13 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info' = 
 const loadRoles = async () => {
   isLoading.value = true;
   try {
-    const response = await fetch(`/api/roles`);
+    const response = await authFetch(`/api/roles`);
     if (!response.ok) {
       throw new Error('网络响应异常');
     }
     const res = await response.json();
-    const data = res?.data || res;
-    roles.value = data?.roles || [];
+    // 后端返回 data 是数组或 { roles: [...] }
+    roles.value = Array.isArray(res?.data) ? res?.data : (res?.data?.roles || []);
     showNotification('数据刷新成功', 'success');
   } catch (error) {
     showNotification('加载数据失败，请检查后端服务', 'error');
@@ -240,7 +253,7 @@ const saveRole = async () => {
   if (isEditMode.value) {
     // 更新角色
     try {
-      const response = await fetch(`/api/roles/${currentRole.value.id}`, {
+      const response = await authFetch(`/api/roles/${currentRole.value.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,7 +269,7 @@ const saveRole = async () => {
       const data = res?.data || res;
       const index = roles.value.findIndex(r => r.id === currentRole.value.id);
       if (index !== -1) {
-        roles.value[index] = data?.role;
+        roles.value[index] = data;
       }
       showNotification('角色更新成功', 'success');
       closeDialog();
@@ -268,7 +281,7 @@ const saveRole = async () => {
   } else {
     // 创建角色
     try {
-      const response = await fetch(`/api/roles`, {
+      const response = await authFetch(`/api/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -281,8 +294,8 @@ const saveRole = async () => {
         throw new Error('创建失败');
       }
       const res = await response.json();
-      const data = res?.data || res;
-      roles.value.push(data?.role);
+      const newRole = res?.data || res;
+      roles.value.push(newRole);
       showNotification('角色创建成功', 'success');
       closeDialog();
     } catch (error) {
@@ -309,7 +322,7 @@ const toggleRoleStatus = async (role?: Role) => {
         const newStatus = targetRole.status === 'active' ? 'inactive' : 'active';
         isLoading.value = true;
         try {
-          const response = await fetch(`/api/roles/${targetRole.id}`, {
+          const response = await authFetch(`/api/roles/${targetRole.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -324,7 +337,7 @@ const toggleRoleStatus = async (role?: Role) => {
           const data = await response.json();
           const index = roles.value.findIndex(r => r.id === targetRole.id);
           if (index !== -1) {
-            roles.value[index] = data.role;
+            roles.value[index] = data;
             if (selectedRole.value?.id === targetRole.id) {
               selectedRole.value = data.role;
             }
@@ -357,7 +370,7 @@ const deleteRole = async (role?: Role) => {
       .then(async () => {
         isLoading.value = true;
         try {
-          const response = await fetch(`/api/roles/${targetRole.id}`, {
+          const response = await authFetch(`/api/roles/${targetRole.id}`, {
             method: 'DELETE'
           });
           if (!response.ok) {

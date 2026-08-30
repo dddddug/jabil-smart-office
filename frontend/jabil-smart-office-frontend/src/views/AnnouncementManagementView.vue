@@ -270,7 +270,7 @@ const getCurrentUser = () => {
         return user
       }
     } catch (error: any) {
-      ElMessage.error('获取当前用户失败:' + (error?.message || error));
+      ElMessage.error({ message: '获取当前用户失败:' + (error?.message || error), showClose: true, duration: 3000 });
     }
     return null
   }
@@ -288,7 +288,7 @@ const loadPlantsAndDepartments = async () => {
     plants.value = plantsData?.plants || [];
     departments.value = deptsData?.departments || [];
   } catch (error: any) {
-    ElMessage.error('获取数据失败:' + (error?.message || error))
+    ElMessage.error({ message: '获取数据失败:' + (error?.message || error), showClose: true, duration: 3000 });
   }
 }
 
@@ -311,7 +311,7 @@ const loadAnnouncements = async () => {
     const response = await request.get<any>(`${url}?${params.toString()}`)
     announcements.value = response?.data?.items || response?.items || []
   } catch (error: any) {
-    ElMessage.error('获取公告列表失败:' + (error?.message || error))
+    ElMessage.error({ message: '获取公告列表失败:' + (error?.message || error), showClose: true, duration: 3000 });
   }
 }
 
@@ -323,7 +323,7 @@ const loadManageList = async () => {
     const response = await request.get<any>(`/announcements/admin?userId=${user.id}`)
     manageList.value = response?.data?.items || response?.items || []
   } catch (error: any) {
-    ElMessage.error('获取管理列表失败:' + (error?.message || error))
+    ElMessage.error({ message: '获取管理列表失败:' + (error?.message || error), showClose: true, duration: 3000 });
   } finally {
     loadingManage.value = false
   }
@@ -436,7 +436,7 @@ const showDetail = async (announcement: Announcement) => {
       announcement.isRead = true
       loadAnnouncements()
     } catch (error: any) {
-      ElMessage.error('标记已读失败:' + (error?.message || error))
+      ElMessage.error({ message: '标记已读失败:' + (error?.message || error), showClose: true, duration: 3000 });
     }
   }
 }
@@ -444,7 +444,7 @@ const showDetail = async (announcement: Announcement) => {
 // 保存公告
 const saveAnnouncementCommon = async (publish = false) => {
   if (!announcementForm.value.title.trim() || !announcementForm.value.content.trim()) {
-    ElMessage.warning('请填写公告标题和内容')
+    ElMessage.warning({ message: '请填写公告标题和内容', showClose: true, duration: 3000 })
     return
   }
   
@@ -492,12 +492,12 @@ const saveAnnouncementCommon = async (publish = false) => {
       throw new Error('Unsupported method');
     }
 
-    ElMessage.success(publish ? '公告发布成功' : '公告保存成功')
+    ElMessage.success({ message: publish ? '公告发布成功' : '公告保存成功', showClose: true, duration: 3000 })
     dialogVisible.value = false
     loadManageList()
     loadAnnouncements()
   } catch (error: any) {
-    ElMessage.error(error.message || '保存公告失败')
+    ElMessage.error({ message: error.message || '保存公告失败', showClose: true, duration: 3000 })
   } finally {
     saving.value = false
   }
@@ -517,12 +517,12 @@ const publishAnnouncement = async (id: number) => {
     
     const responseData = await request.put(`/announcements/admin/${id}/publish`)
     
-    ElMessage.success('公告发布成功')
+    ElMessage.success({ message: '公告发布成功', showClose: true, duration: 3000 })
     loadManageList()
     loadAnnouncements()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || '发布公告失败')
+      ElMessage.error({ message: error.message || '发布公告失败', showClose: true, duration: 3000 })
     }
   }
 }
@@ -539,11 +539,11 @@ const deleteAnnouncement = async (id: number) => {
     const user = getCurrentUser()
     const responseData = await request.delete(`/announcements/admin/${id}?userId=${user.id}`)
     
-    ElMessage.success('公告删除成功')
+    ElMessage.success({ message: '公告删除成功', showClose: true, duration: 3000 })
     loadManageList()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || '删除公告失败')
+      ElMessage.error({ message: error.message || '删除公告失败', showClose: true, duration: 3000 })
     }
   }
 }

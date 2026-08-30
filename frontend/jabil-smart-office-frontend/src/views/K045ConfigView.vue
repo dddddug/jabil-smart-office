@@ -42,7 +42,7 @@
           <!-- 配送地点配置 -->
           <div class="form-section">
             <div class="form-section-title">📍 配送地点与签收分料权限配置</div>
-            <div class="form-tip" style="margin-bottom: 16px;">（每个配送地点可单独设置允许签收分料的部门）</div>
+            <div class="form-tip" style="margin-bottom: 16px;">（每个配送地点可单独设置允许签收分料的部门及部门邮箱）</div>
             <div class="location-table-wrapper">
               <table class="location-table">
                 <thead>
@@ -50,6 +50,7 @@
                     <th style="width: 60px;">序号</th>
                     <th>配送地点</th>
                     <th>允许签收分料的部门</th>
+                    <th>部门邮箱（收件人）</th>
                     <th style="width: 80px;">操作</th>
                   </tr>
                 </thead>
@@ -79,6 +80,14 @@
                         </option>
                       </select>
                     </td>
+                    <td>
+                      <input
+                        type="text"
+                        v-model="item.email"
+                        placeholder="部门邮箱，多个用逗号分隔"
+                        class="location-input"
+                      />
+                    </td>
                     <td class="text-center">
                       <button type="button" class="btn-icon btn-delete" @click="removeDeliveryLocation(index)" title="删除">
                         🗑️
@@ -86,7 +95,7 @@
                     </td>
                   </tr>
                   <tr v-if="deliveryLocationConfigs.length === 0">
-                    <td colspan="4" class="text-center empty-tip">暂无配置，请点击下方按钮添加配送地点</td>
+                    <td colspan="5" class="text-center empty-tip">暂无配置，请点击下方按钮添加配送地点</td>
                   </tr>
                 </tbody>
               </table>
@@ -116,6 +125,7 @@ interface DeliveryLocationConfig {
   id: number;
   location: string;
   departments: string;
+  email: string;
 }
 
 const config = reactive<K045ConfigForm>({
@@ -137,7 +147,7 @@ const addDeliveryLocation = () => {
   // 使用展开运算符重新赋值数组，强制触发 Vue 响应式更新
   deliveryLocationConfigs.value = [
     ...deliveryLocationConfigs.value,
-    { id: locationIdCounter++, location: '', departments: '' }
+    { id: locationIdCounter++, location: '', departments: '', email: '' }
   ];
 };
 
@@ -194,7 +204,7 @@ const loadConfig = async () => {
     originalConfig.deliveryLocationConfigs = JSON.parse(JSON.stringify(deliveryLocationConfigs.value));
   } catch (error) {
     console.error('加载配置失败:', error);
-    ElMessage.error('加载配置失败');
+    ElMessage.error({ message: '加载配置失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -208,10 +218,10 @@ const saveConfig = async () => {
     await updateK045Configs(configs);
     originalConfig.config = { ...config };
     originalConfig.deliveryLocationConfigs = JSON.parse(JSON.stringify(deliveryLocationConfigs.value));
-    ElMessage.success('配置保存成功！');
+    ElMessage.success({ message: '配置保存成功！', showClose: true, duration: 3000 });
   } catch (error) {
     console.error('保存配置失败:', error);
-    ElMessage.error('保存配置失败');
+    ElMessage.error({ message: '保存配置失败', showClose: true, duration: 3000 });
   }
 };
 

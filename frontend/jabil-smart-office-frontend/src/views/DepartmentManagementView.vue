@@ -276,21 +276,17 @@ const getCurrentUser = () => {
 const canEditDepartment = (dept: Department) => {
   const currentUser = getCurrentUser();
   const roleId = currentUser?.roleId || 0;
-  
+
   // 超级管理员可以编辑所有
   if (roleId === 1) return true;
-  
-  // 厂区管理员可以编辑自己厂区的所有部门
-  if (roleId === 2) {
-    return Number(dept.plantId) === Number(currentUser?.plantId);
+
+  // 厂区管理员、部门管理员只能编辑自己负责或所属的部门
+  if (roleId === 2 || roleId === 3) {
+    const isManager = Number(dept.managerId) === Number(currentUser?.id);
+    const isOwnDept = Number(dept.id) === Number(currentUser?.departmentId);
+    return isManager || isOwnDept;
   }
-  
-  // 部门管理员可以编辑自己的部门
-  if (roleId === 3) {
-    return Number(dept.managerId) === Number(currentUser?.id) || 
-           Number(dept.id) === Number(currentUser?.departmentId);
-  }
-  
+
   return false;
 }
 
@@ -298,39 +294,23 @@ const canEditDepartment = (dept: Department) => {
 const canAddDepartment = (plantId?: number) => {
   const currentUser = getCurrentUser();
   const roleId = currentUser?.roleId || 0;
-  
+
   // 超级管理员可以新增
   if (roleId === 1) return true;
-  
-  // 厂区管理员可以在自己厂区新增
-  if (roleId === 2) {
+
+  // 厂区管理员、部门管理员可以新增（厂区管理员限自己厂区）
+  if (roleId === 2 || roleId === 3) {
     if (plantId === undefined) return true;
     return Number(plantId) === Number(currentUser?.plantId);
   }
-  
+
   return false;
 }
 
 const filteredDepartments = computed(() => {
-  const currentUser = getCurrentUser();
-  const roleId = currentUser?.roleId || 0;
-  
+  // 所有人都能看到所有部门
   let deptsList = departments.value;
-  
-  // 根据角色过滤
-  if (roleId === 2) { // 厂区管理员：只显示自己厂区的部门或负责的部门
-    deptsList = deptsList.filter(dept => {
-      const isPlantDept = Number(dept.plantId) === Number(currentUser?.plantId);
-      const isManager = Number(dept.managerId) === Number(currentUser?.id);
-      return isPlantDept || isManager;
-    });
-  } else if (roleId === 3) { // 部门管理员：只显示自己的部门
-    deptsList = deptsList.filter(dept => 
-      Number(dept.managerId) === Number(currentUser?.id) || 
-      Number(dept.id) === Number(currentUser?.departmentId)
-    );
-  }
-  
+
   // 根据搜索过滤
   if (!searchQuery.name) {
     return deptsList;

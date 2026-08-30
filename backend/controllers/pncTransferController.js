@@ -94,8 +94,40 @@ export const getDocuments = async (req, res, next) => {
       pageSize = 10
     } = req.query;
 
+    // 获取当前用户的数据范围权限
+    const currentUser = req.user;
+    let userDataScope = 'all'; // 默认为全部权限
+    try {
+      const permissionService = (await import('../services/permissionService.js')).default;
+      const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+      // PNC转仓使用 pnc-transfer 模块
+      const pncPerm = effectivePerms.find(p => p.module === 'pnc-transfer');
+      if (pncPerm) {
+        userDataScope = pncPerm.dataScope || 'self';
+      }
+    } catch (permErr) {
+      console.error('获取用户数据范围失败:', permErr);
+    }
+
     const params = [];
     let whereClause = 'WHERE 1=1';
+
+    // 根据数据范围应用过滤条件
+    if (userDataScope === 'self') {
+      // 只看自己创建的单据
+      whereClause += ` AND d.creator_name = $${params.length + 1}`;
+      params.push(currentUser.realName);
+    } else if (userDataScope === 'dept') {
+      // 看自己部门的单据
+      whereClause += ` AND d.department_id = $${params.length + 1}`;
+      params.push(currentUser.departmentId);
+    } else if (userDataScope === 'plant') {
+      // 看自己厂区的单据 - 需要通过部门关联
+      // 这里简化处理，如果表没有 plant_id 字段，则使用部门关联
+      whereClause += ` AND d.department_id IN (SELECT id FROM jso_system_department WHERE plant_id = $${params.length + 1})`;
+      params.push(currentUser.plantId);
+    }
+    // 'all' 不添加过滤条件
 
     // 动态构建查询条件
     if (transferNo) {
@@ -502,10 +534,6 @@ export const sendEmail = async (req, res, next) => {
 
     const doc = existingDoc.rows[0];
 
-    if (doc.status === DocumentStatus.SENT) {
-      throw BadRequestError('该单据已发送过邮件');
-    }
-
     if (!doc.recipient_email) {
       throw BadRequestError('收件人邮箱为空，请在配置中设置');
     }
@@ -641,6 +669,7 @@ const buildMailtoLink = (doc, items) => {
   body += `================================\n`;
   body += `创建人：${doc.creator_name}\n`;
   body += `创建时间：${dayjs(doc.created_at).format('YYYY-MM-DD HH:mm:ss')}\n`;
+  body += `\n📎 查看详情：${process.env.SITE_URL || 'http://cnhuanb5947:8888/login'}\n`;
 
   // mailto 链接构建
   // 1. 主题使用 RFC 2047 Base64 编码（已处理）

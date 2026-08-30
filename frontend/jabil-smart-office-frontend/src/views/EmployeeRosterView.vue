@@ -523,14 +523,51 @@ const filteredEmployees = computed(() => {
     return roleMatch && nameMatch && plantMatch && deptMatch;
   });
 
-  // 按状态排序：离职员工排到最后，其余按姓名拼音排序
-  return filtered.sort((a, b) => {
-    const aInactive = a.status === 'inactive' || a.status === 'RESIGNED';
-    const bInactive = b.status === 'inactive' || b.status === 'RESIGNED';
-    if (aInactive && !bInactive) return 1;  // 离职排后面
-    if (!aInactive && bInactive) return -1; // 在职排前面
+  // 员工类型排序优先级
+  const employeeTypeOrder: Record<string, number> = {
+    'Jabil': 1,
+    '3PL': 2
+  };
+
+  // 排序规则：
+  // 1. 先区分在职和离职（离职永远排最后）
+  // 2. 在职员工：按员工类型（Jabil 排前面，3PL 排后面）
+  // 3. 在职员工：按入职日期（早入职排前面，'-'放最后）
+  // 4. 在职员工：按姓名排序
+  // 5. 离职员工：按员工类型、入职日期、姓名排序
+
+  const isInactive = (emp: any) => emp.status === 'inactive' || emp.status === 'RESIGNED';
+
+  const compareEmployees = (a: any, b: any): number => {
+    // 按员工类型排序
+    const typeA = employeeTypeOrder[(a.company || '') as keyof typeof employeeTypeOrder] || 99;
+    const typeB = employeeTypeOrder[(b.company || '') as keyof typeof employeeTypeOrder] || 99;
+    if (typeA !== typeB) return typeA - typeB;
+
+    // 按入职日期排序（早入职排前面，无入职日期放最后）
+    const dateA = a.hireDate || '';
+    const dateB = b.hireDate || '';
+    if (!dateA && !dateB) {
+      // 两个都没有入职日期，跳过此级
+    } else if (!dateA) {
+      return 1;  // a没有日期，a排后面
+    } else if (!dateB) {
+      return -1; // b没有日期，b排后面
+    } else if (dateA !== dateB) {
+      return dateA.localeCompare(dateB);
+    }
+
+    // 按姓名排序
     return (a.name || '').localeCompare(b.name || '', 'zh-CN');
-  });
+  };
+
+  const activeEmployees = filtered.filter(emp => !isInactive(emp));
+  const inactiveEmployees = filtered.filter(emp => isInactive(emp));
+
+  activeEmployees.sort(compareEmployees);
+  inactiveEmployees.sort(compareEmployees);
+
+  return [...activeEmployees, ...inactiveEmployees];
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredEmployees.value.length / pageSize.value)));
@@ -677,12 +714,15 @@ const loadEmployees = async () => {
     // 清除缓存以确保获取最新数据
     clearRequestCache();
 
-    const res = await request.get(`/users`) as { items: any[] };
-    // res is already unwrapped by interceptor - it's { items: any[] }
-    const userList = res?.items || [];
-    employees.value = userList
-      .filter((user: any) => user.username !== 'admin') // 过滤掉admin用户
-      .map((user: any) => ({ // Create a variable to log it
+    // 请求大页数以获取所有用户
+    const res: any = await request.get(`/users`, { params: { page: 1, pageSize: 10000 } });
+    // axios 拦截器返回 { code, message, data: { items: [...] } }
+    let userList = res?.data?.items || res?.items || [];
+
+    // 过滤掉admin用户
+    userList = userList.filter((user: any) => user.username !== 'admin');
+
+    employees.value = userList.map((user: any) => ({ // Create a variable to log it
           id: user.id,
           employeeId: user.sapEmployeeId || '',
           oldEmployeeId: user.oldEmployeeId || '',

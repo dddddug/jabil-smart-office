@@ -156,8 +156,8 @@ export const sendK2DiffNotification = (id: number) => {
 };
 
 // 批量发送邮件通知（合并所有记录为一封邮件）
-export const sendK2DiffBulkNotification = (ids: number[]) => {
-  return request.post(`/k2-diff/registrations/notify-bulk`, { ids });
+export const sendK2DiffBulkNotification = (params?: K2DiffQueryParams) => {
+  return request.get('/k2-diff/registrations/notify-bulk', { params });
 };
 
 // 导出登记记录

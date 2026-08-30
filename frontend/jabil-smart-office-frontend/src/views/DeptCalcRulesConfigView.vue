@@ -67,6 +67,7 @@
                 <td>{{ formatDate(rule.startTime) }}</td>
                 <td>{{ formatDate(rule.endTime) || '-' }}</td>
                 <td>
+                  <button class="action-btn primary" @click="openEditDialog(rule)">编辑</button>
                   <button class="action-btn danger" @click="deactivateRule(rule.id)" :disabled="isLoading || getStatus(rule).text !== '生效中'">停用</button>
                 </td>
               </tr>
@@ -76,29 +77,29 @@
       </div>
     </div>
 
-    <!-- 新增弹窗 -->
+    <!-- 新增/编辑弹窗 -->
     <div v-if="isDialogOpen" class="dialog-overlay" @click.self="closeDialog">
       <div class="dialog-content">
         <div class="dialog-header">
-          <h3>新增部门规则</h3>
+          <h3>{{ isEditing ? '编辑部门规则' : '新增部门规则' }}</h3>
           <button class="dialog-close" @click="closeDialog">×</button>
         </div>
         <div class="dialog-body">
           <form @submit.prevent="saveRule">
-            <div class="form-group">
+            <div class="form-group" v-if="!isEditing">
               <label>厂区 *</label>
               <select v-model="currentRule.plantId" required @change="onPlantChangeInDialog">
                 <option v-for="plant in plants" :key="plant.id" :value="plant.id">{{ plant.name }}</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" v-if="!isEditing">
               <label>部门 *</label>
               <select v-model="currentRule.departmentId" required>
                 <option :value="undefined">请选择部门</option>
                 <option v-for="dept in departmentsForDialog" :key="dept.id" :value="dept.id">{{ dept.name }}</option>
               </select>
             </div>
-            <div class="form-group">
+            <div class="form-group" v-if="!isEditing">
               <label>核算周期 *</label>
               <input type="month" v-model="currentRule.businessMonth" required>
             </div>
@@ -126,7 +127,7 @@
         </div>
         <div class="dialog-actions">
           <button class="btn btn-secondary" @click="closeDialog">取消</button>
-          <button class="btn btn-primary" @click="saveRule">确认新增</button>
+          <button class="btn btn-primary" @click="saveRule">{{ isEditing ? '确认修改' : '确认新增' }}</button>
         </div>
       </div>
     </div>
@@ -167,6 +168,7 @@ interface DeptRule {
 }
 
 interface DeptRuleForm {
+  id?: number;
   plantId?: number;
   departmentId?: number;
   businessMonth: string;
@@ -183,6 +185,7 @@ const rules = ref<DeptRule[]>([]);
 const plants = ref<Plant[]>([]);
 const departments = ref<Department[]>([]);
 const isDialogOpen = ref(false);
+const isEditing = ref(false);
 const currentRule = ref<Partial<DeptRuleForm>>({});
 
 // Filters
@@ -226,7 +229,7 @@ const loadInitialData = async () => {
     plants.value = plantsRes?.plants || [];
     departments.value = deptsRes?.departments || [];
   } catch (error) {
-    ElMessage.error('加载初始数据失败！');
+    ElMessage.error({ message: '加载初始数据失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -244,14 +247,34 @@ const getStatus = (rule: DeptRule) => {
 };
 
 const openAddDialog = () => {
-  currentRule.value = { 
+  isEditing.value = false;
+  currentRule.value = {
     businessMonth: dayjs().format('YYYY-MM'),
     startTime: dayjs().format('YYYY-MM-DDTHH:mm')
   };
   isDialogOpen.value = true;
 };
 
-const closeDialog = () => isDialogOpen.value = false;
+const openEditDialog = (rule: DeptRule) => {
+  isEditing.value = true;
+  currentRule.value = {
+    id: rule.id,
+    plantId: rule.plantId,
+    departmentId: rule.departmentId,
+    businessMonth: rule.business_month,
+    estimatedCost: rule.estimated_cost,
+    exchangeRate: rule.exchange_rate,
+    rateCoefficient: rule.rate_coefficient,
+    startTime: rule.startTime ? dayjs(rule.startTime).format('YYYY-MM-DDTHH:mm') : '',
+    endTime: rule.endTime ? dayjs(rule.endTime).format('YYYY-MM-DDTHH:mm') : ''
+  };
+  isDialogOpen.value = true;
+};
+
+const closeDialog = () => {
+  isDialogOpen.value = false;
+  isEditing.value = false;
+};
 
 const onPlantChangeInDialog = () => {
   currentRule.value.departmentId = undefined; // Reset department when plant changes
@@ -266,21 +289,33 @@ const saveRule = async () => {
   isLoading.value = true;
   try {
     const ruleToSave = {
-      plantId: currentRule.value.plantId,
-      departmentId: currentRule.value.departmentId,
-      businessMonth: currentRule.value.businessMonth,
       estimatedCost: currentRule.value.estimatedCost,
       exchangeRate: currentRule.value.exchangeRate,
       rateCoefficient: currentRule.value.rateCoefficient,
       startTime: dayjs(currentRule.value.startTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss'),
       endTime: currentRule.value.endTime ? dayjs(currentRule.value.endTime).tz('Asia/Shanghai').format('YYYY-MM-DD HH:mm:ss') : null
     };
-    await request.post('/config/dept-calc-rules', ruleToSave);
+
+    if (isEditing.value && currentRule.value.id) {
+      // 编辑模式
+      await request.put(`/config/dept-calc-rules/${currentRule.value.id}`, ruleToSave);
+      ElMessage.success({ message: '规则修改成功！', showClose: true, duration: 3000 });
+    } else {
+      // 新增模式
+      const newRule = {
+        plantId: currentRule.value.plantId,
+        departmentId: currentRule.value.departmentId,
+        businessMonth: currentRule.value.businessMonth,
+        ...ruleToSave
+      };
+      await request.post('/config/dept-calc-rules', newRule);
+      ElMessage.success({ message: '规则保存成功！', showClose: true, duration: 3000 });
+    }
+
     await loadInitialData();
     closeDialog();
-    ElMessage.success('规则保存成功！');
   } catch (error) {
-    ElMessage.error('保存规则失败！');
+    ElMessage.error({ message: isEditing.value ? '修改规则失败！' : '保存规则失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -291,9 +326,9 @@ const deactivateRule = async (id: number) => {
   try {
     await request.put(`/config/dept-calc-rules/${id}/deactivate`);
     await loadInitialData();
-    ElMessage.success('规则已停用！');
+    ElMessage.success({ message: '规则已停用！', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('停用规则失败！');
+    ElMessage.error({ message: '停用规则失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -338,7 +373,9 @@ onMounted(loadInitialData);
 .btn-secondary { background-color: white; color: #4B5563; border: 1px solid #D1D5DB; }
 .btn-secondary:hover { background-color: #F9FAFB; }
 
-.action-btn { padding: 6px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; }
+.action-btn { padding: 6px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; transition: all 0.2s; border: none; margin-right: 8px; }
+.action-btn.primary { background-color: #DBEAFE; color: #1D4ED8; }
+.action-btn.primary:hover { background-color: #BFDBFE; }
 .action-btn.danger { background-color: #FEE2E2; color: #B91C1C; }
 .action-btn.danger:hover { background-color: #FECACA; }
 .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }

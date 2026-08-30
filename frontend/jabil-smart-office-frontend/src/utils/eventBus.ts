@@ -40,7 +40,6 @@ const eventBus = {
     // 检查是否有待处理的事件
     const pendingData = consumePendingEvent(event);
     if (pendingData !== null) {
-      console.log(`[EventBus] 发现待处理事件 ${event}，立即触发`);
       callback(pendingData);
     }
   },
@@ -57,11 +56,9 @@ const eventBus = {
   emit(event: string, data?: any) {
     // 如果有监听器，立即触发
     if (this.listeners[event] && this.listeners[event].length > 0) {
-      console.log(`[EventBus] 触发事件 ${event}`, data);
       this.listeners[event].forEach(callback => callback(data));
     } else {
       // 没有监听器，保存到 sessionStorage 供后续使用
-      console.log(`[EventBus] 没有监听器，暂存事件 ${event}`);
       savePendingEvent(event, data);
     }
   }

@@ -18,7 +18,6 @@ async function runMigrations() {
 
   for (const file of files) {
     const filePath = path.join(migrationsPath, file);
-    console.log(`\n=== Running migration: ${file} ===`);
     try {
       const sql = fs.readFileSync(filePath, 'utf8');
 
@@ -79,7 +78,6 @@ async function runMigrations() {
         statements.push(buffer.trim());
       }
 
-      console.log(`Found ${statements.length} statements to execute`);
 
       for (let i = 0; i < statements.length; i++) {
         const stmt = statements[i];
@@ -87,21 +85,18 @@ async function runMigrations() {
 
         try {
           await pool.query(stmt);
-          console.log(`  ✓ Statement ${i + 1}: OK`);
         } catch (err) {
           console.error(`  ✗ Statement ${i + 1} error: ${err.message}`);
           // 继续执行其他语句
         }
       }
 
-      console.log(`✓ ${file} completed`);
     } catch (error) {
       console.error(`✗ ${file} failed:`, error.message);
     }
   }
 
   // 验证表是否创建
-  console.log('\n=== Verifying tables ===');
   try {
     const result = await pool.query(`
       SELECT table_name
@@ -109,13 +104,11 @@ async function runMigrations() {
       WHERE table_schema = 'public'
       AND table_name LIKE '%pnc%'
     `);
-    console.log('PNC tables created:', result.rows.map(r => r.table_name));
   } catch (err) {
     console.error('Verification query failed:', err.message);
   }
 
   await pool.end();
-  console.log('\nMigration complete!');
 }
 
 runMigrations();

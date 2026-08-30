@@ -22,7 +22,6 @@ async function runMigration() {
   });
 
   try {
-    console.log('开始创建 DA物料单据表...');
 
     // 读取迁移SQL文件
     const sqlFile = path.join(__dirname, './database/migrations/V2024_07_20_002__create_da_material_document_table.sql');
@@ -31,10 +30,8 @@ async function runMigration() {
     // 执行SQL
     await pool.query(sql);
 
-    console.log('✅ DA物料单据表创建成功！');
 
     // 创建索引
-    console.log('开始创建索引...');
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_da_material_document_status ON jso_da_material_document(status)',
       'CREATE INDEX IF NOT EXISTS idx_da_material_document_document_no ON jso_da_material_document(document_no)',
@@ -48,8 +45,6 @@ async function runMigration() {
       await pool.query(indexSql);
     }
 
-    console.log('✅ 索引创建成功！');
-    console.log('迁移完成！');
 
   } catch (error) {
     console.error('❌ 迁移失败:', error.message);

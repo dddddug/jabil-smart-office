@@ -9,6 +9,7 @@ import request from '../utils/request';
 export enum K045Status {
   SUBMITTED = 'submitted',           // 已提交
   RECEIVED = 'received',             // 已接收（打印部门接单）
+  MATERIAL_SENT = 'material_sent',  // 已发料（打印部门发料完成）
   REJECTED = 'rejected',             // 已拒绝
   RETURNED = 'returned',             // 已退回
   CANCELLED = 'cancelled',           // 已取消
@@ -22,6 +23,7 @@ export enum K045Status {
 export const K045StatusText: Record<K045Status, string> = {
   [K045Status.SUBMITTED]: '已提交',
   [K045Status.RECEIVED]: '已接收',
+  [K045Status.MATERIAL_SENT]: '已发料',
   [K045Status.REJECTED]: '已拒绝',
   [K045Status.RETURNED]: '已退回',
   [K045Status.CANCELLED]: '已取消',
@@ -35,6 +37,7 @@ export const K045StatusText: Record<K045Status, string> = {
 export const K045StatusColor: Record<K045Status, string> = {
   [K045Status.SUBMITTED]: '#FFA500',   // 橙色 - 待处理
   [K045Status.RECEIVED]: '#1890FF',    // 蓝色 - 进行中
+  [K045Status.MATERIAL_SENT]: '#722ED1', // 紫色 - 已发料
   [K045Status.REJECTED]: '#FF4D4F',   // 红色 - 拒绝
   [K045Status.RETURNED]: '#722ED1',   // 紫色 - 退回
   [K045Status.CANCELLED]: '#8C8C8C',   // 灰色 - 已取消
@@ -59,6 +62,7 @@ export interface K045Document {
   submittedAt?: string;         // 提交时间
   receivedAt?: string;          // 接收时间
   receivedBy?: string;          // 接收人
+  materialSentAt?: string;       // 发料时间
   signedAt?: string;             // 签收时间
   signedBy?: string;             // 签收人
   distributionEndedAt?: string;  // 分料结束时间
@@ -190,9 +194,27 @@ export interface K045NotificationResponse {
   status: string;
 }
 
+// 发料完成邮件通知响应
+export interface K045MaterialSentResponse {
+  id: number;
+  documentNo: string;
+  wcName: string;
+  deliveryLocation: string;
+  recipientEmails: string;
+  ccEmails: string;
+  subject: string;
+  body: string;
+  status: string;
+}
+
 // 发送邮件通知
 export const sendK045Notification = (id: number) => {
   return request.post<K045NotificationResponse>(`/k045/documents/${id}/notify`);
+};
+
+// 发料完成邮件通知
+export const sendMaterialK045Notification = (id: number) => {
+  return request.post<K045MaterialSentResponse>(`/k045/documents/${id}/send-material`);
 };
 
 // 删除单据
@@ -208,4 +230,9 @@ export const getK045Stats = () => {
 // 催单
 export const rushK045Document = (id: number) => {
   return request.post(`/k045/documents/${id}/rush`);
+};
+
+// 设置/取消加急
+export const setUrgentK045Document = (id: number, isUrgent: boolean) => {
+  return request.put(`/k045/documents/${id}`, { isUrgent });
 };

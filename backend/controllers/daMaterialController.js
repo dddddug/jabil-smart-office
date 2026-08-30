@@ -6,7 +6,7 @@ import pool from '../config/db.js';
 import dayjs from 'dayjs';
 import path from 'path';
 import fs from 'fs';
-import { DA_MATERIAL_DOCUMENT_TABLE, USER_TABLE } from '../config/db_constants.js';
+import { DA_MATERIAL_DOCUMENT_TABLE, USER_TABLE, K045_DOCUMENT_TABLE } from '../config/db_constants.js';
 import { success, paginated } from '../utils/responseHelper.js';
 import { AppError, BadRequestError } from '../middlewares/errorHandler.js';
 import { logInfo, logDebug, logError } from '../utils/logger.js';
@@ -38,6 +38,7 @@ export const getDocuments = async (req, res, next) => {
       startDate,
       endDate,
       submitterName,
+      isUrgent,
       page = 1,
       pageSize = 10
     } = req.query;
@@ -45,6 +46,36 @@ export const getDocuments = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
     const params = [];
     let whereClause = 'WHERE 1=1';
+
+    // 获取当前用户的数据范围权限
+    const currentUser = req.user;
+    let userDataScope = 'all'; // 默认为全部权限
+    try {
+      const permissionService = (await import('../services/permissionService.js')).default;
+      const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+      const daPerm = effectivePerms.find(p => p.module === 'da-material');
+      if (daPerm) {
+        userDataScope = daPerm.dataScope || 'self';
+      }
+    } catch (permErr) {
+      console.error('获取用户数据范围失败:', permErr);
+    }
+
+    // 根据数据范围应用过滤条件
+    if (userDataScope === 'self') {
+      // 只看自己提交的单据
+      whereClause += ` AND submitter_name = $${params.length + 1}`;
+      params.push(currentUser.real_name);
+    } else if (userDataScope === 'dept') {
+      // 看自己部门的人提交的单据
+      whereClause += ` AND department_id = $${params.length + 1}`;
+      params.push(currentUser.departmentId);
+    } else if (userDataScope === 'plant') {
+      // 看自己厂区的人提交的单据
+      whereClause += ` AND plant_id = $${params.length + 1}`;
+      params.push(currentUser.plantId);
+    }
+    // 'all' 不添加过滤条件
 
     // 动态构建查询条件
     if (documentNo) {
@@ -77,6 +108,13 @@ export const getDocuments = async (req, res, next) => {
     if (submitterName) {
       params.push(`%${submitterName}%`);
       whereClause += ` AND submitter_name LIKE $${params.length}`;
+    }
+
+    // 加急过滤
+    if (isUrgent === 'true' || isUrgent === true) {
+      whereClause += ` AND is_urgent = true`;
+    } else if (isUrgent === 'false') {
+      whereClause += ` AND is_urgent = false`;
     }
 
     // 查询列表
@@ -286,7 +324,9 @@ export const createDocument = async (req, res, next) => {
       submitterName,
       isUrgent,
       isRush,
-      controlType
+      controlType,
+      isTO,
+      deliveryLocation
     } = req.body;
 
     // 验证必填字段
@@ -307,6 +347,14 @@ export const createDocument = async (req, res, next) => {
       if (!ecnAttachmentUrl) {
         throw BadRequestError('DA编号为N/A时，ECN附件为必填');
       }
+    }
+
+    // 记录收到的数据用于调试
+    logInfo('创建单据收到的数据', { documentNo, wcName, isTO, deliveryLocation });
+
+    // 勾选TO时，配送地点为必填
+    if (isTO && !deliveryLocation) {
+      throw BadRequestError('勾选同步K045时，配送地点为必填');
     }
 
     // 检查单号是否已存在
@@ -333,9 +381,11 @@ export const createDocument = async (req, res, next) => {
         is_urgent,
         is_rush,
         control_type,
+        is_to,
+        delivery_location,
         status,
         submitted_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
       RETURNING *
     `, [
       documentNo,
@@ -350,6 +400,8 @@ export const createDocument = async (req, res, next) => {
       isUrgent || false,
       isRush || false,
       controlType || '正常',
+      isTO || false,
+      deliveryLocation || null,
       DocumentStatus.SUBMITTED
     ]);
 
@@ -368,11 +420,13 @@ export const createDocument = async (req, res, next) => {
       isUrgent: row.is_urgent,
       isRush: row.is_rush,
       controlType: row.control_type,
+      isTO: row.is_to,
+      deliveryLocation: row.delivery_location,
       status: row.status,
       submittedAt: row.submitted_at
     };
 
-    logInfo('管控物料单据创建成功', { documentNo, submitterName, daNo });
+    logInfo('管控物料单据创建成功', { documentNo, submitterName, daNo, isTO, deliveryLocation });
     success(res, document, '单据提交成功');
 
   } catch (err) {
@@ -401,7 +455,7 @@ export const updateDocument = async (req, res, next) => {
       controlType
     } = req.body;
 
-    // 检查单据是否存在且状态允许修改
+    // 检查单据是否存在
     const existingDoc = await pool.query(
       'SELECT * FROM ' + DA_MATERIAL_DOCUMENT_TABLE + ' WHERE id = $1',
       [id]
@@ -411,19 +465,24 @@ export const updateDocument = async (req, res, next) => {
       throw new AppError('单据不存在', 404);
     }
 
-    if (existingDoc.rows[0].status !== DocumentStatus.SUBMITTED &&
-        existingDoc.rows[0].status !== DocumentStatus.WITHDRAWN &&
-        existingDoc.rows[0].status !== DocumentStatus.RETURNED) {
-      throw BadRequestError('当前状态不允许修改');
-    }
+    // 如果只是更新 isUrgent 字段，允许在任何状态下更新，且跳过其他验证
+    const onlyUrgentUpdate = Object.keys(req.body).length === 1 && 'isUrgent' in req.body;
 
-    // DA编号为N/A时，ECN编号和ECN附件为必填
-    if (daNo && daNo.toUpperCase() === 'N/A') {
-      if (!ecnNo) {
-        throw BadRequestError('DA编号为N/A时，ECN编号为必填');
+    if (!onlyUrgentUpdate) {
+      if (existingDoc.rows[0].status !== DocumentStatus.SUBMITTED &&
+          existingDoc.rows[0].status !== DocumentStatus.WITHDRAWN &&
+          existingDoc.rows[0].status !== DocumentStatus.RETURNED) {
+        throw BadRequestError('当前状态不允许修改');
       }
-      if (!ecnAttachmentUrl) {
-        throw BadRequestError('DA编号为N/A时，ECN附件为必填');
+
+      // DA编号为N/A时，ECN编号和ECN附件为必填
+      if (daNo && daNo.toUpperCase() === 'N/A') {
+        if (!ecnNo) {
+          throw BadRequestError('DA编号为N/A时，ECN编号为必填');
+        }
+        if (!ecnAttachmentUrl) {
+          throw BadRequestError('DA编号为N/A时，ECN附件为必填');
+        }
       }
     }
 
@@ -836,11 +895,12 @@ export const signDocument = async (req, res, next) => {
 
 /**
  * 已锁BIN（已发料）- 仓库操作
+ * 可选参数 deliveryLocation: 如果提供，将同步创建K045单据
  */
 export const lockBinDocument = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { lockedBy } = req.body;
+    const { lockedBy, deliveryLocation, k045DocumentNo, k045AttachmentUrl, k045AttachmentName } = req.body;
 
     // 检查单据是否存在且状态为已接收
     const existingDoc = await pool.query(
@@ -872,6 +932,12 @@ export const lockBinDocument = async (req, res, next) => {
       logDebug('获取提交人邮箱失败', { submitterName: docData.submitter_name, error: err.message });
     }
 
+    // 从单据数据中获取isTO和配送地点信息（优先使用单据保存的数据）
+    const isTO = docData.is_to || false;
+    const daDeliveryLocation = docData.delivery_location;
+    const autoK045DocumentNo = isTO && daDeliveryLocation ? docData.document_no : null;
+
+
     const result = await pool.query(`
       UPDATE ${DA_MATERIAL_DOCUMENT_TABLE}
       SET status = $1, material_issued_at = NOW(), material_issued_by = $2, updated_at = NOW()
@@ -889,14 +955,60 @@ export const lockBinDocument = async (req, res, next) => {
       { documentId: id, documentNo: docData.document_no }
     );
 
-    logInfo('管控物料单据已锁BIN（已发料）', { id, documentNo: docData.document_no, lockedBy });
+      logInfo('锁BIN - 检查是否同步K045', { isTO, daDeliveryLocation, k045DocumentNo });
+    // 如果勾选了TO且有配送地点，创建K045单据
+    let k045DocumentId = null;
+    if (isTO && daDeliveryLocation && autoK045DocumentNo) {
+      try {
+        // 检查K045单号是否已存在
+        const existingK045 = await pool.query(
+          `SELECT id FROM ${K045_DOCUMENT_TABLE} WHERE document_no = $1`,
+          [autoK045DocumentNo]
+        );
+
+        if (existingK045.rows.length === 0) {
+          // 创建K045单据
+          const k045Result = await pool.query(`
+            INSERT INTO ${K045_DOCUMENT_TABLE} (
+              document_no, wc_name, attachment_url, attachment_name,
+              delivery_location, submitter_name, status, submitted_at,
+              received_at, received_by, material_sent_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8, NOW())
+            RETURNING id
+          `, [
+            autoK045DocumentNo,
+            docData.wc_name || docData.da_no || 'DA物料',
+            docData.attachment_url || null,
+            docData.attachment_name || null,
+            daDeliveryLocation,
+            docData.submitter_name,
+            'material_sent', // status
+            lockedBy || '仓库操作员' // received_by
+          ]);
+          k045DocumentId = k045Result.rows[0].id;
+          logInfo('管控物料锁BIN时同步创建K045单据', {
+            daDocumentId: id,
+            k045DocumentId,
+            autoK045DocumentNo,
+            daDeliveryLocation
+          });
+        } else {
+          logDebug('K045单据已存在，跳过创建', { k045DocumentNo });
+        }
+      } catch (k045Err) {
+        logError('同步创建K045单据失败', { error: k045Err.message });
+      }
+    }
+
+    logInfo('管控物料单据已锁BIN（已发料）', { id, documentNo: docData.document_no, lockedBy, k045DocumentId });
     success(res, {
       id: updatedDoc.id,
       status: updatedDoc.status,
       materialIssuedAt: updatedDoc.material_issued_at,
       materialIssuedBy: updatedDoc.material_issued_by,
       documentNo: docData.document_no,
-      submitterEmail
+      submitterEmail,
+      k045DocumentId
     }, '已锁BIN成功，状态已更新为已发料');
 
   } catch (err) {
@@ -942,7 +1054,7 @@ export const confirmComplete = async (req, res, next) => {
 };
 
 /**
- * 发送邮件通知
+ * 发送邮件通知 - 返回邮件内容供前端构建 mailto
  */
 export const sendNotification = async (req, res, next) => {
   try {
@@ -960,10 +1072,60 @@ export const sendNotification = async (req, res, next) => {
 
     const doc = existingDoc.rows[0];
 
+    // 状态描述映射
+    const statusDescriptions = {
+      'submitted': '已提交，等待接收',
+      'printed': '已打印，等待接收',
+      'received': '已接收，等待发料',
+      'material_issued': '已完成发料，等待签收',
+      'signed': '已完成签收，等待完成',
+      'completed': '已完成',
+      'rejected': '已被拒绝',
+      'returned': '已被退回',
+      'cancelled': '已取消',
+      'withdrawn': '已撤回'
+    };
+    const statusDescription = statusDescriptions[doc.status] || `当前状态：${doc.status}`;
+
+    // 获取提交人邮箱
+    let submitterEmail = '';
+    try {
+      const userResult = await pool.query(
+        `SELECT email FROM ${USER_TABLE} WHERE real_name = $1 OR username = $1 LIMIT 1`,
+        [doc.submitter_name]
+      );
+      if (userResult.rows.length > 0 && userResult.rows[0].email) {
+        submitterEmail = userResult.rows[0].email;
+      }
+    } catch (err) {
+      logDebug('获取提交人邮箱失败', { submitterName: doc.submitter_name, error: err.message });
+    }
+
+    // 生成邮件内容
+    const subject = `管控物料单据 ${doc.document_no} 状态更新`;
+    const siteUrl = process.env.SITE_URL || 'http://cnhuanb5947:8888/login';
+    const body = `您好 ${doc.submitter_name}，
+
+您的管控物料单据 ${doc.document_no} 状态已更新：${statusDescription}
+
+单据信息：
+- 单号：${doc.document_no}
+- W/C：${doc.wc_name || '-'}
+- 配送地点：${doc.delivery_location || '-'}
+- DA编号：${doc.da_no || '-'}
+- 状态：${statusDescription}
+
+📎 查看详情：${siteUrl}
+
+---
+Jabil Smart Office
+单据管理系统`;
+
     logInfo('管控物料单据邮件通知', {
       id,
       documentNo: doc.document_no,
       submitterName: doc.submitter_name,
+      submitterEmail,
       status: doc.status
     });
 
@@ -971,8 +1133,11 @@ export const sendNotification = async (req, res, next) => {
       id: doc.id,
       documentNo: doc.document_no,
       submitterName: doc.submitter_name,
-      status: doc.status
-    }, '邮件通知已发送');
+      submitterEmail,
+      status: doc.status,
+      subject,
+      body
+    }, '邮件内容已准备');
 
   } catch (err) {
     next(err);

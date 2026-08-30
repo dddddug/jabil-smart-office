@@ -17,10 +17,10 @@ router.get('/', authenticateToken, async (req, res) => {
       status: row.status,
       createdAt: dayjs(row.created_at).format('YYYY-MM-DD')
     }));
-    res.json({ roles });
+    res.json({ code: 200, message: 'success', data: roles });
   } catch (error) {
     console.error('获取角色失败:', error);
-    res.status(500).json({ error: '获取角色失败' });
+    res.status(500).json({ code: 500, message: '获取角色失败' });
   }
 });
 
@@ -34,7 +34,9 @@ router.post('/', authenticateToken, async (req, res) => {
     );
     const newRole = result.rows[0];
     res.json({
-      role: {
+      code: 200,
+      message: 'success',
+      data: {
         id: newRole.id,
         name: newRole.name,
         description: newRole.description,
@@ -44,7 +46,7 @@ router.post('/', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('创建角色失败:', error);
-    res.status(500).json({ error: '创建角色失败' });
+    res.status(500).json({ code: 500, message: '创建角色失败' });
   }
 });
 
@@ -58,11 +60,13 @@ router.put('/:id', authenticateToken, async (req, res) => {
       [name, description, status, id]
     );
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: '角色不存在' });
+      return res.status(404).json({ code: 404, message: '角色不存在' });
     }
     const updatedRole = result.rows[0];
     res.json({
-      role: {
+      code: 200,
+      message: 'success',
+      data: {
         id: updatedRole.id,
         name: updatedRole.name,
         description: updatedRole.description,
@@ -72,7 +76,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('更新角色失败:', error);
-    res.status(500).json({ error: '更新角色失败' });
+    res.status(500).json({ code: 500, message: '更新角色失败' });
   }
 });
 
@@ -82,12 +86,12 @@ router.delete('/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM ${TABLE_NAME} WHERE id = $1 RETURNING *`, [id]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: '角色不存在' });
+      return res.status(404).json({ code: 404, message: '角色不存在' });
     }
-    res.json({ success: true });
+    res.json({ code: 200, message: 'success', data: null });
   } catch (error) {
     console.error('删除角色失败:', error);
-    res.status(500).json({ error: '删除角色失败' });
+    res.status(500).json({ code: 500, message: '删除角色失败' });
   }
 });
 
@@ -96,15 +100,15 @@ router.put('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    
+
     const { roles } = req.body;
-    
+
     // 清空现有数据
     await client.query(`DELETE FROM ${TABLE_NAME}`);
-    
+
     // 重置序列
     await client.query(`ALTER SEQUENCE ${TABLE_NAME}_id_seq RESTART WITH 1`);
-    
+
     // 插入新数据
     for (const role of roles) {
       await client.query(
@@ -112,9 +116,9 @@ router.put('/', authenticateToken, async (req, res) => {
         [role.id, role.name, role.description, role.status, role.createdAt]
       );
     }
-    
+
     await client.query('COMMIT');
-    
+
     // 返回最新数据
     const result = await pool.query(`SELECT * FROM ${TABLE_NAME} ORDER BY id`);
     const savedRoles = result.rows.map(row => ({
@@ -124,12 +128,12 @@ router.put('/', authenticateToken, async (req, res) => {
       status: row.status,
       createdAt: dayjs(row.created_at).format('YYYY-MM-DD')
     }));
-    
-    res.json({ roles: savedRoles });
+
+    res.json({ code: 200, message: 'success', data: savedRoles });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('同步角色失败:', error);
-    res.status(500).json({ error: '同步角色失败' });
+    res.status(500).json({ code: 500, message: '同步角色失败' });
   } finally {
     client.release();
   }

@@ -81,7 +81,7 @@ const handleRegister = async () => {
     await registerFormRef.value.validate(async (valid) => {
       if (valid) {
         if (registerForm.password !== registerForm.confirmPassword) {
-          ElMessage.error('两次输入的密码不一致！');
+          ElMessage.error({ message: '两次输入的密码不一致！', showClose: true, duration: 3000 });
           return;
         }
 
@@ -101,17 +101,17 @@ const handleRegister = async () => {
 
         const data = await response.json();
         if (response.ok) {
-          ElMessage.success('注册成功！请登录。');
+          ElMessage.success({ message: '注册成功！请登录。', showClose: true, duration: 3000 });
           emit('switch-view', 'login');
         } else {
-          ElMessage.error(data.message || '注册失败，请稍后重试。');
+          ElMessage.error({ message: data.message || '注册失败，请稍后重试。', showClose: true, duration: 3000 });
         }
       } else {
-        ElMessage.error('请完整填写表单并检查输入。');
+        ElMessage.error({ message: '请完整填写表单并检查输入。', showClose: true, duration: 3000 });
       }
     });
   } catch (error) {
-    ElMessage.error('请求出错，请稍后重试。');
+    ElMessage.error({ message: '请求出错，请稍后重试。', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }

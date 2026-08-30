@@ -130,6 +130,31 @@ export const getRegistrations = async (req, res, next) => {
     const params = [];
     let whereClause = 'WHERE 1=1';
 
+    // 获取当前用户的数据范围权限
+    const currentUser = req.user;
+    let userDataScope = 'all'; // 默认为全部权限
+    try {
+      const permissionService = (await import('../services/permissionService.js')).default;
+      const effectivePerms = await permissionService.getEffectivePermissions(currentUser.id);
+      // K2差异登记使用 k2-diff 模块
+      const k2DiffPerm = effectivePerms.find(p => p.module === 'k2-diff');
+      if (k2DiffPerm) {
+        userDataScope = k2DiffPerm.dataScope || 'self';
+      }
+    } catch (permErr) {
+      console.error('获取用户数据范围失败:', permErr);
+    }
+
+    // 根据数据范围应用过滤条件
+    // K2差异登记只有 recorder 字段，没有 department_id/plant_id
+    if (userDataScope === 'self') {
+      // 只看自己登记的记录
+      whereClause += ` AND recorder = $${params.length + 1}`;
+      params.push(currentUser.realName);
+    }
+    // 'dept' 和 'plant' 无法在K2差异表中过滤（无department_id/plant_id字段），暂时显示全部
+    // 'all' 不添加过滤条件
+
     // 日期查询使用 Asia/Shanghai 时区转换，确保本地日期匹配正确
     // registration_date 存储为 UTC，但在查询时转换为上海时区的日期
     const dateConversion = "DATE(registration_date AT TIME ZONE 'Asia/Shanghai')";
@@ -574,25 +599,53 @@ export const getTypeStats = async (req, res, next) => {
 };
 
 /**
- * 批量发送邮件通知（合并所有记录为一封邮件）
+ * 批量发送邮件通知（根据筛选条件获取所有符合条件的记录）
  */
 export const sendBulkNotification = async (req, res, next) => {
   try {
-    const { ids } = req.body;
+    const { startDate, endDate, partNo, grn, shift } = req.query;
 
-    if (!ids || !Array.isArray(ids) || ids.length === 0) {
-      throw new AppError('请选择要发送的记录', 400);
+    // 构建查询条件
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (startDate) {
+      conditions.push(`registration_date >= $${paramIndex}`);
+      params.push(startDate);
+      paramIndex++;
+    }
+    if (endDate) {
+      conditions.push(`registration_date <= $${paramIndex}`);
+      params.push(endDate);
+      paramIndex++;
+    }
+    if (partNo) {
+      conditions.push(`part_no ILIKE $${paramIndex}`);
+      params.push(`%${partNo}%`);
+      paramIndex++;
+    }
+    if (grn) {
+      conditions.push(`grn ILIKE $${paramIndex}`);
+      params.push(`%${grn}%`);
+      paramIndex++;
+    }
+    if (shift) {
+      conditions.push(`shift = $${paramIndex}`);
+      params.push(shift);
+      paramIndex++;
     }
 
-    // 获取所有记录信息
-    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // 获取所有符合条件的记录
     const recordsResult = await pool.query(
-      `SELECT * FROM ${K2_DIFF_REGISTRATION_TABLE} WHERE id IN (${placeholders}) ORDER BY registration_date DESC, registration_time DESC`,
-      ids
+      `SELECT * FROM ${K2_DIFF_REGISTRATION_TABLE} ${whereClause} ORDER BY registration_date DESC, registration_time DESC`,
+      params
     );
 
     if (recordsResult.rows.length === 0) {
-      throw new AppError('没有找到对应的记录', 404);
+      throw new AppError('没有找到符合条件的记录', 404);
     }
 
     const records = recordsResult.rows;
@@ -606,16 +659,16 @@ export const sendBulkNotification = async (req, res, next) => {
 
     const { recipients, cc } = emailConfig;
 
-    // 构建邮件主题：当前日期【K**差异登记Report】
-    const today = getShanghaiNow();
-    const todayStr = formatDate(today);
-    const subject = `${todayStr}【K**差异登记Report】`;
-
-    // 计算日期范围和类型统计
+    // 计算日期范围和类型统计（使用记录的登记日期，而非当前日期）
     const dates = records.map(r => new Date(r.registration_date)).sort((a, b) => a - b);
-    const startDate = formatDate(dates[0]);
-    const endDate = formatDate(dates[dates.length - 1]);
-    const dateRange = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`;
+    const recordStartDate = formatDate(dates[0]);
+    const recordEndDate = formatDate(dates[dates.length - 1]);
+    const dateRange = recordStartDate === recordEndDate ? recordStartDate : `${recordStartDate} ~ ${recordEndDate}`;
+
+    // 构建邮件主题：使用记录的登记日期范围【K**差异登记Report】
+    const subject = recordStartDate === recordEndDate
+      ? `${recordStartDate}【K**差异登记Report】`
+      : `${recordStartDate}到${recordEndDate}【K**差异登记Report】`;
 
     // 按问题类型统计
     const typeCount = {};
@@ -627,21 +680,20 @@ export const sendBulkNotification = async (req, res, next) => {
       .map(([type, count]) => `${type}: ${count}个`)
       .join('，');
 
+    // 获取前端网址配置
+    const siteUrl = process.env.SITE_URL || 'http://localhost:5173';
+
     // 构建邮件正文
     let body = `HI ALL: 以下是 ${dateRange} K**异常物料，共计${records.length}个，其中${typeBreakdown}，请核查并改善，谢谢！\n\n`;
 
-    // 明细行（限制显示数量避免URL过长）
-    const maxDisplayRecords = 50;
-    const displayRecords = records.slice(0, maxDisplayRecords);
+    // 明细行（显示所有记录）
     body += '\n明细如下：\n';
-    displayRecords.forEach((record) => {
+    records.forEach((record) => {
       const regDate = formatDate(record.registration_date);
       body += `${regDate}|${record.shift}班|${record.part_no}|GRN:${record.grn || '-'}|数量:${record.qty}|问题:${record.problem_description || '-'}\n`;
     });
-    if (records.length > maxDisplayRecords) {
-      body += `\n... 共${records.length}条记录，显示前${maxDisplayRecords}条`;
-    }
 
+    body += `\n\n📎 查看详情：${siteUrl}`;
     body += `\n---
 此邮件由系统自动发送，请勿回复。`;
 

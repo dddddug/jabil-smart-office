@@ -239,7 +239,7 @@ const fetchPlants = async () => {
     const res = await request.get<PlantsResponse>('/plants');
     plants.value = res?.plants || [];
   } catch (error) {
-    ElMessage.error('获取厂区列表失败:' + error);
+    ElMessage.error({ message: '获取厂区列表失败:' + error, showClose: true, duration: 3000 });
   }
 };
 
@@ -252,7 +252,7 @@ const fetchDepartments = async () => {
       : departments.value.filter(d => d.plantId === filterPlantId.value);
     filterDepartmentId.value = 0;
   } catch (error) {
-    ElMessage.error('获取部门列表失败:' + error);
+    ElMessage.error({ message: '获取部门列表失败:' + error, showClose: true, duration: 3000 });
   }
 };
 
@@ -277,7 +277,7 @@ const fetchRules = async () => {
     rulesData.value = res?.list || [];
     totalRules.value = res?.total || 0;
   } catch (error) {
-    ElMessage.error('获取部门计算规则失败:' + error);
+    ElMessage.error({ message: '获取部门计算规则失败:' + error, showClose: true, duration: 3000 });
   }
 };
 
@@ -348,7 +348,7 @@ const saveRule = async () => {
       // 关闭弹窗后再刷新，确保UI更新
       setTimeout(() => {
         fetchRules();
-        ElMessage.success('规则更新成功！');
+        ElMessage.success({ message: '规则更新成功！', showClose: true, duration: 3000 });
       }, 100);
     } else {
       await request.post('/config/shift-duration-rules', {
@@ -367,11 +367,11 @@ const saveRule = async () => {
         filterShiftName.value = '';
         filterStatus.value = '';
         fetchRules();
-        ElMessage.success('规则创建成功！');
+        ElMessage.success({ message: '规则创建成功！', showClose: true, duration: 3000 });
       }, 100);
     }
   } catch (error: any) {
-    ElMessage.error('保存规则异常: ' + (error.message || '未知错误'));
+    ElMessage.error({ message: '保存规则异常: ' + (error.message || '未知错误'), showClose: true, duration: 3000 });
   }
 };
 
@@ -394,9 +394,9 @@ const toggleRuleStatus = async (rule: ShiftDurationRule) => {
     const endpoint = rule.status === 'active' ? `/config/shift-duration-rules/${rule.id}/disable` : `/config/shift-duration-rules/${rule.id}/enable`;
     await request.post(endpoint);
     fetchRules();
-    ElMessage.success('规则状态更新成功！');
+    ElMessage.success({ message: '规则状态更新成功！', showClose: true, duration: 3000 });
   } catch (error: any) {
-    ElMessage.error('更新规则状态异常: ' + (error.message || '未知错误'));
+    ElMessage.error({ message: '更新规则状态异常: ' + (error.message || '未知错误'), showClose: true, duration: 3000 });
   }
 };
 
@@ -421,9 +421,9 @@ const deleteRule = async (rule: ShiftDurationRule) => {
     if (selectedRule.value?.id === rule.id) {
       selectedRule.value = null;
     }
-    ElMessage.success('规则删除成功！');
+    ElMessage.success({ message: '规则删除成功！', showClose: true, duration: 3000 });
   } catch (error: any) {
-    ElMessage.error('删除规则异常: ' + (error.message || '未知错误'));
+    ElMessage.error({ message: '删除规则异常: ' + (error.message || '未知错误'), showClose: true, duration: 3000 });
   }
 };
 

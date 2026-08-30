@@ -374,10 +374,10 @@ const approveBonus = (bonus: Bonus) => {
   )
     .then(() => {
       bonus.status = 'approved';
-      ElMessage.success('奖金已批准！');
+      ElMessage.success({ message: '奖金已批准！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消批准');
+      ElMessage.info({ message: '已取消批准', showClose: true, duration: 3000 });
     });
 };
 
@@ -393,10 +393,10 @@ const rejectBonus = (bonus: Bonus) => {
   )
     .then(() => {
       bonus.status = 'rejected';
-      ElMessage.success('奖金已拒绝！');
+      ElMessage.success({ message: '奖金已拒绝！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消拒绝');
+      ElMessage.info({ message: '已取消拒绝', showClose: true, duration: 3000 });
     });
 };
 
@@ -422,10 +422,10 @@ const deleteBonus = (bonus: Bonus) => {
       if (selectedBonus.value && selectedBonus.value.id === bonus.id) {
         selectedBonus.value = null;
       }
-      ElMessage.success('奖金评估已删除！');
+      ElMessage.success({ message: '奖金评估已删除！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消删除');
+      ElMessage.info({ message: '已取消删除', showClose: true, duration: 3000 });
     });
 };
 
@@ -449,7 +449,7 @@ const resetSearch = () => {
 };
 
 const exportReport = () => {
-  ElMessage.info('导出奖金报表');
+  ElMessage.info({ message: '导出奖金报表', showClose: true, duration: 3000 });
 };
 
 const prevPage = () => {

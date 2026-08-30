@@ -174,14 +174,14 @@ const getList = async () => {
     pageSize: pagination.pageSize
   };
   try {
-    const res = await getSpecialWorkingHoursList(params);
-    // 请求拦截器已经返回了 data 部分，所以 res 已经是 { list, total } 结构
-    tableData.value = res.list || [];
-    total.value = res.total || 0;
+    const res: any = await getSpecialWorkingHoursList(params);
+    // axios 拦截器返回 { code, message, data: { list, total } }
+    tableData.value = res?.data?.list || res?.list || [];
+    total.value = res?.data?.total || res?.total || 0;
   } catch (error: any) {
     // 如果是静默取消的请求，不显示错误
     if (error.isCancelled || error.silent) return;
-    ElMessage.error('获取列表失败：' + error.message);
+    ElMessage.error({ message: '获取列表失败：' + error.message, showClose: true, duration: 3000 });
   }
 };
 
@@ -220,16 +220,16 @@ const handleDelete = async (id: number) => {
     try {
       const res = await deleteSpecialWorkingHours([id]);
       if (res.success) {
-        ElMessage.success('删除成功');
+        ElMessage.success({ message: '删除成功', showClose: true, duration: 3000 });
         clearRequestCache(); // 清除请求缓存以确保获取最新数据
         getList();
         // 通知工位安排页面刷新
         eventBus.emit('special-working-hours-changed');
       } else {
-        ElMessage.error(res.error || '删除失败');
+        ElMessage.error({ message: res.error || '删除失败', showClose: true, duration: 3000 });
       }
     } catch (error: any) {
-      ElMessage.error('删除失败：' + error.message);
+      ElMessage.error({ message: '删除失败：' + error.message, showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -240,7 +240,7 @@ const handleBatchImport = () => {
 
 const handleBatchDelete = async () => {
   if (selectedIds.value.length === 0) {
-    ElMessage.warning('请至少选择一条记录进行删除');
+    ElMessage.warning({ message: '请至少选择一条记录进行删除', showClose: true, duration: 3000 });
     return;
   }
   ElMessageBox.confirm(`确定删除选中的 ${selectedIds.value.length} 条记录吗？`, '提示', {
@@ -251,17 +251,17 @@ const handleBatchDelete = async () => {
     try {
       const res = await deleteSpecialWorkingHours(selectedIds.value);
       if (res.success) {
-        ElMessage.success(`成功删除 ${res.deletedCount} 条记录`);
+        ElMessage.success({ message: `成功删除 ${res.deletedCount} 条记录`, showClose: true, duration: 3000 });
         clearRequestCache(); // 清除请求缓存以确保获取最新数据
         getList();
         selectedIds.value = [];
         // 通知工位安排页面刷新
         eventBus.emit('special-working-hours-changed');
       } else {
-        ElMessage.error(res.error || '批量删除失败');
+        ElMessage.error({ message: res.error || '批量删除失败', showClose: true, duration: 3000 });
       }
     } catch (error: any) {
-      ElMessage.error('批量删除失败：' + error.message);
+      ElMessage.error({ message: '批量删除失败：' + error.message, showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -274,23 +274,23 @@ const handleExportExcel = async () => {
     const res = await exportSpecialWorkingHours(params);
     // 请求拦截器已返回 data 部分，res 本身就是 blob
     downloadFile(res, '特殊工时记录.xlsx');
-    ElMessage.success('Excel 导出成功');
+    ElMessage.success({ message: 'Excel 导出成功', showClose: true, duration: 3000 });
   } catch (error: any) {
-    ElMessage.error('Excel 导出失败：' + error.message);
+    ElMessage.error({ message: 'Excel 导出失败：' + error.message, showClose: true, duration: 3000 });
   }
 };
 
 const handleSubmitForm = async (formData: SpecialWorkingHoursItem) => {
   try {
     const res = await addSpecialWorkingHours(formData);
-    ElMessage.success('操作成功');
+    ElMessage.success({ message: '操作成功', showClose: true, duration: 3000 });
     formModalVisible.value = false;
     clearRequestCache(); // 清除请求缓存以确保获取最新数据
     getList();
     // 通知工位安排页面刷新
     eventBus.emit('special-working-hours-changed');
   } catch (error: any) {
-    ElMessage.error('操作失败：' + (error.message || error.error || error));
+    ElMessage.error({ message: '操作失败：' + (error.message || error.error || error), showClose: true, duration: 3000 });
   }
 };
 

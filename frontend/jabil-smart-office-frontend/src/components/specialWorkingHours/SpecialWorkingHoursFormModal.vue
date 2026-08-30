@@ -222,8 +222,8 @@ export default {
     },
     async loadUserList() {
       try {
-        const data = await getUserList();
-        const userArray = data?.users || data?.items || [];
+        const result = await getUserList();
+        const userArray = result?.users || result?.items || [];
         this.userList = userArray.map(user => ({ employeeName: user.realName, oldEmployeeId: user.oldEmployeeId, id: user.id, departmentId: user.departmentId }));
       } catch (error) {
         this.$message.error('获取用户列表失败：' + (error?.message || '未知错误'));
@@ -231,8 +231,8 @@ export default {
     },
     async loadDepartmentList() {
       try {
-        const data = await getDepartmentList();
-        const deptArray = data?.departments || data?.items || [];
+        const result = await getDepartmentList();
+        const deptArray = result?.departments || result?.items || [];
         this.departmentList = deptArray.map(dept => ({
           id: dept.id,
           departmentName: dept.name || dept.departmentName

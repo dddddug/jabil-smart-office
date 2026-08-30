@@ -5,9 +5,9 @@ import { asyncHandler } from '../middlewares/errorHandler.js';
 import positionReasonConfigController from '../controllers/positionReasonConfigController.js';
 
 // 获取岗位原因配置
-router.get('/position-reasons', authenticateToken, asyncHandler(positionReasonConfigController.getPositionReasons));
+router.get('/', authenticateToken, asyncHandler(positionReasonConfigController.getPositionReasons));
 
 // 保存岗位原因配置
-router.post('/position-reasons', authenticateToken, asyncHandler(positionReasonConfigController.savePositionReasons));
+router.post('/', authenticateToken, asyncHandler(positionReasonConfigController.savePositionReasons));
 
 export default router;

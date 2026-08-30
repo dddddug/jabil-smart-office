@@ -133,7 +133,7 @@ const loadHourlyRates = async () => {
     // res is already unwrapped by interceptor - it's { items: HourlyRate[] }
     hourlyRates.value = res?.items || res || [];
   } catch (error) {
-    ElMessage.error('加载费率失败！');
+    ElMessage.error({ message: '加载费率失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -153,7 +153,7 @@ const closeDialog = () => isDialogOpen.value = false;
 
 const saveRate = async () => {
   if (!currentRate.value.level || currentRate.value.standardRate === undefined || !currentRate.value.startTime) {
-    ElMessage.warning('请填写所有必填项！');
+    ElMessage.warning({ message: '请填写所有必填项！', showClose: true, duration: 3000 });
     return;
   }
 
@@ -168,9 +168,9 @@ const saveRate = async () => {
     await request.post('/config/employee-hourly-rates', rateToSave);
     await loadHourlyRates();
     closeDialog();
-    ElMessage.success('费率保存成功！');
+    ElMessage.success({ message: '费率保存成功！', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('保存费率失败！');
+    ElMessage.error({ message: '保存费率失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }
@@ -181,9 +181,9 @@ const deactivateRate = async (id: number) => {
   try {
     await request.put(`/config/employee-hourly-rates/${id}/deactivate`);
     await loadHourlyRates();
-    ElMessage.success('费率已停用！');
+    ElMessage.success({ message: '费率已停用！', showClose: true, duration: 3000 });
   } catch (error) {
-    ElMessage.error('停用费率失败！');
+    ElMessage.error({ message: '停用费率失败！', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }

@@ -114,6 +114,30 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
     const periodStartDate = dayjs(periodStart);
     const periodEndDate = dayjs(periodEnd);
 
+    // 判断是否是休息类班次
+    const isRestShift = (shift: string): boolean => {
+      if (!shift) return false;
+      const restShifts = ['调休', '请假', '年假', '旷工', '离职', '休', '休息'];
+      return restShifts.includes(shift) || shift.includes('休') || shift.includes('请假') || shift.includes('年假');
+    };
+
+    // 计算某一天的工时
+    const getDailyHours = (date: dayjs.Dayjs, shift: string | undefined): number => {
+      if (!shift) return 0;
+      if (isRestShift(shift)) return 0;
+
+      // 周一到周三：按实际排班工时
+      // 周四到周日：固定按12小时算（除非是休息类班次）
+      const dayOfWeek = date.day(); // 0=周日, 1=周一, ..., 6=周六
+      if (dayOfWeek >= 1 && dayOfWeek <= 3) {
+        // 周一到周三（周一=1，周二=2，周三=3）：按实际排班工时
+        return getWorkHours(shift);
+      } else {
+        // 周四到周日（周四=4，周五=5，周六=6，周日=0）：固定按12小时算
+        return 12;
+      }
+    };
+
     employeesToCheck.forEach((employee) => {
       let totalWeeklyHours = 0;
       let currentWeekStart = dayjs(periodStartDate).startOf('isoWeek');
@@ -129,9 +153,11 @@ export function useBreak7Check(params: UseBreak7CheckParams) {
                (dayInWeek.isBefore(periodEndDate) || dayInWeek.isSame(periodEndDate))) {
           const dateStr = dayInWeek.format('YYYY-MM-DD');
           const scheduleItem = employee.schedule ? employee.schedule[dateStr] : null;
-          if (scheduleItem && scheduleItem.shift) {
-            totalWeeklyHours += getWorkHours(scheduleItem.shift);
-          }
+
+          // 使用新的工时计算逻辑
+          const dailyHours = getDailyHours(dayInWeek, scheduleItem?.shift);
+          totalWeeklyHours += dailyHours;
+
           // Add temporary overtime hours for this specific day
           totalWeeklyHours += calculateEmployeeOvertimeHours(employee.id, dateStr, dateStr);
 

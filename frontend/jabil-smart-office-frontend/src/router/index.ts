@@ -50,6 +50,12 @@ const router = createRouter({
           meta: { requiresAuth: true, title: '管控物料 单据管理' },
         },
         {
+          path: 'warehouse-return',
+          name: 'warehouse-return',
+          component: () => import('../views/WarehouseReturnView.vue'),
+          meta: { requiresAuth: true, title: '回仓申请' },
+        },
+        {
           path: 'k045',
           name: 'k045',
           component: () => import('../views/K045View.vue'),
@@ -75,6 +81,30 @@ const router = createRouter({
           path: 'bonus-evaluation',
           name: 'bonus-evaluation',
           component: () => import('../views/BonusEvaluationView.vue'),
+        },
+        {
+          path: 'stockroom-urgent-pull',
+          name: 'stockroom-urgent-pull',
+          component: () => import('../views/StockroomUrgentPullView.vue'),
+          meta: { requiresAuth: true, title: 'Stockroom Urgent Pull' },
+        },
+        {
+          path: 'stockroom-urgent-pull-config',
+          name: 'stockroom-urgent-pull-config',
+          component: () => import('../views/StockroomUrgentPullConfigView.vue'),
+          meta: { requiresAuth: true, title: 'Stockroom Urgent Pull 配置' },
+        },
+        {
+          path: 'warehouse-monitor',
+          name: 'warehouse-monitor',
+          component: () => import('../views/WarehouseMonitorView.vue'),
+          meta: { requiresAuth: true, title: '物料进出效期监控' },
+        },
+        {
+          path: 'material-package',
+          name: 'material-package',
+          component: () => import('../views/MaterialPackageView.vue'),
+          meta: { requiresAuth: true, title: '物料包装信息' },
         },
         {
           path: 'leave-management',
@@ -175,16 +205,10 @@ const router = createRouter({
           component: () => import('../views/AnnouncementManagementView.vue'),
         },
         {
-          path: 'k045-config',
-          name: 'k045-config',
-          component: () => import('../views/K045ConfigView.vue'),
-          meta: { requiresAuth: true, title: 'K045 规则配置' },
-        },
-        {
-          path: 'da-material-config',
-          name: 'da-material-config',
+          path: 'material-config',
+          name: 'material-config',
           component: () => import('../views/DAMaterialConfigView.vue'),
-          meta: { requiresAuth: true, title: '管控物料 规则配置' },
+          meta: { requiresAuth: true, title: '物料模块 规则配置' },
         },
         {
           path: 'pnc-transfer-config',

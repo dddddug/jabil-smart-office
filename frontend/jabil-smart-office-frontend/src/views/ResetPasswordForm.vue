@@ -77,18 +77,18 @@ const handleResetPassword = async () => {
 
         const data = await response.json();
         if (response.ok && data.code === 200) {
-          ElMessage.success('身份验证成功，请设置新密码！');
+          ElMessage.success({ message: '身份验证成功，请设置新密码！', showClose: true, duration: 3000 });
           // 传递验证通过的用户ID给新密码设置组件
           emit('switch-view', 'setNewPassword', { userId: data.data.userId });
         } else {
-          ElMessage.error(data.message || '身份验证失败，请检查您的信息。');
+          ElMessage.error({ message: data.message || '身份验证失败，请检查您的信息。', showClose: true, duration: 3000 });
         }
       } else {
-        ElMessage.error('请完整填写表单。');
+        ElMessage.error({ message: '请完整填写表单。', showClose: true, duration: 3000 });
       }
     });
   } catch (error) {
-    ElMessage.error('请求出错，请稍后重试。');
+    ElMessage.error({ message: '请求出错，请稍后重试。', showClose: true, duration: 3000 });
   } finally {
     isLoading.value = false;
   }

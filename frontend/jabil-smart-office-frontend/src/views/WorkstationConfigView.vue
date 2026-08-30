@@ -268,7 +268,7 @@ const fetchWorkstations = async () => {
     workstations.value = data?.list || [];
     total.value = data?.total || 0;
   } catch (error) {
-    ElMessage.error('获取工位列表失败');
+    ElMessage.error({ message: '获取工位列表失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -333,7 +333,7 @@ const saveWorkstation = async () => {
         departmentId: currentWorkstation.value.departmentId,
         description: currentWorkstation.value.description,
       });
-      ElMessage.success('工位更新成功');
+      ElMessage.success({ message: '工位更新成功', showClose: true, duration: 3000 });
     } else {
       await request.post('/workstations', {
         name: currentWorkstation.value.name,
@@ -341,13 +341,13 @@ const saveWorkstation = async () => {
         departmentId: currentWorkstation.value.departmentId,
         description: currentWorkstation.value.description,
       });
-      ElMessage.success('工位创建成功');
+      ElMessage.success({ message: '工位创建成功', showClose: true, duration: 3000 });
     }
     closeDialog();
     clearRequestCache(); // 清除缓存，确保刷新数据
     fetchWorkstations();
   } catch (error: any) {
-    ElMessage.error(error?.message || '保存失败');
+    ElMessage.error({ message: error?.message || '保存失败', showClose: true, duration: 3000 });
   }
 };
 
@@ -364,11 +364,11 @@ const toggleStatus = async (ws: Workstation) => {
     });
 
     await request.post(`/workstations/${ws.id}/toggle-status`, { status: newStatus });
-    ElMessage.success(`${action}成功`);
+    ElMessage.success({ message: `${action}成功`, showClose: true, duration: 3000 });
     fetchWorkstations();
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error?.message || `${action}失败`);
+      ElMessage.error({ message: error?.message || `${action}失败`, showClose: true, duration: 3000 });
     }
   }
 };
@@ -383,14 +383,14 @@ const deleteWorkstation = async (ws: Workstation) => {
     });
 
     await request.delete(`/workstations/${ws.id}`);
-    ElMessage.success('删除成功');
+    ElMessage.success({ message: '删除成功', showClose: true, duration: 3000 });
     if (selectedWorkstation.value?.id === ws.id) {
       selectedWorkstation.value = null;
     }
     fetchWorkstations();
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error?.message || '删除失败');
+      ElMessage.error({ message: error?.message || '删除失败', showClose: true, duration: 3000 });
     }
   }
 };

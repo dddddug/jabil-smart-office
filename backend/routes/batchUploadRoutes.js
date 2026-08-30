@@ -112,7 +112,6 @@ router.post('/schedule/batch-upload', authenticateToken, memoryUpload.single('fi
     const rows = parseExcel(req.file.buffer);
     const result = await handleScheduleUpload(rows);
 
-    console.log('[BatchUpload] handleScheduleUpload result:', JSON.stringify(result));
 
     if (!result.success) {
       return res.status(400).json({ code: 400, message: '数据验证失败', data: result.errors });
@@ -124,7 +123,6 @@ router.post('/schedule/batch-upload', authenticateToken, memoryUpload.single('fi
       data: result
     };
 
-    console.log('[BatchUpload] Final response:', JSON.stringify(responseData));
     return res.status(200).json(responseData);
   } catch (error) {
     console.error('批量上传排班失败:', error);

@@ -222,7 +222,7 @@
       </el-table-column>
       <el-table-column label="申请日期" width="120">
         <template #default="{ row }">
-          <span>{{ row.applyDate ? row.applyDate.split('T')[0] : '-' }}</span>
+          <span>{{ row.applyDate ? row.applyDate.split(' ')[0] : '-' }}</span>
         </template>
       </el-table-column>
 
@@ -686,7 +686,6 @@ const currentUser = getCurrentUser()
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Document, Clock, SuccessFilled, Close, Plus, Upload, Download, UploadFilled } from '@element-plus/icons-vue'
 import dayjs from '@/plugins/dayjs'
-import { useVoiceReminder } from '@/composables/useVoiceReminder'
 
 interface Props {
   tabType: 'overtime' | 'temporary' | 'annual' | 'resignation'
@@ -803,7 +802,6 @@ const totalApproved = ref(0)
 const totalRejected = ref(0)
 
 // 语音提醒
-const { checkLeaveApprovalPending } = useVoiceReminder();
 const dateRange = ref<[Date, Date] | null>(null)
 const filterStatus = ref('')
 const filterEmployee = ref('')
@@ -979,27 +977,30 @@ const loadData = async () => {
     
     if (response.ok) {
       const result = await response.json()
-      const data = result.items || result // 支持两种格式
-      
+      // 拦截器返回 { code, message, data: { items, total, ... } }
+      const responseData = result?.data || result || {}
+      const data = responseData?.items || responseData || []
+
       // 更新分页信息
-      if (result.total !== undefined) {
+      if (result?.data?.total !== undefined) {
+        total.value = result.data.total
+        totalPages.value = result.data.totalPages || Math.ceil(result.data.total / pageSize.value)
+      } else if (result.total !== undefined) {
         total.value = result.total
         totalPages.value = result.totalPages || Math.ceil(result.total / pageSize.value)
       }
-      
+
       // 更新统计数据
-      if (result.totalPending !== undefined) {
-        totalPending.value = result.totalPending
+      if (result?.data?.totalPending !== undefined) {
+        totalPending.value = result.data.totalPending
         // 语音提醒：有待审批的记录时（仅年假标签页需要审批提醒）
-        if (props.tabType === 'annual') {
-          checkLeaveApprovalPending(result.totalPending)
-        }
+	        // 语音提醒已禁用
       }
-      if (result.totalApproved !== undefined) {
-        totalApproved.value = result.totalApproved
+      if (result?.data?.totalApproved !== undefined) {
+        totalApproved.value = result.data.totalApproved
       }
-      if (result.totalRejected !== undefined) {
-        totalRejected.value = result.totalRejected
+      if (result?.data?.totalRejected !== undefined) {
+        totalRejected.value = result.data.totalRejected
       }
       
       // 将后端数据转换为前端格式
@@ -1053,7 +1054,7 @@ const loadData = async () => {
             duration: duration,
             reason: item.reason || '',
             status: item.status || 'pending',
-            applyDate: item.applyDate?.split('T')[0] || '',
+            applyDate: item.createdAt ? item.createdAt.split(' ')[0] : (item.applyDate ? item.applyDate.split('T')[0] : ''),
             plantId: item.plantId,
             plantName: item.plantName || '',
             departmentId: item.departmentId,
@@ -2167,14 +2168,50 @@ const calculateDuration = (start: Date, end: Date) => {
 
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   // 在验证前检查日期和时间是否已填写
-  if ((props.tabType === 'overtime' || props.tabType === 'temporary') && 
+  if ((props.tabType === 'overtime' || props.tabType === 'temporary') &&
       (!formDate.value || !formStartTime.value || !formEndTime.value)) {
     ElMessage.warning({ message: '请填写完整的日期和时间', showClose: true, duration: 3000 })
     return
   }
-  
+
+  // 检测重复记录
+  const selectedEmployee = employees.value.find(emp => emp.id === form.value.employeeId)
+  const formDepartmentName = selectedEmployee?.departmentName || ''
+  const formStartDate = props.tabType === 'overtime' ? formDate.value : form.value.startDate
+  const formEndDate = props.tabType === 'overtime' ? formDate.value : form.value.endDate
+  const formDuration = props.tabType === 'overtime' || props.tabType === 'temporary'
+    ? calculateDuration(form.value.startDate!, form.value.endDate!)
+    : calculateDuration(form.value.startDate!, form.value.endDate!)
+
+  const currentType = props.tabType === 'annual' || props.tabType === 'temporary'
+    ? (form.value.type === '年假' ? '年假' : form.value.type === '临时请假' ? '临时请假' : form.value.type === '公差' ? '公差' : form.value.type)
+    : props.tabType === 'overtime' ? (form.value.type === '临时加班' ? '临时加班' : form.value.type) : form.value.type
+
+  const duplicates = requests.value.filter(r => {
+    const sameEmployee = r.employeeId === form.value.employeeId
+    const sameDepartment = r.departmentName === formDepartmentName
+    const sameType = r.type === currentType
+    const sameStartDate = r.startDate === (formStartDate ? dayjs(formStartDate).format('YYYY-MM-DD') : '')
+    const sameEndDate = r.endDate === (formEndDate ? dayjs(formEndDate).format('YYYY-MM-DD') : '')
+    const sameDuration = r.duration === formDuration
+    return sameEmployee && sameDepartment && sameType && sameStartDate && sameEndDate && sameDuration
+  })
+
+  if (duplicates.length > 0) {
+    const confirmed = await ElMessageBox.confirm(
+      `检测到与已有记录高度相似的申请：\n${duplicates.map(d => `- ${selectedEmployee?.name || ''} | ${d.departmentName} | ${d.type} | ${d.startDate} ~ ${d.endDate} | ${d.duration}小时`).join('\n')}\n\n是否仍要提交？`,
+      '重复记录提醒',
+      {
+        confirmButtonText: '仍要提交',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    ).catch(() => false)
+    if (!confirmed) return
+  }
+
   try {
     await formRef.value.validate(async (valid, invalidFields) => {
       if (!valid) {

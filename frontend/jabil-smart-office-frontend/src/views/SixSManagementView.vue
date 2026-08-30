@@ -392,10 +392,10 @@ const resolveCheck = (check: CheckRecord) => {
   )
     .then(() => {
       check.status = 'resolved';
-      ElMessage.success('已标记为已整改！');
+      ElMessage.success({ message: '已标记为已整改！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消操作');
+      ElMessage.info({ message: '已取消操作', showClose: true, duration: 3000 });
     });
 };
 
@@ -411,10 +411,10 @@ const verifyCheck = (check: CheckRecord) => {
   )
     .then(() => {
       check.status = 'verified';
-      ElMessage.success('已验证通过！');
+      ElMessage.success({ message: '已验证通过！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消操作');
+      ElMessage.info({ message: '已取消操作', showClose: true, duration: 3000 });
     });
 };
 
@@ -433,10 +433,10 @@ const deleteCheck = (check: CheckRecord) => {
       if (selectedCheck.value && selectedCheck.value.id === check.id) {
         selectedCheck.value = null;
       }
-      ElMessage.success('检查记录已删除！');
+      ElMessage.success({ message: '检查记录已删除！', showClose: true, duration: 3000 });
     })
     .catch(() => {
-      ElMessage.info('已取消删除');
+      ElMessage.info({ message: '已取消删除', showClose: true, duration: 3000 });
     });
 };
 
@@ -460,7 +460,7 @@ const resetSearch = () => {
 };
 
 const exportReport = () => {
-  ElMessage.info('导出6S检查报告');
+  ElMessage.info({ message: '导出6S检查报告', showClose: true, duration: 3000 });
 };
 
 const prevPage = () => {

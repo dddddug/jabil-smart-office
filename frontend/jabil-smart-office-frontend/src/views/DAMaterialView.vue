@@ -21,7 +21,7 @@
       <div
         class="stat-card stat-card-orange"
         :class="{ 'stat-card-active': selectedStatus === 'submitted' }"
-        @click="filterByStatus('submitted')"
+        @click="filterByStatusAndSwitchTab('submitted', 'print-receive')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">📋</span>
@@ -34,7 +34,7 @@
       <div
         class="stat-card stat-card-blue"
         :class="{ 'stat-card-active': selectedStatus === 'received' }"
-        @click="filterByStatus('received')"
+        @click="filterByStatusAndSwitchTab('received', 'print-receive')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">📦</span>
@@ -47,7 +47,7 @@
       <div
         class="stat-card stat-card-green"
         :class="{ 'stat-card-active': selectedStatus === 'material_issued' }"
-        @click="filterByStatus('material_issued')"
+        @click="filterByStatusAndSwitchTab('material_issued', 'submit')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">🔓</span>
@@ -59,14 +59,14 @@
       </div>
       <div
         class="stat-card stat-card-cyan"
-        :class="{ 'stat-card-active': selectedStatus === 'completed' }"
-        @click="filterByStatus('completed')"
+        :class="{ 'stat-card-active': selectedStatus === 'signed' }"
+        @click="filterByStatusAndSwitchTab('signed', 'submit')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">🎉</span>
         </div>
         <div class="stat-info">
-          <div class="stat-value">{{ stats.completed }}</div>
+          <div class="stat-value">{{ stats.signed }}</div>
           <div class="stat-label">已完成</div>
         </div>
       </div>
@@ -110,7 +110,10 @@
           <div class="search-item">
             <div class="search-item-wrapper">
               <label>W/C名称</label>
-              <input type="text" v-model="searchQuery.wcName" placeholder="请输入W/C名称">
+              <select v-model="searchQuery.wcName" class="search-select">
+                <option value="">全部</option>
+                <option v-for="wc in availableWCNames" :key="wc" :value="wc">{{ wc }}</option>
+              </select>
             </div>
           </div>
           <div class="search-item">
@@ -159,8 +162,9 @@
                 <td>{{ doc.ecnNo || '-' }}</td>
                 <td>{{ doc.controlType || '-' }}</td>
                 <td>{{ doc.submitterName }}</td>
-                <td>{{ formatDateTime(doc.submittedAt) }}</td>
+                <td>{{ formatDate(doc.submittedAt || doc.createdAt) }}</td>
                 <td>
+                  <span v-if="doc.isUrgent" class="urgent-badge">⚡加急</span>
                   <span class="status-badge" :style="{ backgroundColor: DAMaterialStatusColor[doc.status] + '20', color: DAMaterialStatusColor[doc.status] }">
                     {{ DAMaterialStatusText[doc.status] }}
                   </span>
@@ -171,11 +175,16 @@
 
                     <!-- 提交管理页签操作 -->
                     <template v-if="activeTab === 'submit'">
-                      <button v-if="doc.status === 'submitted'" class="action-btn rush" @click="handleRush(doc)">催单</button>
                       <button v-if="doc.status === 'submitted' && isDocumentOwner(doc)" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
                       <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn edit" @click="openEditDialog(doc)">编辑</button>
                       <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
                       <button v-if="doc.status === 'material_issued' && isDocumentOwner(doc)" class="action-btn sign" @click="handleSign(doc)">签收</button>
+                      <button
+                        :class="['action-btn', doc.isUrgent ? 'urgent-active' : 'urgent']"
+                        @click="handleSetUrgent(doc)"
+                      >
+                        {{ doc.isUrgent ? '⚡已加急' : '⚡加急' }}
+                      </button>
                     </template>
 
                     <!-- 打印和接收页签操作 -->
@@ -276,6 +285,20 @@
                 <option v-for="type in controlTypes" :key="type" :value="type">{{ type }}</option>
               </select>
             </div>
+	            <div class="form-group">
+	              <label class="checkbox-label">
+	                <input type="checkbox" v-model="submitForm.isTO" />
+	                需分料
+	              </label>
+	            </div>
+	            <!-- 配送地点选择（勾选TO后显示） -->
+	            <div v-if="submitForm.isTO" class="form-group">
+	              <label>配送地点 <span class="required">*</span></label>
+	              <select v-model="submitForm.deliveryLocation" required>
+	                <option value="">请选择配送地点</option>
+	                <option v-for="loc in deliveryLocations" :key="loc" :value="loc">{{ loc }}</option>
+	              </select>
+	            </div>
             <div class="form-group">
               <label>上传单据附件（必须） <span class="required">*</span></label>
               <div class="upload-area" @click="triggerFileInput" @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onDrop" :class="{ 'drag-over': isDragOver, 'uploading': isUploading }">
@@ -298,20 +321,6 @@
                   <span class="file-name">{{ submitForm.attachmentName }}</span>
                   <button type="button" class="file-remove" @click.stop="removeFile">×</button>
                 </div>
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-group checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="submitForm.isUrgent">
-                  <span class="checkbox-text">加急</span>
-                </label>
-              </div>
-              <div class="form-group checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="submitForm.isRush">
-                  <span class="checkbox-text">催单</span>
-                </label>
               </div>
             </div>
           </form>
@@ -413,20 +422,6 @@
                 </div>
               </div>
             </div>
-            <div class="form-row">
-              <div class="form-group checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="submitForm.isUrgent">
-                  <span class="checkbox-text">加急</span>
-                </label>
-              </div>
-              <div class="form-group checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" v-model="submitForm.isRush">
-                  <span class="checkbox-text">催单</span>
-                </label>
-              </div>
-            </div>
           </form>
         </div>
         <div class="dialog-actions">
@@ -483,10 +478,6 @@
                 <span class="detail-label">加急</span>
                 <span class="detail-value">{{ currentDocument?.isUrgent ? '是' : '否' }}</span>
               </div>
-              <div class="detail-item">
-                <span class="detail-label">催单</span>
-                <span class="detail-value">{{ currentDocument?.isRush ? '是' : '否' }}</span>
-              </div>
             </div>
           </div>
 
@@ -496,14 +487,6 @@
               <div class="detail-item">
                 <span class="detail-label">提交时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.submittedAt) }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">打印时间</span>
-                <span class="detail-value">{{ formatDateTime(currentDocument?.printedAt) }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">打印人</span>
-                <span class="detail-value">{{ currentDocument?.printedBy || '-' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">接收时间</span>
@@ -525,11 +508,11 @@
                 <span class="detail-label">完成时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.completedAt) }}</span>
               </div>
-              <div v-if="currentDocument?.status === 'rejected'" class="detail-item full-width">
+              <div v-if="currentDocument?.status === 'rejected'" class="detail-item">
                 <span class="detail-label">拒绝时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.rejectedAt) }}</span>
               </div>
-              <div v-if="currentDocument?.status === 'rejected'" class="detail-item full-width">
+              <div v-if="currentDocument?.status === 'rejected'" class="detail-item">
                 <span class="detail-label">拒绝原因</span>
                 <span class="detail-value error">{{ currentDocument?.rejectReason }}</span>
               </div>
@@ -537,11 +520,11 @@
                 <span class="detail-label">撤回时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.withdrawnAt) }}</span>
               </div>
-              <div v-if="currentDocument?.status === 'returned'" class="detail-item full-width">
+              <div v-if="currentDocument?.status === 'returned'" class="detail-item">
                 <span class="detail-label">退回时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.returnedAt) }}</span>
               </div>
-              <div v-if="currentDocument?.status === 'returned'" class="detail-item full-width">
+              <div v-if="currentDocument?.status === 'returned'" class="detail-item">
                 <span class="detail-label">退回原因</span>
                 <span class="detail-value error">{{ currentDocument?.returnReason }}</span>
               </div>
@@ -641,11 +624,13 @@ import {
   rejectDAMaterialDocument,
   returnDAMaterialDocument,
   signDAMaterialDocument,
-  rushDAMaterialDocument,
+  setUrgentDAMaterialDocument,
   getDAMaterialStats,
-  uploadDAMaterialAttachment
+  uploadDAMaterialAttachment,
+  sendDAMaterialNotification
 } from '../api/daMaterial';
 import { getDAMaterialConfigs, DAMATERIAL_CONFIG_KEYS } from '../api/daMaterialConfig';
+import { getK045Configs } from '../api/k045Config';
 
 // 标签页配置 - 两个页签：提交管理和打印接收
 const tabs = [
@@ -684,6 +669,18 @@ const selectedStatus = ref<string | null>(null);
 
 // 按状态筛选
 const filterByStatus = (status: string) => {
+  if (selectedStatus.value === status) {
+    selectedStatus.value = null;
+  } else {
+    selectedStatus.value = status;
+  }
+  currentPage.value = 1;
+  loadDocuments();
+};
+
+// 按状态筛选并切换到对应页签
+const filterByStatusAndSwitchTab = (status: string, tabKey: string) => {
+  activeTab.value = tabKey;
   if (selectedStatus.value === status) {
     selectedStatus.value = null;
   } else {
@@ -734,10 +731,80 @@ const submitForm = reactive<DAMaterialDocumentForm>({
   ecnAttachmentName: '',
   submitterName: '',
   isUrgent: false,
-  isRush: false,
   attachmentUrl: '',
   attachmentName: '',
-  controlType: '正常'
+  controlType: '正常',
+  isTO: false,
+  deliveryLocation: ''
+});
+
+// W/C用户分配配置缓存
+const wcUserAssignments = ref<Array<{wcName: string, userIds: number[]}>>([]);
+
+// 配送地点列表（从配置获取）
+const deliveryLocations = ref<string[]>([]);
+
+// 加载配送地点配置（从K045配置获取）
+const loadDeliveryLocations = async () => {
+  try {
+    const res = await getK045Configs();
+    const configs = (res as any)?.data || res || [];
+    const deliveryConfig = configs.find((c: any) => c.configKey === 'delivery_locations');
+    if (deliveryConfig && deliveryConfig.configValue) {
+      try {
+        const parsed = JSON.parse(deliveryConfig.configValue);
+        deliveryLocations.value = parsed.map((item: any) => item.location).filter(Boolean);
+      } catch (e) {
+        deliveryLocations.value = [];
+      }
+    } else {
+      deliveryLocations.value = [];
+    }
+  } catch (error) {
+    deliveryLocations.value = [];
+  }
+};
+
+// 加载W/C用户分配配置
+const loadWCUserAssignments = async () => {
+  try {
+    const res = await getDAMaterialConfigs();
+    const configs = (res as any)?.data || res || [];
+    const wcAssignmentConfig = configs.find((c: any) => c.configKey === DAMATERIAL_CONFIG_KEYS.WC_DEPARTMENT_ASSIGNMENT);
+    if (wcAssignmentConfig && wcAssignmentConfig.configValue) {
+      try {
+        wcUserAssignments.value = JSON.parse(wcAssignmentConfig.configValue);
+      } catch (e) {
+        wcUserAssignments.value = [];
+      }
+    }
+  } catch (error) {
+    wcUserAssignments.value = [];
+  }
+};
+
+// 获取当前用户的W/C名称（用于自动填充）
+const getCurrentUserWCAssignment = (): string | null => {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return null;
+
+  const userId = Number(currentUser.id);
+  const assignments = wcUserAssignments.value;
+
+  // 查找当前用户负责的W/C（同时检查数字和字符串类型）
+  const userAssignments = assignments.filter(a =>
+    a.userIds.includes(userId) || a.userIds.includes(Number(userId))
+  );
+
+  if (userAssignments.length === 1 && userAssignments[0]) {
+    return userAssignments[0].wcName;
+  }
+  return null;
+};
+
+// 可选的W/C名称列表（从配置中获取）
+const availableWCNames = computed(() => {
+  return wcUserAssignments.value.map(a => a.wcName).filter(wc => wc);
 });
 
 // 详情对话框
@@ -774,6 +841,7 @@ const isDocumentOwner = (doc: DAMaterialDocument): boolean => {
 // 加载文档列表
 const loadDocuments = async () => {
   isLoading.value = true;
+  clearRequestCache();
   try {
     const currentTabConfig = tabs.find(t => t.key === activeTab.value);
     const statusFilter = selectedStatus.value
@@ -787,11 +855,13 @@ const loadDocuments = async () => {
       endDate: searchQuery.endDate,
       status: statusFilter,
       page: currentPage.value,
-      pageSize: pageSize.value
+      pageSize: pageSize.value,
+      _t: Date.now()
     };
 
     const res: any = await getDAMaterialDocuments(params);
-    documents.value = res?.data?.items || res?.items || res?.data || [];
+    // 后端返回 { code, message, data: { items, pagination } }
+    documents.value = res?.data?.items || res?.items || [];
     totalCount.value = res?.data?.pagination?.total || res?.total || documents.value.length;
   } catch (error) {
     console.error('加载单据列表失败:', error);
@@ -802,22 +872,30 @@ const loadDocuments = async () => {
   }
 };
 
+// 语音提醒
+
 // 加载统计数据
 const loadStats = async () => {
   try {
-    const res = await getDAMaterialStats();
-    stats.value = {
-      submitted: res?.submitted || 0,
-      printed: res?.printed || 0,
-      received: res?.received || 0,
-      material_issued: res?.material_issued || 0,
-      signed: res?.signed || 0,
-      completed: res?.completed || 0,
-      rejected: res?.rejected || 0,
-      returned: res?.returned || 0,
-      cancelled: res?.cancelled || 0,
-      withdrawn: res?.withdrawn || 0
+    const res: any = await getDAMaterialStats();
+    // axios 拦截器返回 { code, message, data: {...} }
+    const data = res?.data || res || {};
+    const newStats = {
+      submitted: data?.submitted || 0,
+      printed: data?.printed || 0,
+      received: data?.received || 0,
+      material_issued: data?.material_issued || 0,
+      signed: data?.signed || 0,
+      completed: data?.completed || 0,
+      rejected: data?.rejected || 0,
+      returned: data?.returned || 0,
+      cancelled: data?.cancelled || 0,
+      withdrawn: data?.withdrawn || 0
     };
+    stats.value = newStats;
+
+    // 语音提醒：有待接收的单据时
+    // 语音提醒已禁用
   } catch (error) {
     console.error('加载统计数据失败:', error);
     stats.value = {
@@ -837,6 +915,19 @@ const loadStats = async () => {
 
 // 格式化日期时间
 const formatDateTime = (dateStr?: string): string => {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// 格式化日期（中国本地时间）
+const formatDate = (dateStr?: string): string => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
   return date.toLocaleString('zh-CN', {
@@ -897,8 +988,22 @@ const nextPage = () => {
 };
 
 // 打开提交对话框
-const openSubmitDialog = () => {
+const openSubmitDialog = async () => {
   resetSubmitForm();
+
+  // 如果配置还没加载，先加载
+  if (wcUserAssignments.value.length === 0) {
+    await loadWCUserAssignments();
+  }
+  if (deliveryLocations.value.length === 0) {
+    await loadDeliveryLocations();
+  }
+
+  // 自动填充当前用户负责的W/C
+  const autoWCName = getCurrentUserWCAssignment();
+  if (autoWCName) {
+    submitForm.wcName = autoWCName;
+  }
   isSubmitDialogOpen.value = true;
 };
 
@@ -913,7 +1018,6 @@ const openEditDialog = (doc: DAMaterialDocument) => {
   submitForm.ecnAttachmentName = doc.ecnAttachmentName || '';
   submitForm.submitterName = doc.submitterName;
   submitForm.isUrgent = doc.isUrgent;
-  submitForm.isRush = doc.isRush;
   submitForm.attachmentUrl = doc.attachmentUrl || '';
   submitForm.attachmentName = doc.attachmentName || '';
   submitForm.controlType = doc.controlType || controlTypes.value[0] || '正常';
@@ -936,11 +1040,11 @@ const handleReSubmit = async () => {
   // DA编号为N/A时，ECN编号和ECN附件为必填
   if (submitForm.daNo.toUpperCase() === 'N/A') {
     if (!ecnNo.trim()) {
-      ElMessage.warning('DA编号为N/A时，ECN编号为必填');
+      ElMessage.warning({ message: 'DA编号为N/A时，ECN编号为必填', showClose: true, duration: 3000 });
       return;
     }
     if (!submitForm.ecnAttachmentUrl || !submitForm.ecnAttachmentName) {
-      ElMessage.warning('DA编号为N/A时，ECN附件为必填');
+      ElMessage.warning({ message: 'DA编号为N/A时，ECN附件为必填', showClose: true, duration: 3000 });
       return;
     }
   }
@@ -954,11 +1058,10 @@ const handleReSubmit = async () => {
       ecnAttachmentUrl: submitForm.ecnAttachmentUrl,
       ecnAttachmentName: submitForm.ecnAttachmentName,
       isUrgent: submitForm.isUrgent,
-      isRush: submitForm.isRush,
       attachmentUrl: submitForm.attachmentUrl,
       attachmentName: submitForm.attachmentName
     });
-    ElMessage.success('单据已重新提交');
+    ElMessage.success({ message: '单据已重新提交', showClose: true, duration: 3000 });
     closeEditDialog();
     clearRequestCache(); // 清除请求缓存
     loadDocuments();
@@ -966,7 +1069,7 @@ const handleReSubmit = async () => {
   } catch (error: any) {
     console.error('重新提交失败:', error);
     const errorMsg = error?.response?.data?.message || error?.message || '重新提交失败';
-    ElMessage.error(errorMsg);
+    ElMessage.error({ message: errorMsg, showClose: true, duration: 3000 });
   } finally {
     isSubmitting.value = false;
   }
@@ -993,10 +1096,11 @@ const resetSubmitForm = () => {
     submitForm.submitterName = '';
   }
   submitForm.isUrgent = false;
-  submitForm.isRush = false;
   submitForm.attachmentUrl = '';
   submitForm.attachmentName = '';
   submitForm.controlType = controlTypes.value[0] || '正常';
+	  submitForm.isTO = false;
+	  submitForm.deliveryLocation = '';
 };
 
 // 加载管控类型
@@ -1062,13 +1166,13 @@ const uploadFile = async (file: File) => {
   // 验证文件类型
   const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
   if (!allowedTypes.includes(file.type)) {
-    ElMessage.error('只支持 PDF、JPG、PNG 格式文件');
+    ElMessage.error({ message: '只支持 PDF、JPG、PNG 格式文件', showClose: true, duration: 3000 });
     return;
   }
 
   // 验证文件大小（最大10MB）
   if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 10MB');
+    ElMessage.error({ message: '文件大小不能超过 10MB', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1088,7 +1192,7 @@ const uploadFile = async (file: File) => {
     uploadProgress.value = 100;
     submitForm.attachmentUrl = res.filePath;
     submitForm.attachmentName = res.originalName;
-    ElMessage.success('文件上传成功');
+    ElMessage.success({ message: '文件上传成功', showClose: true, duration: 3000 });
 
     setTimeout(() => {
       uploadProgress.value = 0;
@@ -1096,7 +1200,7 @@ const uploadFile = async (file: File) => {
   } catch (error) {
     clearInterval(progressInterval);
     console.error('文件上传失败:', error);
-    ElMessage.error('文件上传失败，请重试');
+    ElMessage.error({ message: '文件上传失败，请重试', showClose: true, duration: 3000 });
     uploadProgress.value = 0;
   } finally {
     isUploading.value = false;
@@ -1144,13 +1248,13 @@ const uploadEcnFile = async (file: File) => {
   // 验证文件类型 - ECN附件支持PDF和Excel表格
   const allowedTypes = ['application/pdf', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'];
   if (!allowedTypes.includes(file.type)) {
-    ElMessage.error('只支持 PDF、Excel、CSV 格式文件');
+    ElMessage.error({ message: '只支持 PDF、Excel、CSV 格式文件', showClose: true, duration: 3000 });
     return;
   }
 
   // 验证文件大小（最大10MB）
   if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 10MB');
+    ElMessage.error({ message: '文件大小不能超过 10MB', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1170,7 +1274,7 @@ const uploadEcnFile = async (file: File) => {
     ecnUploadProgress.value = 100;
     submitForm.ecnAttachmentUrl = res.filePath;
     submitForm.ecnAttachmentName = res.originalName;
-    ElMessage.success('ECN附件上传成功');
+    ElMessage.success({ message: 'ECN附件上传成功', showClose: true, duration: 3000 });
 
     setTimeout(() => {
       ecnUploadProgress.value = 0;
@@ -1178,7 +1282,7 @@ const uploadEcnFile = async (file: File) => {
   } catch (error) {
     clearInterval(progressInterval);
     console.error('ECN附件上传失败:', error);
-    ElMessage.error('ECN附件上传失败，请重试');
+    ElMessage.error({ message: 'ECN附件上传失败，请重试', showClose: true, duration: 3000 });
     ecnUploadProgress.value = 0;
   } finally {
     isEcnUploading.value = false;
@@ -1196,7 +1300,7 @@ const removeEcnFile = () => {
 // 提交单据
 const handleSubmit = async () => {
   if (!submitForm.documentNo || !submitForm.wcName || !submitForm.daNo || !submitForm.submitterName) {
-    ElMessage.warning('请填写必填项');
+    ElMessage.warning({ message: '请填写必填项', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1205,32 +1309,32 @@ const handleSubmit = async () => {
   // DA编号为N/A时，ECN编号和ECN附件为必填
   if (submitForm.daNo.toUpperCase() === 'N/A') {
     if (!ecnNo.trim()) {
-      ElMessage.warning('DA编号为N/A时，ECN编号为必填');
+      ElMessage.warning({ message: 'DA编号为N/A时，ECN编号为必填', showClose: true, duration: 3000 });
       return;
     }
     if (!submitForm.ecnAttachmentUrl || !submitForm.ecnAttachmentName) {
-      ElMessage.warning('DA编号为N/A时，ECN附件为必填');
+      ElMessage.warning({ message: 'DA编号为N/A时，ECN附件为必填', showClose: true, duration: 3000 });
       return;
     }
   }
 
   // 验证附件是否上传
   if (!submitForm.attachmentUrl || !submitForm.attachmentName) {
-    ElMessage.warning('请上传单据附件（必须）');
+    ElMessage.warning({ message: '请上传单据附件（必须）', showClose: true, duration: 3000 });
     return;
   }
 
   isSubmitting.value = true;
   try {
     await createDAMaterialDocument(submitForm);
-    ElMessage.success('单据提交成功');
+    ElMessage.success({ message: '单据提交成功', showClose: true, duration: 3000 });
     closeSubmitDialog();
     clearRequestCache(); // 清除请求缓存，确保刷新获取最新数据
     loadDocuments();
     loadStats();
   } catch (error) {
     console.error('提交失败:', error);
-    ElMessage.error('单据提交失败，请重试');
+    ElMessage.error({ message: '单据提交失败，请重试', showClose: true, duration: 3000 });
   } finally {
     isSubmitting.value = false;
   }
@@ -1266,13 +1370,13 @@ const handleWithdraw = (doc: DAMaterialDocument) => {
   ).then(async () => {
     try {
       await withdrawDAMaterialDocument(doc.id!);
-      ElMessage.success('单据已撤回');
+      ElMessage.success({ message: '单据已撤回', showClose: true, duration: 3000 });
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('撤回失败:', error);
-      ElMessage.error('单据撤回失败，请重试');
+      ElMessage.error({ message: '单据撤回失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1290,37 +1394,13 @@ const handleCancel = (doc: DAMaterialDocument) => {
   ).then(async () => {
     try {
       await cancelDAMaterialDocument(doc.id!);
-      ElMessage.success('单据已取消');
+      ElMessage.success({ message: '单据已取消', showClose: true, duration: 3000 });
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('取消失败:', error);
-      ElMessage.error('单据取消失败，请重试');
-    }
-  }).catch(() => {});
-};
-
-// 催单
-const handleRush = (doc: DAMaterialDocument) => {
-  ElMessageBox.confirm(
-    `确定要催单吗？将通知相关人员加快处理单据 ${doc.documentNo}`,
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info'
-    }
-  ).then(async () => {
-    try {
-      await rushDAMaterialDocument(doc.id!);
-      ElMessage.success('催单通知已发送');
-      clearRequestCache(); // 清除请求缓存
-      loadDocuments();
-      loadStats();
-    } catch (error) {
-      console.error('催单失败:', error);
-      ElMessage.error('催单失败，请重试');
+      ElMessage.error({ message: '单据取消失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1341,7 +1421,7 @@ const handlePrint = (doc: DAMaterialDocument) => {
   ).then(async () => {
     try {
       await printDAMaterialDocument(doc.id!, printedBy);
-      ElMessage.success('单据已打印');
+      ElMessage.success({ message: '单据已打印', showClose: true, duration: 3000 });
 
       // 打印附件
       printAttachment(doc);
@@ -1351,7 +1431,7 @@ const handlePrint = (doc: DAMaterialDocument) => {
       loadStats();
     } catch (error) {
       console.error('打印失败:', error);
-      ElMessage.error('单据打印失败，请重试');
+      ElMessage.error({ message: '单据打印失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1363,7 +1443,7 @@ const printAttachment = (doc: DAMaterialDocument) => {
     const printUrl = `/print?file=${encodeURIComponent(fileName || '')}&module=da-material`;
     window.open(printUrl, '_blank', 'width=900,height=700');
   } else {
-    ElMessage.warning('该单据没有附件可打印');
+    ElMessage.warning({ message: '该单据没有附件可打印', showClose: true, duration: 3000 });
   }
 };
 
@@ -1383,13 +1463,17 @@ const handleReceive = (doc: DAMaterialDocument) => {
   ).then(async () => {
     try {
       await receiveDAMaterialDocument(doc.id!, receivedBy);
-      ElMessage.success('单据已接收');
+      ElMessage.success({ message: '单据已接收', showClose: true, duration: 3000 });
+
+      // 接收成功后打印附件
+      printAttachment(doc);
+
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('接收失败:', error);
-      ElMessage.error('单据接收失败，请重试');
+      ElMessage.error({ message: '单据接收失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1400,7 +1484,7 @@ const lockBinLoading = ref(false);
 
 const handleLockBin = (doc: DAMaterialDocument) => {
   if (lockBinLoading.value) {
-    ElMessage.warning('操作进行中，请稍候');
+    ElMessage.warning({ message: '操作进行中，请稍候', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1422,44 +1506,25 @@ const handleLockBin = (doc: DAMaterialDocument) => {
       const resData = result?.data || result;
 
       // 调试日志
-      console.log('[lockBIN] API响应结果:', result);
-      console.log('[lockBIN] 解析后数据:', resData);
 
-      // 获取提交人邮箱并发送邮件通知
-      const submitterEmail = resData?.submitterEmail;
-      console.log('[lockBIN] 提交人邮箱:', submitterEmail);
-      if (submitterEmail) {
-        const documentNo = resData?.documentNo || doc.documentNo;
-        const subject = encodeURIComponent(`【发料通知】管控物料单据 ${documentNo} 已发料完成`);
-        const body = encodeURIComponent(
-          `您好，${doc.submitterName}\n\n` +
-          `您的管控物料单据 ${documentNo} 已完成发料，请尽快到仓库领取。\n\n` +
-          `发料信息：\n` +
-          `- 单号：${documentNo}\n` +
-          `- W/C：${doc.wcName}\n` +
-          `- DA编号：${doc.daNo}\n` +
-          `- 操作人：${lockedBy}\n` +
-          `- 发料时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n` +
-          `请登录 Jabil Smart Office 系统查看详情。\n\n` +
-          `---\nJabil Smart Office 系统自动发送`
-        );
-        const mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
-        console.log('[lockBIN] === 准备发送邮件 ===');
-        console.log('[lockBIN] 收件人:', submitterEmail);
-        console.log('[lockBIN] 邮件链接:', mailtoUrl);
-        console.log('[lockBIN] 尝试打开邮件客户端...');
+      // 调用API获取邮件内容
+      const notifyResult = await sendDAMaterialNotification(doc.id!);
+      const notifyData = notifyResult?.data || notifyResult;
+      if (notifyData?.submitterEmail) {
+        const subject = encodeURIComponent(notifyData.subject || '');
+        const body = encodeURIComponent(notifyData.body || '');
+        const mailtoUrl = `mailto:${notifyData.submitterEmail}?subject=${subject}&body=${body}`;
         window.location.href = mailtoUrl;
-        console.log('[lockBIN] window.location.href 已设置');
       } else {
-        ElMessage.warning(`提交人 ${doc.submitterName} 未设置邮箱，已跳过邮件通知`);
+        ElMessage.warning({ message: `提交人 ${doc.submitterName} 未设置邮箱，已跳过邮件通知`, showClose: true, duration: 3000 });
       }
 
-      ElMessage.success('锁BIN操作成功，状态已更新为已发料');
+      ElMessage.success({ message: '锁BIN操作成功，状态已更新为已发料', showClose: true, duration: 3000 });
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error: any) {
-      ElMessage.error(error?.message || '锁BIN操作失败，请重试');
+      ElMessage.error({ message: error?.message || '锁BIN操作失败，请重试', showClose: true, duration: 3000 });
     } finally {
       lockBinLoading.value = false;
     }
@@ -1482,15 +1547,34 @@ const handleSign = (doc: DAMaterialDocument) => {
   ).then(async () => {
     try {
       await signDAMaterialDocument(doc.id!, signedBy);
-      ElMessage.success('单据已签收');
+      ElMessage.success({ message: '单据已签收', showClose: true, duration: 3000 });
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('签收失败:', error);
-      ElMessage.error('单据签收失败，请重试');
+      ElMessage.error({ message: '单据签收失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
+};
+
+// 设置/取消加急
+const handleSetUrgent = async (doc: DAMaterialDocument) => {
+  const newUrgent = !doc.isUrgent;
+  const action = newUrgent ? '设为加急' : '取消加急';
+
+  try {
+    await setUrgentDAMaterialDocument(doc.id!, newUrgent);
+    ElMessage.success({ message: `单据已${action}`, showClose: true, duration: 3000 });
+    clearRequestCache(); // 清除请求缓存
+    loadDocuments();
+    if (newUrgent) {
+      loadStats();
+    }
+  } catch (error) {
+    console.error('设置加急失败:', error);
+    ElMessage.error({ message: `${action}失败，请重试`, showClose: true, duration: 3000 });
+  }
 };
 
 // 打开拒绝对话框
@@ -1509,20 +1593,20 @@ const closeRejectDialog = () => {
 // 确认拒绝
 const confirmReject = async () => {
   if (!rejectReason.value.trim()) {
-    ElMessage.warning('请输入拒绝原因');
+    ElMessage.warning({ message: '请输入拒绝原因', showClose: true, duration: 3000 });
     return;
   }
 
   try {
     await rejectDAMaterialDocument(rejectingDocument.value!.id!, rejectReason.value);
-    ElMessage.success('单据已拒绝');
+    ElMessage.success({ message: '单据已拒绝', showClose: true, duration: 3000 });
     closeRejectDialog();
     clearRequestCache(); // 清除请求缓存
     loadDocuments();
     loadStats();
   } catch (error) {
     console.error('拒绝失败:', error);
-    ElMessage.error('单据拒绝失败，请重试');
+    ElMessage.error({ message: '单据拒绝失败，请重试', showClose: true, duration: 3000 });
   }
 };
 
@@ -1553,7 +1637,7 @@ const sendReturnEmail = ref(true);
 
 const confirmReturn = async () => {
   if (!returnReason.value.trim()) {
-    ElMessage.warning('请输入退回原因');
+    ElMessage.warning({ message: '请输入退回原因', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1581,37 +1665,28 @@ const confirmReturn = async () => {
       const resData = result?.data || result;
 
       // 根据用户勾选决定是否发送邮件通知
-      const submitterEmail = resData?.submitterEmail;
-      if (submitterEmail && sendReturnEmail.value) {
-        const documentNo = resData?.documentNo || doc.documentNo;
-        const subject = encodeURIComponent(`【单据退回通知】管控物料单据 ${documentNo}`);
-        const body = encodeURIComponent(
-          `您好，${doc.submitterName}\n\n` +
-          `您的管控物料单据 ${documentNo} 已被退回。\n\n` +
-          `退回信息：\n` +
-          `- 单号：${documentNo}\n` +
-          `- W/C：${doc.wcName}\n` +
-          `- DA编号：${doc.daNo}\n` +
-          `- 退回原因：${returnReason.value}\n` +
-          `- 退回人：${returnedBy}\n` +
-          `- 退回时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}\n\n` +
-          `请登录 Jabil Smart Office 系统查看详情。\n\n` +
-          `---\nJabil Smart Office 系统自动发送`
-        );
-        const mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
-        window.location.href = mailtoUrl;
-      } else if (submitterEmail) {
-        ElMessage.info('已取消邮件通知');
+      if (sendReturnEmail.value) {
+        // 调用API获取邮件内容
+        const notifyResult = await sendDAMaterialNotification(doc.id!);
+        const notifyData = notifyResult?.data || notifyResult;
+        if (notifyData?.submitterEmail) {
+          const subject = encodeURIComponent(notifyData.subject || '');
+          const body = encodeURIComponent(notifyData.body || '');
+          const mailtoUrl = `mailto:${notifyData.submitterEmail}?subject=${subject}&body=${body}`;
+          window.location.href = mailtoUrl;
+        } else {
+          ElMessage.warning({ message: `提交人 ${doc.submitterName} 未设置邮箱，已跳过邮件通知`, showClose: true, duration: 3000 });
+        }
       }
 
-      ElMessage.success('单据已退回');
+      ElMessage.success({ message: '单据已退回', showClose: true, duration: 3000 });
       closeReturnDialog();
       clearRequestCache(); // 清除请求缓存
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('退回失败:', error);
-      ElMessage.error('退回失败，请重试');
+      ElMessage.error({ message: '退回失败，请重试', showClose: true, duration: 3000 });
     } finally {
       isReturning.value = false;
     }
@@ -1633,11 +1708,11 @@ const getCurrentUser = () => {
 
 // 导出数据
 const exportData = () => {
-  ElMessage.info('导出功能开发中...');
+  ElMessage.info({ message: '导出功能开发中...', showClose: true, duration: 3000 });
 };
 
 // 监听标签页变化，重新加载数据
-watch(activeTab, () => {
+watch(() => activeTab.value, () => {
   currentPage.value = 1;
   selectedStatus.value = null;
   loadDocuments();
@@ -1662,6 +1737,7 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 // 组件挂载时加载数据
 onMounted(() => {
+  loadWCUserAssignments();
   loadControlTypes();
   loadDocuments();
   loadStats();
@@ -1970,6 +2046,23 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
 
+.search-select {
+  padding: 8px 12px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: #fff;
+  cursor: pointer;
+  min-width: 140px;
+  transition: all 0.2s;
+}
+
+.search-select:focus {
+  outline: none;
+  border-color: #0066CC;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
 .search-item-wrapper {
   display: flex;
   align-items: center;
@@ -2102,13 +2195,21 @@ onUnmounted(() => {
   background-color: #DBEAFE;
 }
 
-.action-btn.rush {
-  background-color: #FEF3C7;
-  color: #D97706;
+.urgent-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #FF6B6B, #FF4757);
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 6px;
+  animation: urgentPulse 2s infinite;
 }
 
-.action-btn.rush:hover {
-  background-color: #FDE68A;
+@keyframes urgentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .action-btn.withdraw {
@@ -2199,6 +2300,24 @@ onUnmounted(() => {
 
 .action-btn.cancel:hover {
   background-color: #FECACA;
+}
+
+.action-btn.urgent {
+  background-color: #FEF3C7;
+  color: #D97706;
+}
+
+.action-btn.urgent:hover {
+  background-color: #FDE68A;
+}
+
+.action-btn.urgent-active {
+  background-color: #FFEDD5;
+  color: #EA580C;
+}
+
+.action-btn.urgent-active:hover {
+  background-color: #FED7AA;
 }
 
 /* Pagination */

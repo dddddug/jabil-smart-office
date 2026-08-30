@@ -14,6 +14,12 @@ const app = createApp(App)
 
 app.use(router)
 app.use(ElementPlus)
+
+app.config.globalProperties.$messageConfig = {
+  showClose: true,
+  duration: 0
+}
+
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }

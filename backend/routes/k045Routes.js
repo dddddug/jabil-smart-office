@@ -49,6 +49,9 @@ router.post('/documents/:id/withdraw', authenticateToken, asyncHandler(k045Contr
 // 接收单据（接收打印部门）
 router.post('/documents/:id/receive', authenticateToken, asyncHandler(k045Controller.receiveDocument));
 
+// 发料完成（接收打印部门）
+router.post('/documents/:id/send-material', authenticateToken, asyncHandler(k045Controller.sendMaterialNotification));
+
 // 催单
 router.post('/documents/:id/rush', authenticateToken, asyncHandler(k045Controller.rushDocument));
 

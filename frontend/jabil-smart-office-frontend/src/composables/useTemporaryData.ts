@@ -14,20 +14,29 @@ export function useTemporaryData(params: UseTemporaryDataParams) {
 
   const fetchTemporaryData = async (startDate: string, endDate: string) => {
     try {
-      const overtimeRes = await request.get<{ temporaryOvertimes: TemporaryOvertimeItem[] }>('/temporary-overtimes', {
+      const overtimeRes = await request.get<{ items: TemporaryOvertimeItem[]; temporaryOvertimes?: TemporaryOvertimeItem[] }>('/temporary-overtime', {
         params: { startDate, endDate }
       });
-      temporaryOvertimes.value = overtimeRes?.temporaryOvertimes || [];
+      // 字段映射：后端返回 overtimeDate/startTime/endTime/hours，模板需要 overtimeDate/startTime/endTime/totalHours
+      const rawOvertimes = overtimeRes?.temporaryOvertimes || overtimeRes?.items || [];
+      temporaryOvertimes.value = rawOvertimes.map((item: any) => ({
+        ...item,
+        totalHours: item.hours
+      }));
 
-      const leaveRes = await request.get<{ temporaryLeaves: TemporaryLeaveItem[] }>('/temporary-leaves', {
+      const leaveRes = await request.get<{ items: TemporaryLeaveItem[]; temporaryLeaves?: TemporaryLeaveItem[] }>('/temporary-leave', {
         params: { startDate, endDate }
       });
-      temporaryLeaves.value = leaveRes?.temporaryLeaves || [];
+      // 字段映射：后端返回 startDate/startTime/endTime/hours，模板需要 leaveDate/startTime/endTime/totalHours
+      const rawLeaves = leaveRes?.temporaryLeaves || leaveRes?.items || [];
+      temporaryLeaves.value = rawLeaves.map((item: any) => ({
+        ...item,
+        leaveDate: item.startDate,
+        totalHours: item.hours
+      }));
 
-      const errandFixRes = await request.get<{ errandFixList: ErrandFixItem[] }>('/errand-fixes', {
-        params: { startDate, endDate }
-      });
-      errandFixList.value = errandFixRes?.errandFixList || [];
+      // errand-fixes API 不存在，errandFixList 使用 temporaryLeaves 中 leaveType === 'ERRAND' 的数据
+      errandFixList.value = [];
 
     } catch (error) {
       console.error('获取临时数据失败:', error);

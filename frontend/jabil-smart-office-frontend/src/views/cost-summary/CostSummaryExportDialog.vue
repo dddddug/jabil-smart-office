@@ -44,7 +44,7 @@ const handleClose = () => {
 
 const confirmExport = async () => {
   try {
-    ElMessage.info('正在准备导出，请稍候...');
+    ElMessage.info({ message: '正在准备导出，请稍候...', showClose: true, duration: 3000 });
     const res = await exportCostSummaryExcel(props.filterParams);
 
     // Assuming the API returns a blob for file download
@@ -58,11 +58,11 @@ const confirmExport = async () => {
     link.remove();
     window.URL.revokeObjectURL(url);
 
-    ElMessage.success('导出成功');
+    ElMessage.success({ message: '导出成功', showClose: true, duration: 3000 });
     handleClose();
   } catch (error) {
     console.error('Export failed:', error);
-    ElMessage.error('导出失败');
+    ElMessage.error({ message: '导出失败', showClose: true, duration: 3000 });
   }
 };
 </script>

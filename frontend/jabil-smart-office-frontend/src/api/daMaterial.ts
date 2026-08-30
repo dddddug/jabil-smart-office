@@ -62,6 +62,8 @@ export interface DAMaterialDocument {
   isUrgent: boolean;               // 是否加急
   isRush: boolean;                 // 是否催单
   controlType?: string;            // 管控类型
+  isTO?: boolean;                 // 是否同步到K045
+  deliveryLocation?: string;       // 配送地点
   status: DAMaterialStatus;        // 状态
   submittedAt?: string;            // 提交时间
   printedAt?: string;              // 打印时间
@@ -94,6 +96,7 @@ export interface DAMaterialQueryParams {
   startDate?: string;
   endDate?: string;
   submitterName?: string;
+  isUrgent?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -110,8 +113,10 @@ export interface DAMaterialDocumentForm {
   ecnAttachmentName?: string;
   submitterName: string;
   isUrgent: boolean;
-  isRush: boolean;
+  isRush?: boolean;
   controlType?: string;
+  isTO?: boolean;
+  deliveryLocation?: string;
 }
 
 // 上传附件响应
@@ -169,8 +174,19 @@ export const receiveDAMaterialDocument = (id: number, receivedBy?: string) => {
 };
 
 // 锁BIN（已发料）
-export const lockBinDAMaterialDocument = (id: number, lockedBy?: string) => {
-  return request.post(`/da-material/documents/${id}/lock-bin`, { lockedBy });
+export const lockBinDAMaterialDocument = (id: number, lockedBy?: string, k045Data?: {
+  deliveryLocation: string;
+  documentNo: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+}) => {
+  return request.post(`/da-material/documents/${id}/lock-bin`, {
+    lockedBy,
+    deliveryLocation: k045Data?.deliveryLocation,
+    k045DocumentNo: k045Data?.documentNo,
+    k045AttachmentUrl: k045Data?.attachmentUrl,
+    k045AttachmentName: k045Data?.attachmentName
+  });
 };
 
 // 拒绝单据
@@ -216,4 +232,9 @@ export const rushDAMaterialDocument = (id: number) => {
 // 发送邮件通知
 export const sendDAMaterialNotification = (id: number) => {
   return request.post(`/da-material/documents/${id}/notify`);
+};
+
+// 设置/取消加急
+export const setUrgentDAMaterialDocument = (id: number, isUrgent: boolean) => {
+  return request.put(`/da-material/documents/${id}`, { isUrgent });
 };

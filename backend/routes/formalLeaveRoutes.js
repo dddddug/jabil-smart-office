@@ -62,7 +62,6 @@ async function writeLeaveToSchedule(client, employeeId, startDate, endDate, leav
     currentDate = currentDate.add(1, 'day');
   }
 
-  console.log(`请假/年假已写入排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}`);
 }
 
 /**
@@ -86,7 +85,6 @@ async function writeResignationToSchedule(client, employeeId, resignationDate) {
     [employeeId, resignationDate]
   );
 
-  console.log(`离职已写入排班表: 员工ID=${employeeId}, 离职日期=${resignationDate}`);
 }
 
 /**
@@ -112,7 +110,6 @@ async function writeTransferToSchedule(client, employeeId, transferDepartmentId,
     [transferDepartmentId, employeeId]
   );
 
-  console.log(`转岗已写入排班表: 员工ID=${employeeId}, 转入部门ID=${transferDepartmentId}, 转岗日期=${transferDate || '今天'}`);
 }
 
 // 获取请假/年假和离职/转岗列表
@@ -189,6 +186,7 @@ router.get('/', authenticateToken, async (req, res) => {
         SELECT
           ${targetTableAlias}.*,
           emp.real_name as employee_name,
+          emp.hire_date as employee_hire_date,
           app.real_name as applicant_name,
           appr.real_name as approver_name,
           p.name as plant_name,
@@ -211,6 +209,7 @@ router.get('/', authenticateToken, async (req, res) => {
         id: row.id,
         employeeId: row.employee_id,
         employeeName: row.employee_name,
+        employeeHireDate: row.employee_hire_date ? dayjs(row.employee_hire_date).format('YYYY-MM-DD') : null,
         plantId: row.plant_id,
         plantName: row.plant_name,
         departmentId: row.department_id,
@@ -371,7 +370,6 @@ async function syncLeaveToSchedule(client, employeeId, startDate, endDate, leave
 
     currentDate = currentDate.add(1, 'day');
   }
-  console.log(`请假/年假已同步到排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}`);
 }
 
 // 创建请假/年假或离职/转岗记录（同步到排班表）
@@ -571,7 +569,6 @@ router.delete('/by-employee-date', authenticateToken, async (req, res) => {
              AND (shift = $4 OR special_status LIKE $5)`,
           [employeeId, startDate, endDate, shiftValue, `%${shiftValue}%`]
         );
-        console.log(`by-employee-date 删除时同步排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}, 移除=${shiftValue}`);
       }
     }
 
@@ -694,7 +691,6 @@ router.delete('/:id', authenticateToken, async (req, res) => {
              AND (shift = $4 OR special_status LIKE $5)`,
           [employeeId, startDate, endDate, specialStatus, `%${specialStatus}%`]
         );
-        console.log(`删除请假/年假时同步更新排班表: 员工ID=${employeeId}, ${startDate} 至 ${endDate}, 移除=${specialStatus}, 影响行数=${updateResult.rowCount}`);
       }
     }
 

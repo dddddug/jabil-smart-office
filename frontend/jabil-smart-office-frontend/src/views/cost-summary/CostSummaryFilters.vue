@@ -155,7 +155,7 @@ const getDefaultFiscalWeek = () => {
 };
 
 const form = reactive({
-  fiscalDate: dayjs().subtract(1, 'day').format('YYYY-MM-DD'),
+  fiscalDate: dayjs().format('YYYY-MM-DD'),
   fiscalMonth: dayjs().subtract(1, 'month').format('YYYY-MM'),
   fiscalYear: dayjs().format('YYYY'),
   fiscalWeek: getDefaultFiscalWeek(),
@@ -247,14 +247,14 @@ const fetchFilterOptions = async () => {
 
   } catch (error: any) {
     console.error('获取筛选条件失败:', error);
-    ElMessage.error(error.message || '获取筛选条件失败');
+    ElMessage.error({ message: error.message || '获取筛选条件失败', showClose: true, duration: 3000 });
   }
 };
 
 const handleTimeDimensionChange = (newDimension: string) => {
   switch (newDimension) {
     case 'daily':
-      form.fiscalDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+      form.fiscalDate = dayjs().format('YYYY-MM-DD');
       break;
     case 'monthly':
       form.fiscalMonth = dayjs().subtract(1, 'month').format('YYYY-MM');
@@ -268,8 +268,8 @@ const handleTimeDimensionChange = (newDimension: string) => {
     default:
       break;
   }
-  emit('time-dimension-change', newDimension);
   emitFilterChange();
+  emit('time-dimension-change', newDimension);
 };
 
 const emitFilterChange = () => {
@@ -316,7 +316,7 @@ const emitExportData = () => {
 
 const resetFilters = () => {
   timeDimension.value = 'daily';
-  form.fiscalDate = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+  form.fiscalDate = dayjs().format('YYYY-MM-DD');
   form.fiscalMonth = dayjs().subtract(1, 'month').format('YYYY-MM');
   form.fiscalYear = dayjs().format('YYYY');
   form.fiscalWeek = dayjs().subtract(1, 'week').format('YYYY-[W]WW');

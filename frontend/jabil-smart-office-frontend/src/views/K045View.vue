@@ -21,7 +21,7 @@
       <div
         class="stat-card stat-card-orange"
         :class="{ 'stat-card-active': selectedStatus === 'submitted' }"
-        @click="filterByStatus('submitted')"
+        @click="filterByStatusAndSwitchTab('submitted', 'receive')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">📋</span>
@@ -34,7 +34,7 @@
       <div
         class="stat-card stat-card-blue"
         :class="{ 'stat-card-active': selectedStatus === 'received' }"
-        @click="filterByStatus('received')"
+        @click="filterByStatusAndSwitchTab('received', 'receive')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">📦</span>
@@ -47,7 +47,7 @@
       <div
         class="stat-card stat-card-green"
         :class="{ 'stat-card-active': selectedStatus === 'signed' }"
-        @click="filterByStatus('signed')"
+        @click="filterByStatusAndSwitchTab('signed', 'sign')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">📝</span>
@@ -59,28 +59,41 @@
       </div>
       <div
         class="stat-card stat-card-cyan"
-        :class="{ 'stat-card-active': selectedStatus === 'distribution_ended' }"
-        @click="filterByStatus('distribution_ended')"
+        :class="{ 'stat-card-active': selectedStatus === 'material_sent' }"
+        @click="filterByStatusAndSwitchTab('material_sent', 'sign')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">🔓</span>
         </div>
         <div class="stat-info">
-          <div class="stat-value">{{ stats.distributionEnded }}</div>
+          <div class="stat-value">{{ stats.materialSent }}</div>
           <div class="stat-label">待签收</div>
+        </div>
+      </div>
+      <div
+        class="stat-card stat-card-orange"
+        :class="{ 'stat-card-active': selectedStatus === 'distribution_ended' }"
+        @click="filterByStatusAndSwitchTab('distribution_ended', 'submit')"
+      >
+        <div class="stat-icon-bg">
+          <span class="stat-icon">⏳</span>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ stats.distributionEnded }}</div>
+          <div class="stat-label">待完成</div>
         </div>
       </div>
       <div
         class="stat-card stat-card-purple"
         :class="{ 'stat-card-active': selectedStatus === 'completed' }"
-        @click="filterByStatus('completed')"
+        @click="filterByStatusAndSwitchTab('completed', 'submit')"
       >
         <div class="stat-icon-bg">
           <span class="stat-icon">🎉</span>
         </div>
         <div class="stat-info">
           <div class="stat-value">{{ stats.completed }}</div>
-          <div class="stat-label">已完成</div>
+	          <div class="stat-label">已完成</div>
         </div>
       </div>
     </div>
@@ -123,7 +136,10 @@
           <div class="search-item">
             <div class="search-item-wrapper">
               <label>W/C名称</label>
-              <input type="text" v-model="searchQuery.wcName" placeholder="请输入W/C名称">
+              <select v-model="searchQuery.wcName" class="search-select">
+                <option value="">全部</option>
+                <option v-for="wc in availableWCNames" :key="wc" :value="wc">{{ wc }}</option>
+              </select>
             </div>
           </div>
           <div class="search-item">
@@ -183,21 +199,28 @@
                       <button v-if="doc.status === 'submitted'" class="action-btn withdraw" @click="handleWithdraw(doc)">撤回</button>
                       <button v-if="doc.status === 'submitted'" class="action-btn rush" @click="handleRush(doc)">催单</button>
                       <button v-if="doc.status === 'submitted'" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
+                      <button
+                        :class="['action-btn', doc.isUrgent ? 'urgent-active' : 'urgent']"
+                        @click="handleSetUrgent(doc)"
+                      >
+                        {{ doc.isUrgent ? '⚡已加急' : '⚡加急' }}
+                      </button>
                       <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn edit" @click="openEditDialog(doc)">重新提交</button>
                       <button v-if="doc.status === 'returned' && isDocumentOwner(doc)" class="action-btn cancel" @click="handleCancel(doc)">取消</button>
-                      <button v-if="(doc.status === 'signed' || doc.status === 'distribution_ended' || doc.status === 'completed') && isDocumentOwner(doc)" class="action-btn complete" @click="handleConfirmComplete(doc)">确认完成</button>
+                      <button v-if="(doc.status === 'signed' || doc.status === 'distribution_ended') && isDocumentOwner(doc)" class="action-btn complete" @click="handleConfirmComplete(doc)">确认完成</button>
                     </template>
 
                     <!-- 接收打印部门操作 -->
                     <template v-if="activeTab === 'receive'">
                       <button v-if="doc.status === 'submitted'" class="action-btn receive" @click="handleReceive(doc)">接单</button>
+                      <button v-if="doc.status === 'received'" class="action-btn material-sent" @click="handleSendMaterial(doc)">📤 发料完成</button>
                       <button v-if="doc.status === 'received'" class="action-btn return" @click="openReturnDialog(doc)">退回</button>
                     </template>
 
                     <!-- 签收分料部门操作 -->
                     <template v-if="activeTab === 'sign'">
-                      <button v-if="doc.status === 'received' && canSignForDocument(doc)" class="action-btn return" @click="openReturnDialog(doc)">退回</button>
-                      <button v-if="doc.status === 'received' && canSignForDocument(doc)" class="action-btn sign" @click="handleSign(doc)">签收</button>
+                      <button v-if="(doc.status === 'received' || doc.status === 'material_sent') && canSignForDocument(doc)" class="action-btn return" @click="openReturnDialog(doc)">退回</button>
+                      <button v-if="(doc.status === 'received' || doc.status === 'material_sent') && canSignForDocument(doc)" class="action-btn sign" @click="handleSign(doc)">签收</button>
                       <button v-if="(doc.status === 'signed' || doc.status === 'distribution_ended') && canSignForDocument(doc)" class="action-btn complete" @click="handleEndDistribution(doc)">分料结束</button>
                     </template>
                   </div>
@@ -455,12 +478,20 @@
                 <span class="detail-value">{{ currentDocument?.receivedBy || '-' }}</span>
               </div>
               <div class="detail-item">
+                <span class="detail-label">发料时间</span>
+                <span class="detail-value">{{ formatDateTime(currentDocument?.materialSentAt) }}</span>
+              </div>
+              <div class="detail-item">
                 <span class="detail-label">签收时间</span>
                 <span class="detail-value">{{ formatDateTime(currentDocument?.signedAt) }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">签收人</span>
                 <span class="detail-value">{{ currentDocument?.signedBy || '-' }}</span>
+              </div>
+              <div v-if="currentDocument?.status === 'returned'" class="detail-item">
+                <span class="detail-label">退回原因</span>
+                <span class="detail-value" style="color: #EF4444;">{{ currentDocument?.returnReason || '-' }}</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">分料结束时间</span>
@@ -542,13 +573,16 @@ import {
   endDistributionK045Document,
   confirmCompleteK045Document,
   sendK045Notification,
+  sendMaterialK045Notification,
   getK045Stats,
   uploadK045Attachment,
-  rushK045Document
+  rushK045Document,
+  setUrgentK045Document
 } from '../api/k045';
 import { getK045Configs, K045_CONFIG_KEYS } from '../api/k045Config';
 import { getUserInfo } from '../api/user';
 import { clearRequestCache } from '../utils/request';
+import request from '../utils/request';
 
 // 配送地点配置详情（包含允许签收的部门）
 const deliveryLocationDetails = ref<Array<{ location: string; departments: string }>>([]);
@@ -568,6 +602,51 @@ const loadCurrentUserInfo = async () => {
     console.error('获取用户信息失败:', error);
   }
 };
+
+// W/C用户分配配置缓存
+const wcUserAssignments = ref<Array<{wcName: string, userIds: number[]}>>([]);
+
+// 加载W/C用户分配配置（使用DA物料配置接口）
+const loadWCUserAssignments = async () => {
+  try {
+    const res = await request.get('/da-material-config/configs');
+    const configs = (res as any)?.data || res || [];
+    const wcAssignmentConfig = configs.find((c: any) => c.configKey === 'wc_department_assignment');
+    if (wcAssignmentConfig && wcAssignmentConfig.configValue) {
+      try {
+        wcUserAssignments.value = JSON.parse(wcAssignmentConfig.configValue);
+      } catch (e) {
+        wcUserAssignments.value = [];
+      }
+    }
+  } catch (error) {
+    wcUserAssignments.value = [];
+  }
+};
+
+// 获取当前用户的W/C名称（用于自动填充）
+const getCurrentUserWCAssignment = (): string | null => {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return null;
+
+  const userId = Number(currentUser.id);
+  const assignments = wcUserAssignments.value;
+
+  // 查找当前用户负责的W/C（同时检查数字和字符串类型）
+  const userAssignments = assignments.filter(a =>
+    a.userIds.includes(userId) || a.userIds.includes(Number(userId))
+  );
+
+  if (userAssignments.length === 1 && userAssignments[0]) {
+    return userAssignments[0].wcName;
+  }
+  return null;
+};
+
+// 可选的W/C名称列表（从配置中获取）
+const availableWCNames = computed(() => {
+  return wcUserAssignments.value.map(a => a.wcName).filter(wc => wc);
+});
 
 // 检查用户是否有签收权限（基于配送地点和部门）
 const canSignForDocument = (doc: K045Document): boolean => {
@@ -601,19 +680,23 @@ const canSignForDocument = (doc: K045Document): boolean => {
   return allowedDepartments.includes(currentUserDepartmentName.value);
 };
 
-// 检查是否是单据提交人
+// 检查是否是单据提交人或管理员
 const isDocumentOwner = (doc: K045Document): boolean => {
   const currentUser = getCurrentUser();
   if (!currentUser) return false;
   const currentUserName = currentUser.realName || currentUser.username || '';
-  return doc.submitterName === currentUserName;
+  // 提交人或超级管理员可以操作
+  if (doc.submitterName === currentUserName) return true;
+  // 超级管理员可以操作所有单据
+  if (currentUser.roleName === '超级管理员' || currentUser.role === 'super_admin') return true;
+  return false;
 };
 
 // 标签页配置
 const tabs = [
-  { key: 'submit', label: '📤 提交管理', status: ['submitted', 'received', 'rejected', 'returned', 'withdrawn', 'cancelled', 'distribution_ended', 'completed'] },
-  { key: 'receive', label: '🖨️ 接收打印', status: ['submitted', 'received', 'returned', 'cancelled'] },
-  { key: 'sign', label: '✅ 签收分料', status: ['received', 'signed', 'distribution_ended', 'returned', 'cancelled'] }
+  { key: 'submit', label: '📤 提交管理', status: ['submitted', 'received', 'material_sent', 'rejected', 'returned', 'withdrawn', 'cancelled', 'distribution_ended', 'completed'] },
+  { key: 'receive', label: '🖨️ 接收打印', status: ['submitted', 'received', 'cancelled'] },
+  { key: 'sign', label: '✅ 签收分料', status: ['material_sent', 'received', 'signed', 'cancelled'] }
 ];
 
 // 当前激活的标签页
@@ -629,6 +712,7 @@ const currentTabTitle = computed(() => {
 const stats = ref({
   submitted: 0,
   received: 0,
+  materialSent: 0,
   signed: 0,
   distributionEnded: 0,
   completed: 0,
@@ -644,6 +728,18 @@ const selectedStatus = ref<string | null>(null);
 const filterByStatus = (status: string) => {
   if (selectedStatus.value === status) {
     selectedStatus.value = null; // 再次点击取消筛选
+  } else {
+    selectedStatus.value = status;
+  }
+  currentPage.value = 1;
+  loadDocuments();
+};
+
+// 按状态筛选并切换到对应页签
+const filterByStatusAndSwitchTab = (status: string, tabKey: string) => {
+  activeTab.value = tabKey; // 切换到对应页签
+  if (selectedStatus.value === status) {
+    selectedStatus.value = null;
   } else {
     selectedStatus.value = status;
   }
@@ -678,7 +774,8 @@ const configuredDeliveryLocations = ref<string[]>([]);
 // 加载配送地点配置
 const loadDeliveryLocationsFromConfig = async () => {
   try {
-    const configs: any[] = await getK045Configs();
+    const res = await getK045Configs();
+    const configs = (res as any)?.data || res || [];
     const deliveryConfig = configs.find((c: any) => c.configKey === K045_CONFIG_KEYS.DELIVERY_LOCATIONS);
     if (deliveryConfig?.configValue) {
       try {
@@ -776,6 +873,8 @@ const isUploading = ref(false);
 // 加载文档列表
 const loadDocuments = async () => {
   isLoading.value = true;
+  // 清除缓存，确保获取最新数据
+  clearRequestCache();
   try {
     const currentTabConfig = tabs.find(t => t.key === activeTab.value);
     // 如果有按状态筛选，使用筛选的状态；否则使用标签页的状态
@@ -790,12 +889,13 @@ const loadDocuments = async () => {
       endDate: searchQuery.endDate,
       status: statusFilter,
       page: currentPage.value,
-      pageSize: pageSize.value
+      pageSize: pageSize.value,
+      _t: Date.now()
     };
 
     const res: any = await getK045Documents(params);
-    // 兼容后端返回的分页数据结构
-    documents.value = res?.data?.items || res?.items || res?.data || [];
+    // 后端返回 { code, message, data: { items, pagination } }
+    documents.value = res?.data?.items || res?.items || [];
     totalCount.value = res?.data?.pagination?.total || res?.total || documents.value.length;
   } catch (error) {
     console.error('加载单据列表失败:', error);
@@ -806,25 +906,35 @@ const loadDocuments = async () => {
   }
 };
 
+// 语音提醒
+
 // 加载统计数据
 const loadStats = async () => {
   try {
-    const res = await getK045Stats();
-    stats.value = {
-      submitted: res?.submitted || 0,
-      received: res?.received || 0,
-      signed: res?.signed || 0,
-      distributionEnded: res?.distributionEnded || 0,
-      completed: res?.completed || 0,
-      returned: res?.returned || 0,
-      cancelled: res?.cancelled || 0,
-      withdrawn: res?.withdrawn || 0
+    const res: any = await getK045Stats();
+    // axios 拦截器返回 { code, message, data: {...} }
+    const data = res?.data || res || {};
+    const newStats = {
+      submitted: data?.submitted || 0,
+      received: data?.received || 0,
+      materialSent: data?.materialSent || 0,
+      signed: data?.signed || 0,
+      distributionEnded: data?.distributionEnded || 0,
+      completed: data?.completed || 0,
+      returned: data?.returned || 0,
+      cancelled: data?.cancelled || 0,
+      withdrawn: data?.withdrawn || 0
     };
+    stats.value = newStats;
+
+    // 语音提醒：有待接收或待签收的单据时
+    // 语音提醒已禁用
   } catch (error) {
     console.error('加载统计数据失败:', error);
     stats.value = {
       submitted: 0,
       received: 0,
+      materialSent: 0,
       signed: 0,
       distributionEnded: 0,
       completed: 0,
@@ -881,8 +991,19 @@ const nextPage = () => {
 };
 
 // 打开提交对话框
-const openSubmitDialog = () => {
+const openSubmitDialog = async () => {
   resetSubmitForm();
+
+  // 如果配置还没加载，先加载
+  if (wcUserAssignments.value.length === 0) {
+    await loadWCUserAssignments();
+  }
+
+  // 自动填充当前用户负责的W/C
+  const autoWCName = getCurrentUserWCAssignment();
+  if (autoWCName) {
+    submitForm.wcName = autoWCName;
+  }
   isSubmitDialogOpen.value = true;
 };
 
@@ -913,14 +1034,6 @@ const handleReSubmit = async () => {
 
   isSubmitting.value = true;
   try {
-    console.log('开始重新提交, documentId:', editingDocumentId.value, 'data:', {
-      wcName: submitForm.wcName,
-      deliveryLocation: submitForm.deliveryLocation,
-      isUrgent: submitForm.isUrgent,
-      isRush: submitForm.isRush,
-      attachmentUrl: submitForm.attachmentUrl,
-      attachmentName: submitForm.attachmentName
-    });
     await updateK045Document(editingDocumentId.value, {
       wcName: submitForm.wcName,
       deliveryLocation: submitForm.deliveryLocation,
@@ -929,7 +1042,7 @@ const handleReSubmit = async () => {
       attachmentUrl: submitForm.attachmentUrl,
       attachmentName: submitForm.attachmentName
     });
-    ElMessage.success('单据已重新提交');
+    ElMessage.success({ message: '单据已重新提交', showClose: true, duration: 3000 });
     closeEditDialog();
     clearRequestCache();
     loadStats();
@@ -937,7 +1050,7 @@ const handleReSubmit = async () => {
     console.error('重新提交失败:', error);
     console.error('错误响应:', error?.response?.data);
     const errorMsg = error?.response?.data?.message || error?.message || '重新提交失败';
-    ElMessage.error(errorMsg);
+    ElMessage.error({ message: errorMsg, showClose: true, duration: 3000 });
   } finally {
     isSubmitting.value = false;
   }
@@ -1004,13 +1117,13 @@ const onDrop = (e: DragEvent) => {
 const uploadFile = async (file: File) => {
   // 验证文件类型
   if (file.type !== 'application/pdf') {
-    ElMessage.error('只支持 PDF 格式文件');
+    ElMessage.error({ message: '只支持 PDF 格式文件', showClose: true, duration: 3000 });
     return;
   }
 
   // 验证文件大小（最大10MB）
   if (file.size > 10 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 10MB');
+    ElMessage.error({ message: '文件大小不能超过 10MB', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1030,7 +1143,7 @@ const uploadFile = async (file: File) => {
     uploadProgress.value = 100;
     submitForm.attachmentUrl = res.filePath;
     submitForm.attachmentName = res.originalName;
-    ElMessage.success('文件上传成功');
+    ElMessage.success({ message: '文件上传成功', showClose: true, duration: 3000 });
 
     // 进度条保持1秒后消失
     setTimeout(() => {
@@ -1039,7 +1152,7 @@ const uploadFile = async (file: File) => {
   } catch (error) {
     clearInterval(progressInterval);
     console.error('文件上传失败:', error);
-    ElMessage.error('文件上传失败，请重试');
+    ElMessage.error({ message: '文件上传失败，请重试', showClose: true, duration: 3000 });
     uploadProgress.value = 0;
   } finally {
     isUploading.value = false;
@@ -1057,13 +1170,13 @@ const removeFile = () => {
 // 提交单据
 const handleSubmit = async () => {
   if (!submitForm.documentNo || !submitForm.wcName || !submitForm.deliveryLocation || !submitForm.submitterName) {
-    ElMessage.warning('请填写必填项');
+    ElMessage.warning({ message: '请填写必填项', showClose: true, duration: 3000 });
     return;
   }
 
   // 验证附件是否上传
   if (!submitForm.attachmentUrl || !submitForm.attachmentName) {
-    ElMessage.warning('请上传单据附件（PDF格式）');
+    ElMessage.warning({ message: '请上传单据附件（PDF格式）', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1072,14 +1185,14 @@ const handleSubmit = async () => {
     await createK045Document(submitForm);
     // 保存配送地点到历史记录
     saveDeliveryLocationToHistory(submitForm.deliveryLocation);
-    ElMessage.success('单据提交成功');
+    ElMessage.success({ message: '单据提交成功', showClose: true, duration: 3000 });
     closeSubmitDialog();
     clearRequestCache();
     loadDocuments();
     loadStats();
   } catch (error) {
     console.error('提交失败:', error);
-    ElMessage.error('单据提交失败，请重试');
+    ElMessage.error({ message: '单据提交失败，请重试', showClose: true, duration: 3000 });
   } finally {
     isSubmitting.value = false;
   }
@@ -1116,12 +1229,12 @@ const handleWithdraw = (doc: K045Document) => {
   ).then(async () => {
     try {
       await withdrawK045Document(doc.id!);
-      ElMessage.success('单据已撤回');
+      ElMessage.success({ message: '单据已撤回', showClose: true, duration: 3000 });
       clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('撤回失败:', error);
-      ElMessage.error('单据撤回失败，请重试');
+      ElMessage.error({ message: '单据撤回失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1139,12 +1252,12 @@ const handleCancel = (doc: K045Document) => {
   ).then(async () => {
     try {
       await cancelK045Document(doc.id!);
-      ElMessage.success('单据已取消');
+      ElMessage.success({ message: '单据已取消', showClose: true, duration: 3000 });
       clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('取消失败:', error);
-      ElMessage.error('单据取消失败，请重试');
+      ElMessage.error({ message: '单据取消失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1162,14 +1275,29 @@ const handleRush = (doc: K045Document) => {
   ).then(async () => {
     try {
       await rushK045Document(doc.id!);
-      ElMessage.success('催单通知已发送');
+      ElMessage.success({ message: '催单通知已发送', showClose: true, duration: 3000 });
       clearRequestCache();
       loadStats();
     } catch (error) {
       console.error('催单失败:', error);
-      ElMessage.error('催单失败，请重试');
+      ElMessage.error({ message: '催单失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
+};
+
+// 设置/取消加急
+const handleSetUrgent = async (doc: K045Document) => {
+  const action = doc.isUrgent ? '取消加急' : '设为加急';
+  try {
+    await setUrgentK045Document(doc.id!, !doc.isUrgent);
+    ElMessage.success({ message: `${action}成功`, showClose: true, duration: 3000 });
+    clearRequestCache();
+    loadDocuments();
+    loadStats();
+  } catch (error) {
+    console.error(`${action}失败:`, error);
+    ElMessage.error({ message: `${action}失败，请重试`, showClose: true, duration: 3000 });
+  }
 };
 
 // 预览附件
@@ -1178,7 +1306,7 @@ const handlePreview = (doc: K045Document) => {
     const fileName = doc.attachmentUrl.split('/').pop();
     window.open(`/api/k045/preview/${fileName}`, '_blank');
   } else {
-    ElMessage.warning('该单据没有附件');
+    ElMessage.warning({ message: '该单据没有附件', showClose: true, duration: 3000 });
   }
 };
 
@@ -1220,7 +1348,7 @@ const handleReceive = (doc: K045Document) => {
   ).then(async () => {
     try {
       await receiveK045Document(doc.id!, receivedBy);
-      ElMessage.success('单据已接收，正在打印...');
+      ElMessage.success({ message: '单据已接收，正在打印...', showClose: true, duration: 3000 });
 
       // 打印附件
       printAttachment(doc);
@@ -1230,7 +1358,59 @@ const handleReceive = (doc: K045Document) => {
       loadStats();
     } catch (error) {
       console.error('接收失败:', error);
-      ElMessage.error('单据接收失败，请重试');
+      ElMessage.error({ message: '单据接收失败，请重试', showClose: true, duration: 3000 });
+    }
+  }).catch(() => {});
+};
+
+// 发料完成 - 发送邮件通知
+const handleSendMaterial = (doc: K045Document) => {
+  ElMessageBox.confirm(
+    `确定单据 ${doc.documentNo} 发料完成吗？\n\n系统将自动打开邮件客户端通知签收分料部门。`,
+    '提示',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info'
+    }
+  ).then(async () => {
+    try {
+      // 调用后端API获取邮件信息
+      const result: any = await sendMaterialK045Notification(doc.id!);
+      // axios 拦截器返回 { code, message, data: {...} }
+      const resData = result?.data || result;
+
+      // 构建 mailto 链接，发送给签收分料部门（收件人），抄送给W/C负责用户
+      if (resData?.recipientEmails) {
+        const recipientEmails = resData.recipientEmails;
+        const ccEmails = resData.ccEmails || '';
+        const subject = encodeURIComponent(resData.subject || '');
+        const body = encodeURIComponent(resData.body || '');
+
+        // 构建 mailto URL（收件人和抄送人）
+        let mailtoUrl = `mailto:${recipientEmails}`;
+        const params: string[] = [];
+        if (ccEmails) {
+          params.push(`cc=${ccEmails}`);
+        }
+        params.push(`subject=${subject}`);
+        params.push(`body=${body}`);
+
+        mailtoUrl += '?' + params.join('&');
+
+        // 打开邮件客户端
+        window.location.href = mailtoUrl;
+      } else {
+        ElMessage.warning({ message: '未配置收件人邮箱，请检查配送地点的部门邮箱配置', showClose: true, duration: 5000 });
+      }
+
+      ElMessage.success({ message: '发料完成', showClose: true, duration: 3000 });
+      clearRequestCache();
+      loadDocuments();
+      loadStats();
+    } catch (error) {
+      console.error('发料完成失败:', error);
+      ElMessage.error({ message: '发料完成失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1244,7 +1424,7 @@ const printAttachment = (doc: K045Document) => {
     const printUrl = `/print?file=${encodeURIComponent(fileName || '')}`;
     window.open(printUrl, '_blank', 'width=900,height=700');
   } else {
-    ElMessage.warning('该单据没有附件可打印');
+    ElMessage.warning({ message: '该单据没有附件可打印', showClose: true, duration: 3000 });
   }
 };
 
@@ -1268,7 +1448,7 @@ const isReturning = ref(false); // 防止重复点击
 
 const confirmReturn = async () => {
   if (!returnReason.value.trim()) {
-    ElMessage.warning('请输入退回原因');
+    ElMessage.warning({ message: '请输入退回原因', showClose: true, duration: 3000 });
     return;
   }
 
@@ -1314,17 +1494,17 @@ const confirmReturn = async () => {
         const mailtoUrl = `mailto:${submitterEmail}?subject=${subject}&body=${body}`;
         window.location.href = mailtoUrl;
       } else if (submitterEmail) {
-        ElMessage.info('已取消邮件通知');
+        ElMessage.info({ message: '已取消邮件通知', showClose: true, duration: 3000 });
       }
 
-      ElMessage.success('单据已退回');
+      ElMessage.success({ message: '单据已退回', showClose: true, duration: 3000 });
       closeReturnDialog();
       clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('退回失败:', error);
-      ElMessage.error('退回失败，请重试');
+      ElMessage.error({ message: '退回失败，请重试', showClose: true, duration: 3000 });
     } finally {
       isReturning.value = false;
     }
@@ -1349,13 +1529,13 @@ const handleSign = (doc: K045Document) => {
   ).then(async () => {
     try {
       await signK045Document(doc.id!, signedBy);
-      ElMessage.success('单据已签收');
+      ElMessage.success({ message: '单据已签收', showClose: true, duration: 3000 });
       clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('签收失败:', error);
-      ElMessage.error('单据签收失败，请重试');
+      ElMessage.error({ message: '单据签收失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1374,24 +1554,26 @@ const handleEndDistribution = (doc: K045Document) => {
     try {
       await endDistributionK045Document(doc.id!);
       // 分料结束后自动打开邮件客户端
-      const notifyResult = await sendK045Notification(doc.id!);
+      const notifyResult: any = await sendK045Notification(doc.id!);
+      // axios 拦截器返回 { code, message, data: {...} }
+      const notifyData = notifyResult?.data || notifyResult;
       // 在前端构建 mailto 链接，避免 URL 编码在 JSON 序列化/反序列化过程中被破坏
-      if (notifyResult?.submitterEmail) {
-        const subject = encodeURIComponent(notifyResult.subject || '');
-        const body = encodeURIComponent(notifyResult.body || '');
-        const mailtoUrl = `mailto:${notifyResult.submitterEmail}?subject=${subject}&body=${body}`;
+      if (notifyData?.submitterEmail) {
+        const subject = encodeURIComponent(notifyData.subject || '');
+        const body = encodeURIComponent(notifyData.body || '');
+        const mailtoUrl = `mailto:${notifyData.submitterEmail}?subject=${subject}&body=${body}`;
         // 直接设置 location 打开邮件客户端，避免被浏览器阻止
         window.location.href = mailtoUrl;
       } else {
-        ElMessage.warning(`未找到 ${doc.submitterName} 的邮箱地址，请手动发送邮件通知`);
+        ElMessage.warning({ message: `未找到 ${doc.submitterName} 的邮箱地址，请手动发送邮件通知`, showClose: true, duration: 3000 });
       }
-      ElMessage.success('分料已结束');
+      ElMessage.success({ message: '分料已结束', showClose: true, duration: 3000 });
       clearRequestCache();
       loadDocuments();
       loadStats();
     } catch (error) {
       console.error('分料结束失败:', error);
-      ElMessage.error('分料结束失败，请重试');
+      ElMessage.error({ message: '分料结束失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
@@ -1412,23 +1594,24 @@ const handleConfirmComplete = (doc: K045Document) => {
   ).then(async () => {
     try {
       await confirmCompleteK045Document(doc.id!, completedBy);
-      ElMessage.success('单据已完成');
+      ElMessage.success({ message: '单据已完成', showClose: true, duration: 3000 });
       clearRequestCache();
+      loadDocuments();
       loadStats();
     } catch (error) {
       console.error('确认完成失败:', error);
-      ElMessage.error('确认完成失败，请重试');
+      ElMessage.error({ message: '确认完成失败，请重试', showClose: true, duration: 3000 });
     }
   }).catch(() => {});
 };
 
 // 导出数据
 const exportData = () => {
-  ElMessage.info('导出功能开发中...');
+  ElMessage.info({ message: '导出功能开发中...', showClose: true, duration: 3000 });
 };
 
 // 监听标签页变化，重新加载数据
-watch(activeTab, () => {
+watch(() => activeTab.value, () => {
   currentPage.value = 1;
   selectedStatus.value = null; // 切换标签页时清除卡片筛选
   loadDocuments();
@@ -1456,6 +1639,7 @@ onMounted(() => {
   loadDeliveryLocationHistory();
   loadDeliveryLocationsFromConfig();
   loadCurrentUserInfo();
+  loadWCUserAssignments();
   document.addEventListener('keydown', handleKeyDown);
 });
 
@@ -1536,25 +1720,27 @@ onUnmounted(() => {
 
 /* Stats Cards */
 .stats-cards {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
 .stat-card {
   background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   border-radius: 16px;
-  padding: 20px 24px;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   border: 1px solid #e5e7eb;
   position: relative;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 
 .stat-card::before {
@@ -1619,9 +1805,9 @@ onUnmounted(() => {
 .stat-card-gray .stat-icon-bg { background: linear-gradient(135deg, #FAFAFA 0%, #E8E8E8 100%); }
 
 .stat-icon-bg {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1629,24 +1815,24 @@ onUnmounted(() => {
 }
 
 .stat-icon {
-  font-size: 26px;
+  font-size: 22px;
 }
 
 .stat-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   color: #1f2937;
   line-height: 1;
 }
 
 .stat-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #6b7280;
   font-weight: 500;
 }
@@ -1773,6 +1959,23 @@ onUnmounted(() => {
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
 
+.search-select {
+  padding: 8px 12px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: #fff;
+  cursor: pointer;
+  min-width: 140px;
+  transition: all 0.2s;
+}
+
+.search-select:focus {
+  outline: none;
+  border-color: #0066CC;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
 .search-item-wrapper {
   display: flex;
   align-items: center;
@@ -1828,7 +2031,7 @@ onUnmounted(() => {
 
 .data-table th,
 .data-table td {
-  padding: 12px 16px;
+  padding: 8px 12px;
   text-align: left;
   border-bottom: 1px solid #F3F4F6;
 }
@@ -1851,7 +2054,7 @@ onUnmounted(() => {
 
 .empty-cell {
   text-align: center;
-  padding: 60px 16px !important;
+  padding: 30px 16px !important;
 }
 
 .empty-state {
@@ -1905,6 +2108,24 @@ onUnmounted(() => {
   background-color: #DBEAFE;
 }
 
+.action-btn.urgent {
+  background-color: #FEF3C7;
+  color: #D97706;
+}
+
+.action-btn.urgent:hover {
+  background-color: #FDE68A;
+}
+
+.action-btn.urgent-active {
+  background-color: #FEE2E2;
+  color: #DC2626;
+}
+
+.action-btn.urgent-active:hover {
+  background-color: #FECACA;
+}
+
 .action-btn.rush {
   background-color: #FEF3C7;
   color: #D97706;
@@ -1939,6 +2160,15 @@ onUnmounted(() => {
 
 .action-btn.receive:hover {
   background-color: #A7F3D0;
+}
+
+.action-btn.material-sent {
+  background-color: #E9D5FF;
+  color: #7C3AED;
+}
+
+.action-btn.material-sent:hover {
+  background-color: #DDD6FE;
 }
 
 .action-btn.return {
@@ -2479,19 +2709,28 @@ onUnmounted(() => {
 /* Responsive */
 @media (max-width: 1400px) {
   .stats-cards {
-    grid-template-columns: repeat(4, 1fr);
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    min-width: calc(33.333% - 12px);
   }
 }
 
 @media (max-width: 1200px) {
   .stats-cards {
-    grid-template-columns: repeat(4, 1fr);
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    min-width: calc(50% - 12px);
   }
 }
 
 @media (max-width: 768px) {
   .stats-cards {
-    grid-template-columns: repeat(2, 1fr);
+    flex-wrap: wrap;
+  }
+  .stat-card {
+    min-width: calc(50% - 12px);
   }
 
   .form-row {
