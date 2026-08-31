@@ -61,7 +61,7 @@
         </div>
       </el-card>
 
-      <el-card class="summary-card alert-card" shadow="hover" @click="onExpiryCardClick" style="cursor: pointer;">
+      <el-card class="summary-card alert-card" :class="{ 'has-alert': expiryStats.expired + expiryStats.expiring_soon > 0 }" shadow="hover" @click="onExpiryCardClick" style="cursor: pointer;">
         <div class="card-content">
           <div class="card-icon expired"><el-icon><Warning /></el-icon></div>
           <div class="card-info">
@@ -86,7 +86,7 @@
           <span class="legend-item"><span class="dot iws"></span> 收料</span>
         </div>
         <div class="hourly-chart" style="position: relative;">
-          <div v-for="slot in timeSlots" :key="slot.time" class="hour-bar" @mouseenter="setHovered(slot, $event)" @mouseleave="hoveredSlot = null">
+          <div v-for="slot in timeSlots" :key="slot.time" class="hour-bar" @mouseenter="setHovered(slot, $event)" @mouseleave="hoveredSlot = null" @click="clickTimeSlot(slot)">
             <div class="bar-container">
               <div class="bar-stack">
                 <div v-if="slot.PLR > 0" class="bar-item plr" :style="{ height: `${getBarHeight(slot.PLR)}%` }"></div>
@@ -161,12 +161,26 @@
         <el-table-column prop="to_sloc" label="To SLoc" width="85"  />
         <el-table-column prop="reference" label="Reference" width="150"  />
         <el-table-column prop="user_name" label="User" width="85"  />
-        <el-table-column prop="sled" label="SLED" width="100"  />
         <el-table-column prop="date_code" label="DC" width="70"  />
         <el-table-column prop="shelf_life" label="SLife" width="70"  />
         <el-table-column prop="period_indicator" label="Per. ind." width="80"  />
+        <el-table-column prop="total_sl" label="TotalSLife" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.expiry_source === 'dc_sl'" type="warning" size="small">{{ row.total_sl }}</el-tag>
+            <span v-else>{{ row.total_sl }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="extension_date" label="延期日期" width="100">
-          <template #default="{ row }">{{ formatExtensionDate(row.extension_date) }}</template>
+          <template #default="{ row }">
+            <el-tag v-if="row.expiry_source === 'extension_date'" type="primary" size="small">{{ formatExtensionDate(row.extension_date) }}</el-tag>
+            <span v-else>{{ formatExtensionDate(row.extension_date) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sled" label="SLED" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.expiry_source === 'sled'" type="success" size="small">{{ row.sled }}</el-tag>
+            <span v-else>{{ row.sled }}</span>
+          </template>
         </el-table-column>
         <el-table-column prop="expiry_days" label="Expiry Days" width="120" align="center">
           <template #default="{ row }">
@@ -285,7 +299,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Box, Warning, List } from '@element-plus/icons-vue'
@@ -327,6 +341,9 @@ const class33Search = ref('')
 const class33Pagination = ref({ page: 1, pageSize: 20, total: 0 })
 const class33Set = ref(new Set()) // 用于快速查找
 const selectedClass33Rows = ref([])
+
+// 请求取消控制器
+let abortController = null
 const class33TableRef = ref(null)
 const showAddClass33Dialog = ref(false)
 const newClass33Form = ref({ part_no: '', division: '' })
@@ -362,6 +379,15 @@ const filterByTrans = (trans) => {
   loadTableData()
 }
 
+// 点击时间段跳转到明细
+const clickTimeSlot = (slot) => {
+  if (!slot) return
+  showExpiredMode.value = false
+  filterTrans.value = ''
+  ElMessage.info(`已跳转到 ${slot.time} 时段的数据`)
+  loadTableData()
+}
+
 // 数据
 const summary = reactive({ PLR: {}, FLR: {}, IWS: {} })
 const timeSlots = ref([])
@@ -382,8 +408,6 @@ const tableData = ref([])
 const expiredList = ref([])
 const expiringList = ref([])
 const expiryStats = reactive({ expired: 0, expiring_soon: 0, total: 0 })
-const selectedExpiredRows = ref([])
-const selectedExpiringRows = ref([])
 const pagination = reactive({
   page: 1,
   pageSize: 20,
@@ -406,41 +430,63 @@ const getBarHeight = (value) => {
 
 // 加载汇总数据
 const loadSummary = async () => {
+  // 取消之前的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
   try {
     const res = await request.get('/warehouse-monitor/summary', {
       params: {
         date: selectedDate.value,
         plant: filterPlant.value
-      }
+      },
+      signal: abortController.signal
     })
     if (res.success) {
       Object.assign(summary, res.data.trans)
       Object.assign(expiryStats, res.data.expiry)
     }
   } catch (error) {
-    console.error('加载汇总失败:', error)
+    if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+      console.error('加载汇总失败:', error)
+    }
   }
 }
 
 // 加载时间统计数据
 const loadTimeStats = async () => {
+  // 取消之前的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
   try {
     const res = await request.get('/warehouse-monitor/stats-by-time', {
       params: {
         date: selectedDate.value,
         plant: filterPlant.value
-      }
+      },
+      signal: abortController.signal
     })
     if (res.success) {
       timeSlots.value = res.data.timeSlots
     }
   } catch (error) {
-    console.error('加载时间统计失败:', error)
+    if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+      console.error('加载时间统计失败:', error)
+    }
   }
 }
 
 // 加载表格数据
 const loadTableData = async (forceMode) => {
+  // 取消之前的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+
   loading.value = true
   try {
     const mode = forceMode || (showExpiredMode.value ? 'expired' : 'normal')
@@ -462,7 +508,8 @@ const loadTableData = async (forceMode) => {
         user: filterUser.value || undefined,
         page: pagination.page,
         pageSize: pagination.pageSize
-      }
+      },
+      signal: abortController.signal
     })
 
     if (res.code === 200 || res.success) {
@@ -472,7 +519,7 @@ const loadTableData = async (forceMode) => {
     }
   } catch (error) {
     // 忽略取消的请求错误
-    if (error?.code !== 'CANCELLED') {
+    if (error?.code !== 'CANCELLED' && error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
       console.error('加载表格数据失败:', error)
     }
   } finally {
@@ -609,8 +656,15 @@ const exportData = async () => {
 
     // 构建Excel数据
     const headers = showExpiredMode.value
-      ? ['Whse No.', 'Trans', 'Material', 'Quantity', 'GRN No.', 'Type', 'Storage Bin', 'From SLoc', 'To SLoc', 'Reference', 'User', 'SLED', 'DC', 'SLife', 'Per. ind.', '延期日期', 'Expiry Days', '处理状态', '处理结果', '处理人', '处理时间']
-      : ['Whse No.', 'Trans', 'Material', 'Qty.', 'GRN No.', 'Type', 'Storage Bin', 'From SLoc', 'To SLoc', 'Reference', 'User', 'SLED', 'DC', 'SLife', 'Per. ind.', '延期日期', 'Expiry Days']
+      ? ['Whse No.', 'Trans', 'Material', 'Quantity', 'GRN No.', 'Type', 'Storage Bin', 'From SLoc', 'To SLoc', 'Reference', 'User', 'DC', 'SLife', 'Per. ind.', 'TotalSLife', '延期日期', 'SLED', 'Expiry Days', 'Expiry来源', '处理状态', '处理结果', '处理人', '处理时间']
+      : ['Whse No.', 'Trans', 'Material', 'Qty.', 'GRN No.', 'Type', 'Storage Bin', 'From SLoc', 'To SLoc', 'Reference', 'User', 'DC', 'SLife', 'Per. ind.', 'TotalSLife', '延期日期', 'SLED', 'Expiry Days', 'Expiry来源']
+
+    // Expiry来源映射
+    const expirySourceMap = {
+      'dc_sl': 'TotalSLife',
+      'sled': 'SLED',
+      'extension_date': '延期日期'
+    }
 
     const rows = res.data.map(r => {
       const baseRow = [
@@ -625,12 +679,14 @@ const exportData = async () => {
         r.to_sloc || '',
         r.reference || '',
         r.user_name || '',
-        r.sled || '',
         r.date_code || '',
         r.shelf_life ?? '',
         r.period_indicator || '',
+        r.total_sl || '',
         formatExtensionDate(r.extension_date) || '',
-        r.expiry_days ?? ''
+        r.sled || '',
+        r.expiry_days ?? '',
+        expirySourceMap[r.expiry_source] || ''
       ]
 
       if (showExpiredMode.value) {
@@ -677,7 +733,7 @@ const confirmPass = async () => {
     try {
       const userObj = JSON.parse(user)
       processedBy = userObj.username || userObj.name || ''
-    } catch (e) {}
+    } catch {}
     const res = await request.post('/warehouse-monitor/pass-processed', {
       ids,
       result: passResult.value,
@@ -705,7 +761,6 @@ const loadExpiryData = async () => {
   loading.value = true
   try {
     const params = {
-      days: 30,
       date: selectedDate.value,
       plant: filterPlant.value,
       page: pagination.page,
@@ -730,68 +785,6 @@ const loadExpiryData = async () => {
     console.error('加载过期预警失败:', error)
   } finally {
     loading.value = false
-  }
-}
-
-// 标记已处理
-const markProcessed = async (type) => {
-  let rows, list
-  if (type === 'expired') {
-    rows = selectedExpiredRows.value
-    list = expiredList
-  } else {
-    rows = selectedExpiringRows.value
-    list = expiringList
-  }
-
-  if (rows.length === 0) {
-    ElMessage.warning('请先选择要标记的记录')
-    return
-  }
-  try {
-    const ids = rows.map(row => row.id)
-    const res = await request.post('/warehouse-monitor/mark-processed', { ids })
-    if (res.success) {
-      ElMessage.success(res.message || '标记成功')
-      if (type === 'expired') {
-        selectedExpiredRows.value = []
-      } else {
-        selectedExpiringRows.value = []
-      }
-      await loadExpiryData()
-      await loadSummary()
-    }
-  } catch (error) {
-    console.error('标记失败:', error)
-    ElMessage.error('标记失败')
-  }
-}
-
-// 发送过期预警邮件
-const sendExpiryEmail = async (type) => {
-  let list
-  if (type === 'expired') {
-    list = expiredList.value
-  } else {
-    list = expiringList.value
-  }
-
-  if (list.length === 0) {
-    ElMessage.warning('没有数据可发送')
-    return
-  }
-
-  try {
-    const res = await request.post('/warehouse-monitor/send-expiry-email', {
-      type: type,
-      data: list
-    })
-    if (res.success) {
-      ElMessage.success(res.message || '邮件发送成功')
-    }
-  } catch (error) {
-    console.error('发送邮件失败:', error)
-    ElMessage.error('发送邮件失败')
   }
 }
 
@@ -891,12 +884,6 @@ const loadClass33Set = async () => {
   } catch (error) {
     console.error('加载33类物料Set失败:', error)
   }
-}
-
-// 检查物料是否在33类清单中
-const isClass33Material = (material) => {
-  if (!material) return false
-  return class33Set.value.has(material)
 }
 
 // 新增物料
@@ -1080,6 +1067,25 @@ const saveEditClass33Item = async () => {
 
 .card-value.danger {
   color: #f56c6c;
+}
+
+/* 过期预警卡片闪烁效果 */
+.summary-card.has-alert {
+  animation: pulse-alert 1.5s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(245, 108, 108, 0.5);
+}
+
+.summary-card.has-alert:hover {
+  animation: none;
+}
+
+@keyframes pulse-alert {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(245, 108, 108, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(245, 108, 108, 0.7);
+  }
 }
 
 .card-value .unit {
