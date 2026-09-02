@@ -777,11 +777,11 @@ export function initScheduledTasks() {
   }, { scheduled: true, timezone: 'Asia/Shanghai' });
   console.log('✅ 任务已注册: SAP数据拉取（每小时第3分钟）');
 
-  // 3. 物料延期同步：每2小时第20分钟
-  cron.schedule('20 */2 * * *', async () => {
+  // 3. 物料延期同步：每55分钟
+  cron.schedule('*/55 * * * *', async () => {
     await syncMaterialExtension();
   }, { scheduled: true, timezone: 'Asia/Shanghai' });
-  console.log('✅ 任务已注册: 物料延期同步（每2小时）');
+  console.log('✅ 任务已注册: 物料延期同步（每55分钟）');
 
   // 4. Stockroom 归档：每天凌晨2点
   cron.schedule('0 2 * * *', async () => {
