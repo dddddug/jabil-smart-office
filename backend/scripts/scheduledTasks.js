@@ -250,9 +250,16 @@ function parseSAPMaterialData(data) {
 
     try {
       if (item.lastSyncTime) {
+        // 解析时间并格式化为中国时区字符串
         const dt = new Date(item.lastSyncTime.replace(' ', 'T'));
         if (!isNaN(dt.getTime())) {
-          lastSyncTime = dt.toISOString().slice(0, 19).replace('T', ' ');
+          const y = dt.getFullYear();
+          const m = String(dt.getMonth() + 1).padStart(2, '0');
+          const d = String(dt.getDate()).padStart(2, '0');
+          const h = String(dt.getHours()).padStart(2, '0');
+          const mi = String(dt.getMinutes()).padStart(2, '0');
+          const s = String(dt.getSeconds()).padStart(2, '0');
+          lastSyncTime = `${y}-${m}-${d} ${h}:${mi}:${s}`;
         }
       }
     } catch (e) {}
@@ -264,8 +271,7 @@ function parseSAPMaterialData(data) {
       extension_file_no: item.extensionFileNo || '',
       user_name: item.userName || '',
       update_date: updateDate,
-      last_sync_time: lastSyncTime,
-      raw_data: JSON.stringify(item)
+      last_sync_time: lastSyncTime
     };
   }).filter(item => item.grn);
 }
@@ -290,24 +296,23 @@ async function saveMaterialExtension(items) {
       let paramIndex = 1;
 
       for (const item of batch) {
-        values.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7})`);
+        values.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6})`);
         params.push(item.grn, item.date_code, item.extension_date, item.extension_file_no,
-                    item.user_name, item.update_date, item.last_sync_time, item.raw_data);
-        paramIndex += 8;
+                    item.user_name, item.update_date, item.last_sync_time);
+        paramIndex += 7;
       }
 
       await pool.query(`
         INSERT INTO jso_material_extension (
           grn, date_code, extension_date, extension_file_no, user_name,
-          update_date, last_sync_time, raw_data
+          update_date, last_sync_time
         ) VALUES ${values.join(', ')}
         ON CONFLICT (grn) DO UPDATE SET
           extension_date = EXCLUDED.extension_date,
           extension_file_no = EXCLUDED.extension_file_no,
           user_name = EXCLUDED.user_name,
           update_date = EXCLUDED.update_date,
-          last_sync_time = EXCLUDED.last_sync_time,
-          raw_data = EXCLUDED.raw_data
+          last_sync_time = EXCLUDED.last_sync_time
       `, params);
 
       savedCount += batch.length;
@@ -319,17 +324,16 @@ async function saveMaterialExtension(items) {
           await pool.query(`
             INSERT INTO jso_material_extension (
               grn, date_code, extension_date, extension_file_no, user_name,
-              update_date, last_sync_time, raw_data
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              update_date, last_sync_time
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (grn) DO UPDATE SET
               extension_date = EXCLUDED.extension_date,
               extension_file_no = EXCLUDED.extension_file_no,
               user_name = EXCLUDED.user_name,
               update_date = EXCLUDED.update_date,
-              last_sync_time = EXCLUDED.last_sync_time,
-              raw_data = EXCLUDED.raw_data
+              last_sync_time = EXCLUDED.last_sync_time
           `, [item.grn, item.date_code, item.extension_date, item.extension_file_no,
-              item.user_name, item.update_date, item.last_sync_time, item.raw_data]);
+              item.user_name, item.update_date, item.last_sync_time]);
           savedCount++;
         } catch (singleErr) {
           failedItems.push(item); // 保存原始item对象
@@ -357,17 +361,16 @@ async function saveMaterialExtension(items) {
           await pool.query(`
             INSERT INTO jso_material_extension (
               grn, date_code, extension_date, extension_file_no, user_name,
-              update_date, last_sync_time, raw_data
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              update_date, last_sync_time
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (grn) DO UPDATE SET
               extension_date = EXCLUDED.extension_date,
               extension_file_no = EXCLUDED.extension_file_no,
               user_name = EXCLUDED.user_name,
               update_date = EXCLUDED.update_date,
-              last_sync_time = EXCLUDED.last_sync_time,
-              raw_data = EXCLUDED.raw_data
+              last_sync_time = EXCLUDED.last_sync_time
           `, [item.grn, item.date_code, item.extension_date, item.extension_file_no,
-              item.user_name, item.update_date, item.last_sync_time, item.raw_data]);
+              item.user_name, item.update_date, item.last_sync_time]);
           savedCount++;
         } catch (err) {
           failedItems.push(item); // 再次失败，加入下一轮
@@ -390,8 +393,42 @@ async function syncMaterialExtension() {
   const startTime = Date.now();
 
   try {
+    // 获取延期表中最新同步时间，用于增量拉取
+    let lastSyncTime = null;
+    try {
+      const lastSyncResult = await pool.query(`
+        SELECT MAX(last_sync_time) as max_sync_time
+        FROM jso_material_extension
+        WHERE last_sync_time IS NOT NULL
+      `);
+      if (lastSyncResult.rows[0]?.max_sync_time) {
+        lastSyncTime = lastSyncResult.rows[0].max_sync_time;
+        console.log(`上次同步时间: ${lastSyncTime}`);
+      }
+    } catch (e) {
+      console.log('获取上次同步时间失败，将全量拉取');
+    }
+
+    // 始终使用LastSyncTime参数获取增量数据（避免10分钟限制问题）
+    let requestUrl = SAP_API_URL;
+    if (lastSyncTime) {
+      // 格式化为 YYYY-MM-DD HH:mm:ss（确保格式正确）
+      const dt = new Date(lastSyncTime);
+      const y = dt.getFullYear();
+      const mo = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      const h = String(dt.getHours()).padStart(2, '0');
+      const mi = String(dt.getMinutes()).padStart(2, '0');
+      const s = String(dt.getSeconds()).padStart(2, '0');
+      const formattedTime = `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+      requestUrl = `${SAP_API_URL}?LastSyncTime=${encodeURIComponent(formattedTime)}`;
+      console.log(`使用增量拉取，LastSyncTime=${formattedTime}`);
+    } else {
+      console.log('无上次同步时间，将全量拉取');
+    }
+
     console.log(`[${new Date().toLocaleString('zh-CN')}] 开始拉取数据...`);
-    const response = await fetch(SAP_API_URL, {
+    const response = await fetch(requestUrl, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(180000)
@@ -402,10 +439,38 @@ async function syncMaterialExtension() {
     }
 
     const sapData = await response.json();
+
+    // 检查SAP返回的业务错误
+    if (!sapData.succeed && sapData.code === 500 && sapData.msg?.includes('10分钟内')) {
+      console.log('⚠️ SAP接口限制：10分钟内已调用过，需要等待');
+      // 记录警告但不算失败
+      try {
+        await pool.query(`
+          INSERT INTO jso_material_extension_pull_log (source_url, records_count, status, error_message, completed_at)
+          VALUES ($1, 0, 'rate_limited', $2, CURRENT_TIMESTAMP)
+        `, [SAP_API_URL, sapData.msg]);
+      } catch (e) {}
+      console.log('============================================================');
+      return;
+    }
+
     console.log(`成功获取 ${sapData.data?.length || 0} 条数据`);
 
     const items = parseSAPMaterialData(sapData);
     console.log(`解析完成，共 ${items.length} 条有效数据`);
+
+    // 如果没有有效数据
+    if (items.length === 0) {
+      console.log('⚠️ SAP接口暂无新数据');
+      try {
+        await pool.query(`
+          INSERT INTO jso_material_extension_pull_log (source_url, records_count, status, error_message, completed_at)
+          VALUES ($1, 0, 'no_data', 'SAP接口暂无新数据', CURRENT_TIMESTAMP)
+        `, [SAP_API_URL]);
+      } catch (e) {}
+      console.log('============================================================');
+      return;
+    }
 
     const result = await saveMaterialExtension(items);
 
@@ -583,21 +648,54 @@ function parseShelfLifeFile(filePath) {
 async function importMaterialShelfLife() {
   let sourceFile = null;
   let fileSize = 0;
+  let totalSaved = 0;
 
   try {
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    sourceFile = `${SHELF_LIFE_FILE_PREFIX}-${today}.txt`;
-    const todayFile = path.join(SHELF_LIFE_REPORT_DIR, sourceFile);
+    // 获取最近3天的日期文件
+    const today = new Date();
+    const dates = [];
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split('T')[0].replace(/-/g, ''));
+    }
 
-    if (!fs.existsSync(todayFile)) {
-      logInfo('ShelfLifeImport', `今天的数据文件不存在: ${todayFile}`);
+    logInfo('ShelfLifeImport', `检查文件日期: ${dates.join(', ')}`);
+
+    // 查找已存在的最新处理记录
+    const processedResult = await pool.query(`
+      SELECT source_file FROM jso_material_shelf_life_pull_log
+      WHERE status = 'success'
+      ORDER BY completed_at DESC LIMIT 1
+    `);
+    let processedFiles = new Set();
+    if (processedResult.rows.length > 0) {
+      processedFiles.add(processedResult.rows[0].source_file);
+      logInfo('ShelfLifeImport', `已处理文件: ${processedResult.rows[0].source_file}`);
+    }
+
+    // 查找要处理的文件
+    let foundFile = null;
+    for (const date of dates) {
+      const fileName = `${SHELF_LIFE_FILE_PREFIX}-${date}.txt`;
+      const filePath = path.join(SHELF_LIFE_REPORT_DIR, fileName);
+      if (fs.existsSync(filePath) && !processedFiles.has(fileName)) {
+        foundFile = { name: fileName, path: filePath };
+        logInfo('ShelfLifeImport', `找到待处理文件: ${fileName}`);
+        break;
+      }
+    }
+
+    if (!foundFile) {
+      logInfo('ShelfLifeImport', `最近3天内没有待处理的文件`);
       return;
     }
 
-    fileSize = fs.statSync(todayFile).size;
-    logInfo('ShelfLifeImport', `读取文件: ${todayFile} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+    sourceFile = foundFile.name;
+    fileSize = fs.statSync(foundFile.path).size;
+    logInfo('ShelfLifeImport', `读取文件: ${foundFile.path} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
 
-    const records = parseShelfLifeFile(todayFile);
+    const records = parseShelfLifeFile(foundFile.path);
     logInfo('ShelfLifeImport', `解析完成，共 ${records.length} 条数据`);
 
     const BATCH_SIZE = 1000;
@@ -637,9 +735,11 @@ async function importMaterialShelfLife() {
       }
     }
 
+    totalSaved += savedCount;
+
     // 删除文件
-    fs.unlinkSync(todayFile);
-    logInfo('ShelfLifeImport', `文件已删除: ${todayFile}`);
+    fs.unlinkSync(foundFile.path);
+    logInfo('ShelfLifeImport', `文件已删除: ${foundFile.path}`);
 
     // 记录日志
     await pool.query(`

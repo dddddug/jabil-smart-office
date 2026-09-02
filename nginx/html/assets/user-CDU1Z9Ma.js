@@ -1,0 +1,1 @@
+import{a as e}from"./request-XXsa-dGa.js";function t(){return e({url:`/users/me`,method:`get`})}export{t};

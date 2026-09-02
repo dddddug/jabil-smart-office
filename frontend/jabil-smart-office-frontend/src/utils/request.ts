@@ -176,24 +176,23 @@ service.interceptors.request.use(
       // 关键：先生成缓存键（此时还没有 _t 参数）
       const requestKey = generateRequestKey(config.url!, config.params, config.data);
 
-      // 检查缓存 - 但需要确保缓存的数据是最新的
-      // 策略：缓存中存储的数据如果在 5 分钟内，且用户没有主动刷新，则使用缓存
-      // 否则重新请求
+      // 临时禁用缓存 - 分页请求不应该使用缓存
+      // TODO: 将来可以改为基于 URL + 分页参数 的缓存策略
+      // 暂时注释掉缓存检查
+      /*
       if (requestCache.has(requestKey)) {
         const cached = requestCache.get(requestKey)!;
-        // 如果缓存数据在 TTL 内，使用缓存
         if (Date.now() - cached.timestamp < CACHE_TTL) {
-          // 返回一个已解决状态的 Promise，拦截请求
           return Promise.reject({
             __CACHED__: true,
             __CACHED_DATA__: cached.data,
             config
           });
         } else {
-          // 缓存过期，删除旧缓存
           requestCache.delete(requestKey);
         }
       }
+      */
 
       // 取消之前的相同请求（去重）- 仅当不在防抖中时
       if (pendingRequests.has(requestKey) && !debounceMap.has(requestKey)) {
@@ -257,9 +256,9 @@ service.interceptors.response.use(
     }
   },
   error => {
-    // 处理缓存命中 - 直接返回缓存数据
+    // 处理缓存命中 - 返回完整响应对象
     if (error.__CACHED__ && error.__CACHED_DATA__) {
-      return error.__CACHED_DATA__.data;
+      return error.__CACHED_DATA__;
     }
 
     // 清理 pending 请求 - 使用相同的缓存键生成方式（但要用没有 _t 的原始 params）

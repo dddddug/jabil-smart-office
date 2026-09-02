@@ -1,0 +1,1 @@
+import{a as e}from"./request-XXsa-dGa.js";var t=()=>e.get(`/pnc-transfer/configs`),n=t=>e.post(`/pnc-transfer/configs`,t),r=(t,n)=>e.put(`/pnc-transfer/configs/${t}`,n),i=t=>e.delete(`/pnc-transfer/configs/${t}`),a=()=>e.get(`/pnc-transfer/configs/active/list`);export{r as a,t as i,i as n,a as r,n as t};

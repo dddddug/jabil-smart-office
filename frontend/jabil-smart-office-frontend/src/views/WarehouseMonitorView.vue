@@ -201,8 +201,8 @@
           :total="pagination.total"
           :page-sizes="[20, 50, 100, 200]"
           layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadTableData"
-          @current-change="loadTableData"
+          @current-change="handlePageChange"
+          @size-change="handlePageChange"
         />
       </div>
     </el-card>
@@ -413,6 +413,9 @@ const pagination = reactive({
   pageSize: 20,
   total: 0
 })
+
+// 分页版本追踪，用于强制刷新
+const paginationVersion = ref(0)
 
 // 计算最大卷数，用于图表高度
 const maxRolls = computed(() => {
@@ -758,6 +761,12 @@ const sortedTableData = computed(() => {
 
 // 加载过期预警数据
 const loadExpiryData = async () => {
+  // 取消之前的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+
   loading.value = true
   try {
     const params = {
@@ -771,7 +780,7 @@ const loadExpiryData = async () => {
     if (filterReference.value) params.reference = filterReference.value
     if (filterUser.value) params.user = filterUser.value
 
-    const res = await request.get('/warehouse-monitor/expiry-alerts', { params })
+    const res = await request.get('/warehouse-monitor/expiry-alerts', { params, signal: abortController.signal })
     if (res.code === 200) {
       const allData = res.data?.data || res.data || []
       // 分类：已过期和7天内过期
@@ -782,7 +791,10 @@ const loadExpiryData = async () => {
       pagination.total = res.data?.total || res.total || allData.length
     }
   } catch (error) {
-    console.error('加载过期预警失败:', error)
+    // 忽略取消的请求错误
+    if (error?.code !== 'CANCELLED' && error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
+      console.error('加载过期预警失败:', error)
+    }
   } finally {
     loading.value = false
   }
@@ -837,15 +849,13 @@ const handleFilterChange = () => {
   loadTableData()
 }
 
-// 监听筛选变化
-watch([selectedDate, filterPlant, filterWarehouse, filterTrans, filterType, filterReference, filterUser], handleFilterChange)
+// 分页变化处理
+const handlePageChange = () => {
+  console.log('[DEBUG] handlePageChange called, page:', pagination.page, 'mode:', showExpiredMode.value)
+  loadTableData()
+}
 
-// 监听分页变化，重新加载数据
-watch([() => pagination.page, () => pagination.pageSize], () => {
-  if (!showExpiredMode.value) {
-    loadTableData()
-  }
-})
+watch([selectedDate, filterPlant, filterWarehouse, filterTrans, filterType, filterReference, filterUser], handleFilterChange)
 
 onMounted(() => {
   loadData()

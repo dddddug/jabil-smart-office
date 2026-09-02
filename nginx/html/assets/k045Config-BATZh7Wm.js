@@ -1,1 +1,0 @@
-import{a as e}from"./request-5ekaihH2.js";var t=()=>e.get(`/k045/configs`),n=t=>e.post(`/k045/configs`,t),r={RETURN_NOTIFICATION_ENABLED:`return_notification_enabled`,AUTO_NOTIFY_ON_RETURN:`auto_notify_on_return`,DELIVERY_LOCATIONS:`delivery_locations`};export{t as n,n as r,r as t};
