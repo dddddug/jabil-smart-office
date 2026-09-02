@@ -343,7 +343,7 @@ const class33Set = ref(new Set()) // 用于快速查找
 const selectedClass33Rows = ref([])
 
 // 请求取消控制器
-let abortController = null
+let abortController: AbortController | null = null
 const class33TableRef = ref(null)
 const showAddClass33Dialog = ref(false)
 const newClass33Form = ref({ part_no: '', division: '' })
@@ -632,7 +632,7 @@ const exportData = async () => {
   exportLoading.value = true
   try {
     // 导出当前筛选条件下的全部数据（不分页）
-    const params = {
+    const params: Record<string, string | number> = {
       date: selectedDate.value,
       plant: filterPlant.value,
       page: 1,
@@ -664,13 +664,13 @@ const exportData = async () => {
       : ['Whse No.', 'Trans', 'Material', 'Qty.', 'GRN No.', 'Type', 'Storage Bin', 'From SLoc', 'To SLoc', 'Reference', 'User', 'DC', 'SLife', 'Per. ind.', 'TotalSLife', '延期日期', 'SLED', 'Expiry Days', 'Expiry来源']
 
     // Expiry来源映射
-    const expirySourceMap = {
+    const expirySourceMap: Record<string, string> = {
       'dc_sl': 'TotalSLife',
       'sled': 'SLED',
       'extension_date': '延期日期'
     }
 
-    const rows = res.data.map(r => {
+    const rows = res.data.map((r: Record<string, unknown>) => {
       const baseRow = [
         r.warehouse || '',
         r.trans_name || r.trans || '',
@@ -732,11 +732,11 @@ const confirmPass = async () => {
   }
   try {
     const ids = selectedRows.value.map(r => r.id)
-    const user = localStorage.getItem('user')
+    const user = localStorage.getItem('user') || ''
     let processedBy = ''
     try {
       const userObj = JSON.parse(user)
-      processedBy = userObj.username || userObj.name || ''
+      processedBy = (userObj as Record<string, unknown>).username || (userObj as Record<string, unknown>).name || ''
     } catch {}
     const res = await request.post('/warehouse-monitor/mark-processed', {
       ids,
@@ -748,7 +748,7 @@ const confirmPass = async () => {
       passDialogVisible.value = false
       selectedRows.value = []
       loadTableData()
-      loadSummaryData()  // 刷新汇总数据
+      loadSummary()  // 刷新汇总数据
     }
   } catch (error) {
     console.error('Pass处理失败:', error)
@@ -771,7 +771,7 @@ const loadExpiryData = async () => {
 
   loading.value = true
   try {
-    const params = {
+    const params: Record<string, string | number> = {
       date: selectedDate.value,
       plant: filterPlant.value,
       page: pagination.page,

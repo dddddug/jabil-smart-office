@@ -2584,3 +2584,4 @@
 {"error":"从外部API拉取数据失败","level":"error","message":"StockroomUrgentPull ON CONFLICT DO UPDATE command cannot affect row a second time","service":"jabil-smart-office","timestamp":"2026-09-02 10:59:51"}
 {"error":"从外部API拉取数据失败","level":"error","message":"StockroomUrgentPull ON CONFLICT DO UPDATE command cannot affect row a second time","service":"jabil-smart-office","timestamp":"2026-09-02 11:17:03"}
 {"error":"从外部API拉取数据失败","level":"error","message":"StockroomUrgentPull ON CONFLICT DO UPDATE command cannot affect row a second time","service":"jabil-smart-office","timestamp":"2026-09-02 11:24:48"}
+{"error":"从外部API拉取数据失败","level":"error","message":"StockroomUrgentPull ON CONFLICT DO UPDATE command cannot affect row a second time","service":"jabil-smart-office","timestamp":"2026-09-02 11:35:32"}
