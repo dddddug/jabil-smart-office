@@ -635,6 +635,7 @@ const exportData = async () => {
     const params = {
       date: selectedDate.value,
       plant: filterPlant.value,
+      page: 1,
       pageSize: 50000 // 导出最多5万条
     }
     if (filterWarehouse.value) params.warehouse = filterWarehouse.value
@@ -737,7 +738,7 @@ const confirmPass = async () => {
       const userObj = JSON.parse(user)
       processedBy = userObj.username || userObj.name || ''
     } catch {}
-    const res = await request.post('/warehouse-monitor/pass-processed', {
+    const res = await request.post('/warehouse-monitor/mark-processed', {
       ids,
       result: passResult.value,
       processed_by: processedBy
@@ -747,6 +748,7 @@ const confirmPass = async () => {
       passDialogVisible.value = false
       selectedRows.value = []
       loadTableData()
+      loadSummaryData()  // 刷新汇总数据
     }
   } catch (error) {
     console.error('Pass处理失败:', error)

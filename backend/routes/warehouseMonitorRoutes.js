@@ -69,22 +69,32 @@ router.get('/expiry-alerts', async (req, res) => {
       END
     `;
 
-    // 计算 Expiry Days（核心过期判定）
+    // 计算 Expiry Days（核心过期判定）- 与今日明细一致
+    // 使用 displayTotalSl (MM/DD/YYYY) 来解析和比较
     const calcExpiryDays = `
       CASE
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
+          (e.extension_date - $1::date)
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          (TO_DATE(${calcTotalSl}, 'YYYYMMDD') - $1::date)
+          (TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') - $1::date)
+        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
+          (e.extension_date - $1::date)
         WHEN h.sled IS NOT NULL AND h.sled != '' THEN
           (TO_DATE(h.sled, 'MM/DD/YYYY')::date - $1::date)
+        WHEN e.extension_date IS NOT NULL THEN
+          (e.extension_date - $1::date)
         ELSE NULL
       END
     `;
 
-    // Expiry 来源
+    // Expiry 来源（与今日明细一致：过期则用延期日期）
     const calcExpirySource = `
       CASE
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN 'dc_sl'
+        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
         WHEN h.sled IS NOT NULL AND h.sled != '' THEN 'sled'
+        WHEN e.extension_date IS NOT NULL THEN 'extension_date'
         ELSE NULL
       END
     `;
@@ -132,19 +142,21 @@ router.get('/expiry-alerts', async (req, res) => {
       AND (h.trans != 'PLR' OR h.reference NOT IN (SELECT document_no FROM jso_da_material_document WHERE control_type = '过期物料'))
       AND (h.trans NOT IN ('FLR', 'IWS') OR pull.type IS DISTINCT FROM 'SPL')`;
 
-    // COUNT - 不使用 DISTINCT，与 DATA 查询结果一致
+    // COUNT - 与 DATA 查询结果一致
     const countParams = [...params];
     const countQuery = pool.query(
-      `SELECT COUNT(*) as cnt ${fromClause} ${whereClause} ${expiredFilter}`,
+      `SELECT COUNT(DISTINCT h.id) as cnt ${fromClause} ${whereClause} ${expiredFilter}`,
       countParams
     );
 
-    // DATA - 保持原有查询逻辑
+    // DATA - 先按 id 去重，然后在结果集上按 33类物料排序
     params.push(parseInt(pageSize), (parseInt(page) - 1) * parseInt(pageSize));
     const dataQuery = pool.query(
-      `SELECT ${selectCols} ${fromClause} ${whereClause} ${expiredFilter}
-       ORDER BY is_class33 DESC, ${calcExpiryDays} ASC NULLS LAST
-       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      `SELECT * FROM (
+        SELECT DISTINCT ON (h.id) ${selectCols} ${fromClause} ${whereClause} ${expiredFilter}
+        ORDER BY h.id
+      ) t ORDER BY is_class33 DESC, expiry_days ASC NULLS LAST
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
 
@@ -320,33 +332,61 @@ router.get('/summary', async (req, res) => {
       GROUP BY trans
     `, [targetDate, plantValue]);
 
-    // 过期预警统计：根据筛选日期创建但已过期的物料
-    // 判断标准：SLED < 选定日期，与过期预警明细保持一致
+    // 过期预警统计：与过期预警明细保持一致
+    // 计算 TotalSLife（MM/DD/YYYY 格式用于日期比较）
+    const calcTotalSl = `
+      CASE
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
+          TO_CHAR((TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * CASE sl.period_indicator WHEN 'D' THEN 1 WHEN 'W' THEN 7 WHEN 'M' THEN 30 WHEN 'Y' THEN 365 ELSE 30 END))::date, 'MM/DD/YYYY')
+        ELSE NULL
+      END
+    `;
+
+    const class33 = `(SELECT 1 FROM jso_class33_materials c33 WHERE c33.part_no = h.material LIMIT 1)`;
+    const calcExpiryDays = `
+      CASE
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
+          (e.extension_date - '${targetDate}'::date)
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
+          (TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') - '${targetDate}'::date)
+        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
+          (e.extension_date - '${targetDate}'::date)
+        WHEN h.sled IS NOT NULL AND h.sled != '' THEN
+          (TO_DATE(h.sled, 'MM/DD/YYYY')::date - '${targetDate}'::date)
+        WHEN e.extension_date IS NOT NULL THEN
+          (e.extension_date - '${targetDate}'::date)
+        ELSE NULL
+      END
+    `;
+
+    const pullLogTable = getPullLogTableForDate(targetDate);
+    const nextDate = new Date(d);
+    nextDate.setDate(nextDate.getDate() + 1);
+    const nextDateStr = nextDate.toISOString().split('T')[0];
+
     const expiryResult = await pool.query(`
-      SELECT
-        COUNT(*) as expired_count
+      SELECT COUNT(DISTINCT h.id) as expired_count
       FROM ${GRN_HISTORY_TABLE} h
-      LEFT JOIN jso_material_extension e ON h.gr_document = e.grn
-      LEFT JOIN jso_da_material_document d ON h.reference = d.document_no
-      WHERE DATE(h.creation_date AT TIME ZONE 'Asia/Shanghai') = $1
-        AND h.plant = $2
-        AND h.sled IS NOT NULL AND h.sled != ''
+      LEFT JOIN jso_material_shelf_life sl ON sl.material = h.material AND sl.plant = h.plant
+      LEFT JOIN jso_material_extension e ON e.grn = h.gr_document
+      LEFT JOIN LATERAL (
+        SELECT type
+        FROM ${pullLogTable}
+        WHERE to_number = h.to_number
+          AND rf_ind IS NOT NULL AND rf_ind != ''
+          AND date_created >= '${targetDate}'
+          AND date_created < '${nextDateStr}'
+        LIMIT 1
+      ) pull ON true
+      WHERE h.creation_date >= '${targetDate}'
+        AND h.creation_date < '${nextDateStr}'
+        AND h.plant = '${plantValue}'
         AND (h.is_processed IS NULL OR h.is_processed = FALSE)
-        -- SLED 已过期（对比选定日期）
-        AND TO_DATE(h.sled, 'MM/DD/YYYY') < $1::date
-        -- 排除已延期处理
-        AND NOT (
-          e.grn IS NOT NULL
-          AND e.last_sync_time IS NOT NULL
-          AND e.last_sync_time::date > $1::date
-        )
-        -- 排除管控物料过期
-        AND NOT (
-          d.document_no IS NOT NULL
-          AND d.control_type = '过期物料'
-          AND d.status NOT IN ('待提交', '待接收')
-        )
-    `, [targetDate, plantValue]);
+        AND (${calcExpiryDays} IS NOT NULL AND ${calcExpiryDays} <= 0)
+        AND NOT (${class33} IS NOT NULL AND sl.shelf_life = 0)
+        AND (h.trans != 'PLR' OR h.reference NOT IN (SELECT document_no FROM jso_da_material_document WHERE control_type = '过期物料'))
+        AND (h.trans NOT IN ('FLR', 'IWS') OR pull.type IS DISTINCT FROM 'SPL')
+    `);
 
     const stats = {
       date: targetDate,
@@ -451,8 +491,13 @@ router.get('/today-records', async (req, res) => {
     // 并行执行计数和数据查询
     const countParams = [targetDate];
     if (plant) { countParams.push(plant); }
-    const countQuery = pool.query(`SELECT COUNT(*) as cnt FROM (SELECT DISTINCT ON (h.id, h.trans) h.id FROM ${GRN_HISTORY_TABLE} h WHERE DATE(h.creation_date AT TIME ZONE 'Asia/Shanghai') = $1 ${plant ? 'AND h.plant = $2' : ''}) t`, countParams);
-    const dataQuery = pool.query(`SELECT ${selectCols} ${whereClause} ORDER BY is_class33 DESC, h.creation_time DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, parseInt(pageSize), (parseInt(page) - 1) * parseInt(pageSize)]);
+    const countQuery = pool.query(`SELECT COUNT(*) as cnt FROM (SELECT DISTINCT ON (h.id) h.id FROM ${GRN_HISTORY_TABLE} h WHERE DATE(h.creation_date AT TIME ZONE 'Asia/Shanghai') = $1 ${plant ? 'AND h.plant = $2' : ''}) t`, countParams);
+
+    // 先按 id 去重，然后在结果集上按 33类物料排序
+    const dataQuery = pool.query(`SELECT * FROM (
+      SELECT DISTINCT ON (h.id) ${selectCols} ${whereClause}
+      ORDER BY h.id
+    ) t ORDER BY is_class33 DESC, creation_time DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [...params, parseInt(pageSize), (parseInt(page) - 1) * parseInt(pageSize)]);
 
     const [countResult, result] = await Promise.all([countQuery, dataQuery]);
     const total = parseInt(countResult.rows[0]?.cnt) || 0;
@@ -476,12 +521,16 @@ router.get('/today-records', async (req, res) => {
 // 标记已处理
 router.post('/mark-processed', async (req, res) => {
   try {
-    const { ids } = req.body;
+    const { ids, result, processed_by } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: '请提供要标记的ID列表' });
     }
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
-    await pool.query(`UPDATE ${GRN_HISTORY_TABLE} SET is_processed = TRUE, processed_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`, ids);
+    await pool.query(`
+      UPDATE ${GRN_HISTORY_TABLE}
+      SET is_processed = TRUE, processed_at = CURRENT_TIMESTAMP, processed_by = $${ids.length + 1}, process_result = $${ids.length + 2}
+      WHERE id IN (${placeholders})
+    `, [...ids, processed_by || '', result || '']);
     res.json({ success: true, message: `已成功标记 ${ids.length} 条记录` });
   } catch (error) {
     console.error('标记处理失败:', error);
