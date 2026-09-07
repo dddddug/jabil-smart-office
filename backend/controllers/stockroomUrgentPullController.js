@@ -281,20 +281,32 @@ const pullDataFromExternalAPI = async (dateFrom, dateTo) => {
       return apiDateStr.substring(0, 10);
     };
 
+    // 对 items 按 (pulllist_no, data_date) 去重（保留第一条），避免 ON CONFLICT 同一行多次
+    const seenKeys = new Set();
+    const uniqueItems = [];
+    const uniquePullDataArray = [];
+    for (const item of items) {
+      const dataDate = getLocalDate(item.MaterialReqTime);
+      const key = `${item.PulllistNo || ''}__${dataDate}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        uniqueItems.push(item);
+        uniquePullDataArray.push({
+          pulllistNo: item.PulllistNo || '',
+          reqDate: dataDate
+        });
+      }
+    }
+
     // 构建批量插入数据
-    const values = items.map((item, idx) => {
+    const values = uniqueItems.map((item, idx) => {
       const offset = idx * 27; // 增加一个参数
       return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19}, $${offset + 20}, $${offset + 21}, $${offset + 22}, $${offset + 23}, $${offset + 24}, $${offset + 25}, $${offset + 26}, $${offset + 27})`;
     }).join(',');
 
     // 准备参数
-    const pullDataArray = []; // 用于计算 item_count
-    const params = items.flatMap(item => {
+    const params = uniqueItems.flatMap(item => {
       const dataDate = getLocalDate(item.MaterialReqTime);
-      pullDataArray.push({
-        pulllistNo: item.PulllistNo || '',
-        reqDate: dataDate
-      });
 
       return [
         item.BuildPlan || '',
@@ -357,7 +369,7 @@ const pullDataFromExternalAPI = async (dateFrom, dateTo) => {
     // 异步计算并更新 ITEM 计数（不阻塞主流程）
     setImmediate(async () => {
       try {
-        await updateItemCountsForPulledData(pullDataArray);
+        await updateItemCountsForPulledData(uniquePullDataArray);
       } catch (e) {
         logError('StockroomUrgentPull', '异步更新ITEM计数失败', { error: e.message });
       }

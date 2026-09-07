@@ -25,6 +25,7 @@ export interface MaterialPackageQueryParams {
   partNo?: string;
   materialGroup?: string;
   manufacturer?: string;
+  spec?: string;
   page?: number;
   pageSize?: number;
 }
@@ -45,6 +46,20 @@ export interface BatchImportResult {
 // 获取物料包装信息列表
 export const getMaterialPackages = (params?: MaterialPackageQueryParams) => {
   return request.get<MaterialPackageListResponse>('/material-package', { params });
+};
+
+// 获取规格列表（下拉选择用）
+export const getSpecOptions = () => {
+  return request.get<string[]>('/material-package/spec-options');
+};
+
+// 获取图表统计数据
+export const getChartStats = (params?: MaterialPackageQueryParams) => {
+  return request.get<{
+    specStats: { spec: string; count: string }[];
+    materialGroupStats: { material_group: string; count: string }[];
+    manufacturerStats: { manufacturer: string; count: string }[];
+  }>('/material-package/chart-stats', { params });
 };
 
 // 获取单条物料包装信息

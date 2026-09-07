@@ -40,7 +40,9 @@ export const getDocuments = async (req, res, next) => {
       submitterName,
       isUrgent,
       page = 1,
-      pageSize = 10
+      pageSize = 10,
+      sortField = 'submitted_at',
+      sortOrder = 'desc'
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -117,6 +119,21 @@ export const getDocuments = async (req, res, next) => {
       whereClause += ` AND is_urgent = false`;
     }
 
+    // 动态排序字段映射
+    const sortFieldMap = {
+      'document_no': 'document_no',
+      'wc_name': 'wc_name',
+      'da_no': 'da_no',
+      'ecn_no': 'ecn_no',
+      'control_type': 'control_type',
+      'submitter_name': 'submitter_name',
+      'submitted_at': 'submitted_at',
+      'status': 'status',
+      'created_at': 'created_at'
+    };
+    const orderField = sortFieldMap[sortField] || 'submitted_at';
+    const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
     // 查询列表
     const listParams = [...params, parseInt(pageSize), offset];
     const listResult = await pool.query(`
@@ -156,7 +173,7 @@ export const getDocuments = async (req, res, next) => {
         updated_at
       FROM ${DA_MATERIAL_DOCUMENT_TABLE}
       ${whereClause}
-      ORDER BY created_at DESC
+      ORDER BY ${orderField} ${orderDirection}
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, listParams);
 

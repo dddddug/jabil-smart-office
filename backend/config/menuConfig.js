@@ -25,7 +25,7 @@ const menuConfig = {
     { code: 'station-arrangement', name: '工位安排', icon: '🏭', routeName: 'station-arrangement', group: 'business-center', sortOrder: 2 },
     { code: 'k045', name: 'K045 单据管理', icon: '📦', routeName: 'k045', group: 'business-center', sortOrder: 3 },
     { code: 'da-material', name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', group: 'business-center', sortOrder: 4 },
-    { code: 'warehouse-return', name: '回仓申请', icon: '📥', routeName: 'warehouse-return', group: 'business-center', sortOrder: 5 },
+    { code: 'warehouse-return', name: '产线回仓申请', icon: '📥', routeName: 'warehouse-return', group: 'business-center', sortOrder: 5 },
 
     // 数据中心
     { code: 'kpi-indicators', name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', group: 'data-center', sortOrder: 1 },
@@ -51,6 +51,7 @@ const menuConfig = {
     { code: '6s-management', name: '6S管理', icon: '✨', routeName: '6s-management', group: 'warehouse-management', sortOrder: 3 },
     { code: 'k2-diff-registration', name: 'K**差异登记', icon: '📝', routeName: 'k2-diff-registration', group: 'warehouse-management', sortOrder: 4 },
     { code: 'material-package', name: '物料包装信息', icon: '📦', routeName: 'material-package', group: 'warehouse-management', sortOrder: 5 },
+    { code: 'missing-material-package', name: '待填充料号', icon: '📋', routeName: 'missing-material-package', group: 'warehouse-management', sortOrder: 6 },
 
     // 系统管理
     { code: 'announcement-management', name: '系统公告', icon: '📢', routeName: 'announcement-management', group: 'system-management', sortOrder: 1 },

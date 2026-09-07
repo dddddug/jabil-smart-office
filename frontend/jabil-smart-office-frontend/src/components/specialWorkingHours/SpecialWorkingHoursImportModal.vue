@@ -111,33 +111,34 @@ export default {
 
       try {
         const response = await importSpecialWorkingHours(this.selectedFile)
-        this.importResult = { 
-          successCount: response?.insertedCount || 0,
-          errors: response?.errors || [] 
+        const data = response?.data || response || {}
+        this.importResult = {
+          successCount: data.insertedCount || 0,
+          errors: data.errors || []
         }
 
-        if (this.importResult.errors.length > 0) {
-          this.$message.error('部分数据导入失败，请查看详情。')
-        } else {
+        if (this.importResult.successCount > 0 && this.importResult.errors.length === 0) {
           this.$message.success('文件导入成功！')
+        } else if (this.importResult.errors.length > 0) {
+          this.$message.warning(`导入完成，成功 ${this.importResult.successCount} 条，失败 ${this.importResult.errors.length} 条`)
+        } else {
+          this.$message.warning('未导入任何数据')
         }
-        this.$emit('import-success') // 通知父组件导入成功，刷新列表
-        eventBus.emit('special-working-hours-changed') // 通知工位安排页面刷新
+        this.$emit('import-success')
+        eventBus.emit('special-working-hours-changed')
       } catch (error) {
         console.error('导入失败:', error)
-        // error 对象现在包含 code, message, 以及可能的 details
         this.$message.error('文件导入失败：' + (error.message || '未知错误'))
-        // 如果有详细错误信息，也尝试显示
         if (error.details && Array.isArray(error.details) && error.details.length > 0) {
-          this.importResult = { 
-            successCount: 0, // 导入失败，成功数为0
-            errors: error.details // 将后端返回的详细错误信息赋值给 errors
-          } 
+          this.importResult = {
+            successCount: 0,
+            errors: error.details
+          }
         } else {
-          this.importResult = { 
-            successCount: 0, 
-            errors: [error.message || '未知错误'] 
-          } 
+          this.importResult = {
+            successCount: 0,
+            errors: [error.message || '未知错误']
+          }
         }
       } finally {
         loading.close()

@@ -14,6 +14,7 @@
       <div class="table-card-header">
         <div class="table-card-title">📦 MaterialPackage</div>
         <div class="table-card-actions">
+          <button type="button" class="btn btn-warning" @click="$router.push('/missing-material-package')">📋 待填充料号</button>
           <button type="button" class="btn btn-secondary" @click="handleExport">📥 导出</button>
           <button type="button" class="btn btn-secondary" @click="showImportDialog = true">📤 批量导入</button>
           <button type="button" class="btn btn-primary" @click="openAddDialog">➕ 新增</button>
@@ -33,6 +34,13 @@
           <label>Manufacturer：</label>
           <input type="text" v-model="searchParams.manufacturer" placeholder="请输入Manufacturer" @keyup.enter="handleSearch" />
         </div>
+        <div class="search-item">
+          <label>规格：</label>
+          <select v-model="searchParams.spec">
+            <option value="">全部</option>
+            <option v-for="spec in specOptions" :key="spec" :value="spec">{{ spec }}</option>
+          </select>
+        </div>
         <div class="search-actions">
           <button type="button" class="btn btn-secondary" @click="handleReset">🔄 重置</button>
           <button type="button" class="btn btn-primary" @click="handleSearch">🔍 搜索</button>
@@ -41,7 +49,7 @@
 
       <div class="card-body" style="padding: 0;">
         <!-- 图表分析区域 -->
-        <div v-if="chartData.length > 0" class="charts-section">
+        <div v-if="specStats.length > 0 || materialGroupStats.length > 0 || manufacturerStats.length > 0" class="charts-section">
           <div class="charts-header">
             <span class="charts-title">📊 数据分析</span>
             <button type="button" class="btn-icon" @click="showCharts = !showCharts" :title="showCharts ? '收起图表' : '展开图表'">
@@ -248,6 +256,8 @@ import {
   exportMaterialPackages,
   batchImportMaterialPackages,
   downloadMaterialPackageTemplate,
+  getSpecOptions,
+  getChartStats,
   MaterialPackage
 } from '../api/materialPackage';
 
@@ -270,7 +280,6 @@ const importResult = ref<ImportResult | null>(null);
 
 // 图表相关
 const showCharts = ref(true);
-const chartData = ref<MaterialPackage[]>([]);
 const materialGroupChartRef = ref<HTMLElement | null>(null);
 const manufacturerChartRef = ref<HTMLElement | null>(null);
 const specChartRef = ref<HTMLElement | null>(null);
@@ -278,10 +287,23 @@ let materialGroupChart: echarts.ECharts | null = null;
 let manufacturerChart: echarts.ECharts | null = null;
 let specChart: echarts.ECharts | null = null;
 
+// 规格下拉选项
+const specOptions = ref<string[]>([]);
+
+// 图表统计数据
+interface ChartStats {
+  spec: string;
+  count: number;
+}
+const specStats = ref<ChartStats[]>([]);
+const materialGroupStats = ref<ChartStats[]>([]);
+const manufacturerStats = ref<ChartStats[]>([]);
+
 const searchParams = reactive({
   partNo: '',
   materialGroup: '',
-  manufacturer: ''
+  manufacturer: '',
+  spec: ''
 });
 
 const pagination = reactive({
@@ -309,12 +331,15 @@ const loadData = async () => {
       partNo: searchParams.partNo || undefined,
       materialGroup: searchParams.materialGroup || undefined,
       manufacturer: searchParams.manufacturer || undefined,
+      spec: searchParams.spec || undefined,
       page: pagination.page,
       pageSize: pagination.pageSize
     };
     const res: any = await getMaterialPackages(params);
-    tableData.value = res.items || [];
-    pagination.total = res.total || 0;
+    // API 响应格式: { code, message, data: { items, total, page, pageSize } }
+    const data = res.data || res;
+    tableData.value = data.items || [];
+    pagination.total = data.total || 0;
     // 加载图表数据
     loadChartData();
   } catch (error) {
@@ -326,9 +351,26 @@ const loadData = async () => {
 // 加载图表数据
 const loadChartData = async () => {
   try {
-    // 获取所有数据用于图表分析
-    const res: any = await getMaterialPackages({ pageSize: 10000 });
-    chartData.value = res.items || [];
+    // 使用专用统计API获取图表数据
+    const res: any = await getChartStats({
+      partNo: searchParams.partNo || undefined,
+      materialGroup: searchParams.materialGroup || undefined,
+      manufacturer: searchParams.manufacturer || undefined,
+      spec: searchParams.spec || undefined
+    });
+    const data = res.data || res;
+    specStats.value = (data.specStats || []).map((item: any) => ({
+      spec: item.spec,
+      count: parseInt(item.count)
+    }));
+    materialGroupStats.value = (data.materialGroupStats || []).map((item: any) => ({
+      spec: item.material_group,
+      count: parseInt(item.count)
+    }));
+    manufacturerStats.value = (data.manufacturerStats || []).map((item: any) => ({
+      spec: item.manufacturer,
+      count: parseInt(item.count)
+    }));
     nextTick(() => {
       renderCharts();
     });
@@ -348,16 +390,11 @@ const renderCharts = () => {
 const renderMaterialGroupChart = () => {
   if (!materialGroupChartRef.value) return;
 
-  const data = chartData.value;
-  const groupCount: Record<string, number> = {};
-  data.forEach(item => {
-    const group = item.materialGroup || '未分类';
-    groupCount[group] = (groupCount[group] || 0) + 1;
-  });
-
-  const chartDataArr = Object.entries(groupCount)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+  const stats = materialGroupStats.value;
+  const chartDataArr = stats.map(item => ({
+    name: item.spec || '未分类',
+    value: item.count
+  }));
 
   if (!materialGroupChart) {
     materialGroupChart = echarts.init(materialGroupChartRef.value);
@@ -374,23 +411,26 @@ const renderMaterialGroupChart = () => {
       data: chartDataArr
     }]
   });
+
+  // 点击图表项筛选
+  materialGroupChart.off('click');
+  materialGroupChart.on('click', (params: any) => {
+    if (params.name && params.name !== '未分类') {
+      searchParams.materialGroup = params.name;
+      handleSearch();
+    }
+  });
 };
 
 // 渲染制造商分布图
 const renderManufacturerChart = () => {
   if (!manufacturerChartRef.value) return;
 
-  const data = chartData.value;
-  const mfrCount: Record<string, number> = {};
-  data.forEach(item => {
-    const mfr = item.manufacturer || '未分类';
-    mfrCount[mfr] = (mfrCount[mfr] || 0) + 1;
-  });
-
-  const chartDataArr = Object.entries(mfrCount)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10); // 只显示前10个
+  const stats = manufacturerStats.value;
+  const chartDataArr = stats.slice(0, 10).map(item => ({
+    name: item.spec || '未分类',
+    value: item.count
+  }));
 
   if (!manufacturerChart) {
     manufacturerChart = echarts.init(manufacturerChartRef.value);
@@ -408,23 +448,26 @@ const renderManufacturerChart = () => {
       label: { show: true, position: 'top' }
     }]
   });
+
+  // 点击图表项筛选
+  manufacturerChart.off('click');
+  manufacturerChart.on('click', (params: any) => {
+    if (params.name && params.name !== '未分类') {
+      searchParams.manufacturer = params.name;
+      handleSearch();
+    }
+  });
 };
 
 // 渲染规格分布图
 const renderSpecChart = () => {
   if (!specChartRef.value) return;
 
-  const data = chartData.value;
-  const specCount: Record<string, number> = {};
-  data.forEach(item => {
-    const spec = item.spec || '未分类';
-    specCount[spec] = (specCount[spec] || 0) + 1;
-  });
-
-  const chartDataArr = Object.entries(specCount)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10); // 只显示前10个
+  const stats = specStats.value;
+  const chartDataArr = stats.slice(0, 10).map(item => ({
+    name: item.spec || '未分类',
+    value: item.count
+  }));
 
   if (!specChart) {
     specChart = echarts.init(specChartRef.value);
@@ -441,6 +484,15 @@ const renderSpecChart = () => {
       itemStyle: { color: '#91CC75', borderRadius: [4, 4, 0, 0] },
       label: { show: true, position: 'top' }
     }]
+  });
+
+  // 点击图表项筛选
+  specChart.off('click');
+  specChart.on('click', (params: any) => {
+    if (params.name && params.name !== '未分类') {
+      searchParams.spec = params.name;
+      handleSearch();
+    }
   });
 };
 
@@ -462,6 +514,7 @@ const handleReset = () => {
   searchParams.partNo = '';
   searchParams.materialGroup = '';
   searchParams.manufacturer = '';
+  searchParams.spec = '';
   pagination.page = 1;
   loadData();
 };
@@ -566,11 +619,13 @@ const handleExport = async () => {
     const res: any = await exportMaterialPackages({
       partNo: searchParams.partNo || undefined,
       materialGroup: searchParams.materialGroup || undefined,
-      manufacturer: searchParams.manufacturer || undefined
+      manufacturer: searchParams.manufacturer || undefined,
+      spec: searchParams.spec || undefined
     });
 
-    const data = res || [];
-    if (data.length === 0) {
+    // API 响应格式: { code, message, data: [...] }
+    const data = (res.data || res) || [];
+    if (!Array.isArray(data) || data.length === 0) {
       ElMessage.warning({ message: '没有可导出的数据', showClose: true });
       return;
     }
@@ -661,21 +716,31 @@ const handleImport = async () => {
 
   try {
     const res: any = await batchImportMaterialPackages(selectedFile.value);
+    // API 响应格式: { code, message, data: { inserted, updated, errors } }
+    const resultData = res?.data || res;
+    if (!resultData) {
+      throw new Error('服务器返回数据格式错误');
+    }
     importResult.value = {
-      inserted: res.inserted || 0,
-      updated: res.updated || 0,
-      errors: res.errors || []
+      inserted: resultData.inserted || 0,
+      updated: resultData.updated || 0,
+      errors: resultData.errors || []
     };
 
-    if (res.errors?.length > 0) {
+    if (resultData.errors?.length > 0) {
       ElMessage.warning({ message: `导入完成，部分数据存在错误`, showClose: true });
     } else {
-      ElMessage.success({ message: '导入成功', showClose: true });
-      loadData();
+      ElMessage.success({ message: `导入成功：新增 ${resultData.inserted || 0} 条，更新 ${resultData.updated || 0} 条`, showClose: true });
+      // 2秒后自动关闭导入窗口
+      setTimeout(() => {
+        closeImportDialog();
+        loadData();
+      }, 1500);
     }
   } catch (error: any) {
     console.error('导入失败:', error);
-    ElMessage.error({ message: error.message || '导入失败', showClose: true });
+    const errorMsg = error?.message || error?.msg || '导入失败，请检查文件格式';
+    ElMessage.error({ message: errorMsg, showClose: true });
   } finally {
     importing.value = false;
   }
@@ -684,8 +749,19 @@ const handleImport = async () => {
 // 生命周期
 onMounted(() => {
   loadData();
+  loadSpecOptions();
   window.addEventListener('resize', handleResize);
 });
+
+// 加载规格下拉选项
+const loadSpecOptions = async () => {
+  try {
+    const res: any = await getSpecOptions();
+    specOptions.value = (res.data || res) || [];
+  } catch (error) {
+    console.error('加载规格选项失败:', error);
+  }
+};
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
@@ -785,6 +861,15 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
+.btn-warning {
+  background-color: #F59E0B;
+  color: #FFFFFF;
+}
+
+.btn-warning:hover {
+  background-color: #D97706;
+}
+
 .btn-secondary {
   background-color: #FFFFFF;
   color: #374151;
@@ -825,6 +910,21 @@ onBeforeUnmount(() => {
 }
 
 .search-item input:focus {
+  outline: none;
+  border-color: #0066CC;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.search-item select {
+  padding: 8px 12px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 160px;
+  background-color: white;
+}
+
+.search-item select:focus {
   outline: none;
   border-color: #0066CC;
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
@@ -893,10 +993,10 @@ onBeforeUnmount(() => {
 
 .data-table th,
 .data-table td {
-  padding: 12px 16px;
+  padding: 8px 12px;
   text-align: left;
   border-bottom: 1px solid #E5E7EB;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .data-table th {

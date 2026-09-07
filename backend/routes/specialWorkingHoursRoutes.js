@@ -10,7 +10,7 @@ import { parseExcel } from '../utils/excelUtils.js';
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
 import { SPECIAL_WORKING_HOURS_TABLE, USER_TABLE, WORKSTATION_ARRANGEMENT_TABLE } from '../config/db_constants.js';
 import { handleSpecialWorkingHoursUpload } from '../services/batchUploadService.js';
-import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -79,33 +79,27 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ code: 400, message: '所有字段为必填项' });
     }
 
-    // 组合日期和时间 - 更稳健的处理
     const startDateTimeStr = date + ' ' + startTime;
     const endDateTimeStr = date + ' ' + endTime;
 
     const combinedStartTime = dayjs(startDateTimeStr);
     const combinedEndTime = dayjs(endDateTimeStr);
 
-    // 验证日期格式
     if (!combinedStartTime.isValid() || !combinedEndTime.isValid()) {
       return res.status(400).json({ code: 400, message: '日期时间格式无效' });
     }
 
-    // 业务强制规则：开始时间、结束时间不允许跨天
     const startDay = combinedStartTime.format('YYYY-MM-DD');
     const endDay = combinedEndTime.format('YYYY-MM-DD');
     if (startDay !== endDay) {
       return res.status(400).json({ code: 400, message: '开始时间、结束时间不允许跨天' });
     }
-    
-    // 固定使用超级管理员
-    // 获取当前登录用户的真实姓名
+
     const userResult = await pool.query(`SELECT real_name FROM ${USER_TABLE} WHERE id = $1`, [req.user.id]);
     const registeredBy = userResult.rows.length > 0 ? userResult.rows[0].real_name : '未知用户';
 
     const recordsToInsert = [];
     for (const employeeName of employeeNames) {
-      // 关联 jso_system_user_management 表，依据所选姓名回写对应 old_employee_id
       const userResult = await pool.query(
         `SELECT old_employee_id FROM ${USER_TABLE} WHERE real_name = $1`,
         [employeeName]
@@ -116,7 +110,7 @@ router.post('/', authenticateToken, async (req, res) => {
       const oldEmployeeId = userResult.rows[0].old_employee_id;
 
       recordsToInsert.push({
-        date: date, // 直接使用字符串，PostgreSQL 会自动解析
+        date: date,
         event: event,
         employee_name: employeeName,
         old_employee_id: oldEmployeeId,
@@ -126,20 +120,15 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
-    // 使用事务确保数据一致性
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       const insertedRows = [];
       for (const record of recordsToInsert) {
-        // Check for duplicates before inserting (optional, but good practice)
-        // For simplicity, let's assume no duplicate check for now,
-        // or add it if needed based on business rules.
-
         const result = await client.query(
-          `INSERT INTO ${SPECIAL_WORKING_HOURS_TABLE} 
+          `INSERT INTO ${SPECIAL_WORKING_HOURS_TABLE}
            (date, event, employee_name, old_employee_id, start_time, end_time, registered_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING *`,
           [record.date, record.event, record.employee_name, record.old_employee_id, record.start_time, record.end_time, record.registered_by]
         );
@@ -150,7 +139,7 @@ router.post('/', authenticateToken, async (req, res) => {
     } catch (transactionError) {
       await client.query('ROLLBACK');
       console.error('特殊工时事务处理失败:', transactionError);
-      throw transactionError; // Re-throw to be caught by outer catch
+      throw transactionError;
     } finally {
       client.release();
     }
@@ -164,9 +153,8 @@ router.post('/', authenticateToken, async (req, res) => {
 router.delete('/', authenticateToken, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { ids, employeeName, date, event } = req.query; // 获取查询参数
+    const { ids, employeeName, date, event } = req.query;
 
-    // 如果有 ids 参数，使用原有的批量删除逻辑
     if (ids) {
       const idList = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
@@ -174,19 +162,15 @@ router.delete('/', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: '请提供有效的特殊工时记录ID' });
       }
 
-      // 构建IN查询的占位符，例如：$1, $2, $3
       const placeholders = idList.map((_, index) => `$${index + 1}`).join(', ');
 
-      // 先查询要删除的记录，获取员工姓名和日期，用于删除工位安排表中的记录
       const recordsToDelete = await client.query(
         `SELECT date, employee_name FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE id IN (${placeholders})`,
         idList
       );
 
-      // 使用事务删除数据
       await client.query('BEGIN');
 
-      // 删除特殊工时记录
       const deleteResult = await client.query(
         `DELETE FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE id IN (${placeholders}) RETURNING *`,
         idList
@@ -197,18 +181,12 @@ router.delete('/', authenticateToken, async (req, res) => {
         return res.status(404).json({ error: '没有找到匹配的特殊工时记录进行删除' });
       }
 
-      // 删除工位安排表中对应的记录（根据员工姓名和日期，删除特殊工时工位的安排）
       for (const record of recordsToDelete.rows) {
-        // 查找该员工在该日期的特殊工时工位安排并删除
         await client.query(
           `DELETE FROM ${WORKSTATION_ARRANGEMENT_TABLE}
            WHERE arrangement_date = $1
-           AND employee_id IN (
-             SELECT id FROM ${USER_TABLE} WHERE real_name = $2
-           )
-           AND workstation_id IN (
-             SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%'
-           )`,
+           AND employee_id IN (SELECT id FROM ${USER_TABLE} WHERE real_name = $2)
+           AND workstation_id IN (SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%')`,
           [record.date, record.employee_name]
         );
       }
@@ -217,7 +195,6 @@ router.delete('/', authenticateToken, async (req, res) => {
       return res.json({ success: true, deletedCount: deleteResult.rows.length });
     }
 
-    // 如果有 employeeName, date, event 参数，根据这些条件删除
     if (employeeName && date && event) {
       await client.query('BEGIN');
 
@@ -232,16 +209,11 @@ router.delete('/', authenticateToken, async (req, res) => {
         return res.status(404).json({ error: '没有找到匹配的特殊工时记录进行删除' });
       }
 
-      // 删除工位安排表中对应的记录
       await client.query(
         `DELETE FROM ${WORKSTATION_ARRANGEMENT_TABLE}
          WHERE arrangement_date = $1
-         AND employee_id IN (
-           SELECT id FROM ${USER_TABLE} WHERE real_name = $2
-         )
-         AND workstation_id IN (
-           SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%'
-         )`,
+         AND employee_id IN (SELECT id FROM ${USER_TABLE} WHERE real_name = $2)
+         AND workstation_id IN (SELECT id FROM jso_config_workstation WHERE name LIKE '%特殊工时%')`,
         [date, employeeName]
       );
 
@@ -260,17 +232,56 @@ router.delete('/', authenticateToken, async (req, res) => {
 });
 
 // 下载特殊工时导入模板
-router.get('/template', authenticateToken, (req, res) => {
+router.get('/template', authenticateToken, async (req, res) => {
   try {
-    const filePath = path.join(__dirname, '..', 'resources', 'excel_templates', 'SpecialWorkingHoursImportTemplate.xlsx');
-    if (fs.existsSync(filePath)) {
-      res.download(filePath, 'SpecialWorkingHoursImportTemplate.xlsx');
-    } else {
-      res.status(404).json({ message: '导入模板文件不存在' });
-    }
+    // 获取事项列表
+    const eventResult = await pool.query(`SELECT DISTINCT event FROM ${SPECIAL_WORKING_HOURS_TABLE} ORDER BY event LIMIT 10`);
+    const events = eventResult.rows.map(r => r.event);
+
+    // 创建Excel模板
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('特殊工时导入');
+
+    // 设置列头
+    worksheet.columns = [
+      { header: '日期', key: 'date', width: 15 },
+      { header: '事项', key: 'event', width: 25 },
+      { header: '姓名', key: 'employeeName', width: 15 },
+      { header: '开始时间', key: 'startTime', width: 15 },
+      { header: '结束时间', key: 'endTime', width: 15 }
+    ];
+
+    // 添加表头样式
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFCCE5FF' }
+    };
+
+    // 添加示例数据
+    const today = dayjs().format('YYYY-MM-DD');
+    const eventsExample = events.length > 0 ? events[0] : '请选择事项';
+
+    // 示例行（黄色字体标记为示例，请删除后填写实际数据）
+    const exampleRow = worksheet.addRow({
+      date: today,
+      event: eventsExample,
+      employeeName: '示例员工姓名',
+      startTime: '09:00',
+      endTime: '12:00'
+    });
+    exampleRow.font = { color: { argb: 'FFFF0000' } };
+
+    // 设置响应头
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=' + encodeURIComponent('特殊工时导入模板.xlsx'));
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (error) {
-    console.error('下载特殊工时导入模板失败:', error);
-    res.status(500).json({ message: '下载特殊工时导入模板失败' });
+    console.error('生成特殊工时导入模板失败:', error);
+    res.status(500).json({ message: '生成导入模板失败' });
   }
 });
 
@@ -282,7 +293,6 @@ router.post('/import', authenticateToken, memoryUpload.single('file'), async (re
     }
 
     const rows = parseExcel(req.file.buffer);
-    // 获取当前登录用户的真实姓名
     const userResult = await pool.query(`SELECT real_name FROM ${USER_TABLE} WHERE id = $1`, [req.user.id]);
     const registeredBy = userResult.rows.length > 0 ? userResult.rows[0].real_name : '未知用户';
     const result = await handleSpecialWorkingHoursUpload(rows, registeredBy);
@@ -327,7 +337,22 @@ router.get('/export', authenticateToken, async (req, res) => {
     const result = await pool.query(query, where.values);
     const specialWorkingHours = result.rows;
 
+    // 统计各事项用时
+    const statsQuery = `
+      SELECT event,
+             SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 3600 as total_hours
+      FROM ${SPECIAL_WORKING_HOURS_TABLE}
+    ` + where.clause + ` GROUP BY event ORDER BY total_hours DESC`;
+
+    const statsResult = await pool.query(statsQuery, where.values);
+    const eventStats = statsResult.rows;
+
+    // 计算总计用时
+    const totalHours = eventStats.reduce((sum, row) => sum + parseFloat(row.total_hours || 0), 0);
+
     const workbook = new ExcelJS.Workbook();
+
+    // 第一个Sheet：特殊工时记录
     const worksheet = workbook.addWorksheet('特殊工时记录');
 
     // 设置列头
@@ -346,7 +371,7 @@ router.get('/export', authenticateToken, async (req, res) => {
     specialWorkingHours.forEach(row => {
       const start = dayjs(row.start_time);
       const end = dayjs(row.end_time);
-      const hours = end.diff(start, 'hour', true); // 计算小时数
+      const hours = end.diff(start, 'hour', true);
       worksheet.addRow({
         date: dayjs(row.date).format('YYYY-MM-DD'),
         event: row.event,
@@ -359,11 +384,30 @@ router.get('/export', authenticateToken, async (req, res) => {
       });
     });
 
+    // 第二个Sheet：统计汇总
+    const statsSheet = workbook.addWorksheet('用时统计');
+
+    statsSheet.columns = [
+      { header: '事项', key: 'event', width: 30 },
+      { header: '用时(小时)', key: 'totalHours', width: 15 }
+    ];
+
+    // 添加各事项用时
+    eventStats.forEach(row => {
+      statsSheet.addRow({
+        event: row.event,
+        totalHours: parseFloat(row.total_hours || 0).toFixed(1)
+      });
+    });
+
+    // 添加空白行和总计
+    statsSheet.addRow({ event: '', totalHours: '' });
+    statsSheet.addRow({ event: '总计', totalHours: totalHours.toFixed(1) });
+
     // 设置响应头
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=' + encodeURIComponent('特殊工时记录.xlsx'));
 
-    // 将 workbook 写入 res 响应
     await workbook.xlsx.write(res);
     res.end();
 

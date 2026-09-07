@@ -52,6 +52,16 @@ interface EmailCcConfig {
   emailType?: string;
 }
 
+// Warehouse-Username 映射配置类型
+interface WarehouseUsernameMapping {
+  id?: number;
+  warehouse: string;
+  username: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // 获取单据列表
 export const getDocuments = (params?: DocumentQueryParams) => {
   return request.get('/warehouse-return/documents', { params });
@@ -137,6 +147,21 @@ export const saveEmailCcConfig = (data: { configs: EmailCcConfig[] }) => {
   return request.post('/warehouse-return/config/email-cc', data);
 };
 
+// 获取产线回仓通用配置
+export const getWarehouseReturnConfig = () => {
+  return request.get('/warehouse-return/config');
+};
+
+// 保存产线回仓通用配置
+export const saveWarehouseReturnConfig = (data: { mappings: WarehouseUsernameMapping[] }) => {
+  return request.post('/warehouse-return/config', data);
+};
+
+// 删除产线回仓配置映射
+export const deleteWarehouseReturnConfig = (id: number) => {
+  return request.delete(`/warehouse-return/config/${id}`);
+};
+
 // 下载导入模板
 export const getTemplate = () => {
   return request.get('/warehouse-return/template');
@@ -160,5 +185,8 @@ export default {
   saveBuildingConfigs,
   getEmailCcConfig,
   saveEmailCcConfig,
+  getWarehouseReturnConfig,
+  saveWarehouseReturnConfig,
+  deleteWarehouseReturnConfig,
   getTemplate
 };

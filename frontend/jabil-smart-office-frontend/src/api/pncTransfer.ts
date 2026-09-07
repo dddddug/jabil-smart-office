@@ -41,6 +41,8 @@ export type GetDocumentsParams = {
   startDate?: string;
   endDate?: string;
   creatorName?: string;
+  partNumber?: string;
+  grn?: string;
   page?: number;
   pageSize?: number;
 };

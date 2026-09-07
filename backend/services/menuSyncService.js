@@ -23,7 +23,7 @@ const menuConfig = {
     { code: 'station-arrangement', name: '工位安排', icon: '🏭', routeName: 'station-arrangement', group: 'business-center', sortOrder: 2 },
     { code: 'k045', name: 'K045 单据管理', icon: '📦', routeName: 'k045', group: 'business-center', sortOrder: 3 },
     { code: 'da-material', name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', group: 'business-center', sortOrder: 4 },
-    { code: 'warehouse-return', name: '回仓申请', icon: '📥', routeName: 'warehouse-return', group: 'business-center', sortOrder: 5 },
+    { code: 'warehouse-return', name: '产线回仓申请', icon: '📥', routeName: 'warehouse-return', group: 'business-center', sortOrder: 5 },
     { code: 'kpi-indicators', name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', group: 'data-center', sortOrder: 1 },
     { code: 'cost-summary', name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', group: 'data-center', sortOrder: 2 },
     { code: 'production-tracking', name: '生产追踪', icon: '📊', routeName: 'production-tracking', group: 'data-center', sortOrder: 3 },

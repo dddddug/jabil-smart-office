@@ -60,16 +60,28 @@ function parseFile(filePath) {
     if (line.startsWith('|')) {
       const parts = line.split('|').map(p => p.trim()).filter(p => p);
       // 文件格式: Plnt, Material group, Material, Material description, SLife, RSL, Stor., Per. ind.
+      // Material description 可能包含逗号，所以从右往左解析固定字段
       if (parts.length >= 8) {
+        const period_indicator = parts[parts.length - 1];  // 最后一个字段
+        const storage_indicator = parts[parts.length - 2];  // 倒数第二个
+        const remaining_shelf_life = parseInt(parts[parts.length - 3].replace(/,/g, '')) || 0;
+        const shelf_life = parseInt(parts[parts.length - 4].replace(/,/g, '')) || 0;
+        // 中间的是 material, material_group, material_description
+        const material = parts[2];
+        const material_group = parts[1];
+        const plant = parts[0];
+        // material_description 是从索引3到倒数第5个字段的合并
+        const material_description = parts.slice(3, parts.length - 4).join('|').replace(/\|/g, ',');
+
         records.push([
-          parts[0],                    // plant
-          parts[1],                    // material_group
-          parts[2],                    // material
-          parts[3],                    // material_description
-          parseInt(parts[4]) || 0,     // shelf_life
-          parseInt(parts[5]) || 0,     // remaining_shelf_life
-          parts[6],                    // storage_indicator
-          parts[parts.length - 1],     // period_indicator (最后一个字段)
+          plant,
+          material_group,
+          material,
+          material_description,
+          shelf_life,
+          remaining_shelf_life,
+          storage_indicator,
+          period_indicator,
           reportDate
         ]);
       }
@@ -103,13 +115,14 @@ async function saveBatch(records) {
           plant, material_group, material, material_description,
           shelf_life, remaining_shelf_life, storage_indicator, period_indicator, report_date
         ) VALUES ${values.join(', ')}
-        ON CONFLICT (plant, material, report_date) DO UPDATE SET
+        ON CONFLICT (plant, material) DO UPDATE SET
           material_group = EXCLUDED.material_group,
           material_description = EXCLUDED.material_description,
           shelf_life = EXCLUDED.shelf_life,
           remaining_shelf_life = EXCLUDED.remaining_shelf_life,
           storage_indicator = EXCLUDED.storage_indicator,
           period_indicator = EXCLUDED.period_indicator,
+          report_date = EXCLUDED.report_date,
           updated_at = CURRENT_TIMESTAMP
       `, params);
 

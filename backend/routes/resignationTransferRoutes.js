@@ -3,6 +3,7 @@ import pool from '../config/db.js';
 import { buildPagination, buildWhereClause } from '../utils/sqlUtils.js';
 import { authenticateToken } from '../middleware/authMiddleware.js'; // 导入认证中间件
 import { checkApproverRole } from '../utils/authMiddleware.js'; // 导入审批角色检查中间件
+import { success, paginated } from '../utils/responseHelper.js';
 const router = express.Router();
 
 // Helper function to build dynamic queries
@@ -13,9 +14,9 @@ const buildResignationTransferQuery = (filters) => {
             rt.employee_id AS "employeeId",
             su.real_name AS "employeeName",
             rt.plant_id AS "plantId",
-            op.name AS "plantName",
+            COALESCE(op.name, sup.name) AS "plantName",
             rt.department_id AS "departmentId",
-            od.name AS "departmentName",
+            COALESCE(od.name, sd.name) AS "departmentName",
             rt.type,
             rt.reason,
             rt.proof_file AS "proofFile",
@@ -48,7 +49,9 @@ const buildResignationTransferQuery = (filters) => {
             jso_hr_resignation_transfer rt
         LEFT JOIN jso_system_user_management su ON rt.employee_id = su.id
         LEFT JOIN jso_org_plant_management op ON rt.plant_id = op.id
+        LEFT JOIN jso_org_plant_management sup ON su.plant_id = sup.id
         LEFT JOIN jso_org_department_management od ON rt.department_id = od.id
+        LEFT JOIN jso_org_department_management sd ON su.department_id = sd.id
         LEFT JOIN jso_system_user_management app_su ON rt.applicant_id = app_su.id
         LEFT JOIN jso_system_user_management apr_su ON rt.approver_id = apr_su.id
         LEFT JOIN jso_system_user_management tr_su ON rt.transfer_to_id = tr_su.id
@@ -58,7 +61,8 @@ const buildResignationTransferQuery = (filters) => {
         LEFT JOIN jso_system_user_management tin_su ON rt.transfer_in_approver_id = tin_su.id
     `;
     const conditions = [
-        { sql: ' AND rt.type = ?', value: filters.type },
+        // 注意：resignation-transfer 表的 type 字段本身就是 '离职' 或 '转岗'，不需要按 type 过滤
+        // 前端传的 type=resignation 不会匹配任何记录
         { sql: ' AND rt.status = ?', value: filters.status },
         { sql: ' AND su.real_name ILIKE ?', value: filters.employeeName, transform: value => `%${value}%` },
         { sql: ' AND rt.created_at BETWEEN ? AND ?', value: filters.startDate && filters.endDate ? [filters.startDate, filters.endDate] : undefined },
@@ -91,10 +95,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
         const totalPages = Math.ceil(total / limit);
 
-        // Get statistics (pending, approved, rejected)
-        const statsClause = buildWhereClause([
-            { sql: ' AND rt.type = ?', value: filters.type },
-        ]);
+        // Get statistics (pending, approved, rejected) - 不再按 type 过滤
         const statsQuery = `
             SELECT
                 COUNT(*) FILTER (WHERE rt.status = 'pending') AS pending,
@@ -102,12 +103,11 @@ router.get('/', authenticateToken, async (req, res) => {
                 COUNT(*) FILTER (WHERE rt.status = 'rejected') AS rejected
             FROM
                 jso_hr_resignation_transfer rt
-            ${statsClause.clause}
         `;
-        const statsResult = await pool.query(statsQuery, statsClause.values);
+        const statsResult = await pool.query(statsQuery);
         const stats = statsResult.rows[0];
 
-        res.json({
+        success(res, {
             items: result.rows,
             total,
             totalPages,
@@ -145,7 +145,7 @@ router.post('/', authenticateToken, checkApproverRole, async (req, res) => {
                 transferOutApproverId, transferInApproverId
             ]
         );
-        res.status(201).json(result.rows[0]);
+        success(res, { item: result.rows[0] }, '创建成功');
     } catch (error) {
         console.error('创建离职/转岗记录失败:', error);
         res.status(500).json({ message: '创建离职/转岗记录失败', error: error.message });
@@ -179,7 +179,7 @@ router.put('/:id', authenticateToken, checkApproverRole, async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ message: '记录未找到' });
         }
-        res.json(result.rows[0]);
+        success(res, result.rows[0], '更新成功');
     } catch (error) {
         console.error('更新离职/转岗记录失败:', error);
         res.status(500).json({ message: '更新离职/转岗记录失败', error: error.message });
@@ -197,10 +197,58 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ message: '记录未找到' });
         }
-        res.status(204).send(); // No content for successful deletion
+        success(res, null, '删除成功');
     } catch (error) {
         console.error('删除离职/转岗记录失败:', error);
         res.status(500).json({ message: '删除离职/转岗记录失败', error: error.message });
+    }
+});
+
+
+// 审批离职/转岗申请
+router.put('/:id/approve', authenticateToken, checkApproverRole, async (req, res) => {
+    const { id } = req.params;
+    const { approvalComment } = req.body;
+
+    try {
+        const result = await pool.query(
+            `UPDATE jso_hr_resignation_transfer
+            SET status = 'approved', approval_comment = $1, approver_id = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3
+            RETURNING *`,
+            [approvalComment, req.user.id, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: '记录未找到' });
+        }
+        success(res, result.rows[0], '审批通过');
+    } catch (error) {
+        console.error('审批失败:', error);
+        res.status(500).json({ message: '审批失败', error: error.message });
+    }
+});
+
+// 撤回离职/转岗申请
+router.put('/:id/withdraw', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.query(
+            `UPDATE jso_hr_resignation_transfer
+            SET status = 'pending', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING *`,
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: '记录未找到' });
+        }
+        success(res, result.rows[0], '撤回成功');
+    } catch (error) {
+        console.error('撤回失败:', error);
+        res.status(500).json({ message: '撤回失败', error: error.message });
     }
 });
 

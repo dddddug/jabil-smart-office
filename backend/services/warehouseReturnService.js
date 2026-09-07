@@ -41,11 +41,11 @@ export const MatchStatus = {
 
 /**
  * 生成回仓单号
- * 格式：HC-YYYYMMDD-XXX
+ * 格式：RET-YYYYMMDD-XXX
  */
 export const generateReturnNo = async () => {
   const today = dayjs().format('YYYYMMDD');
-  const prefix = `HC-${today}-`;
+  const prefix = `RET-${today}-`;
 
   // 使用序列获取当日序号
   const seqResult = await pool.query('SELECT nextval(\'jso_warehouse_return_no_seq\') as seq');
@@ -65,12 +65,53 @@ export const generateReturnNo = async () => {
 
 /**
  * 对账匹配算法
- * 匹配条件：material = SAP.material AND quantity = SAP.quantity AND from_sloc = bay_no
+ * 匹配条件：
+ * 1. trans = 'FLR' or 'STS'
+ * 2. from_sloc = bay_no
+ * 3. rf_ind = 'X'
+ * 4. warehouse 和 username 来自配置
+ * 5. date_created 为接收当天
+ * 6. GRN = reference 字段
  */
-export const reconcileItems = async (requestId, items) => {
+export const reconcileItems = async (requestId, items, options = {}) => {
   const bayNo = items[0]?.bay_no || '';
+  const { warehouse, usernames, receiveDate } = options;
 
-  // 查询 SAP 日志（仅查询 from_sloc 匹配 bay_no 的记录）
+  // 构建 WHERE 条件
+  let whereClause = `WHERE from_sloc = $1 AND trans IN ('FLR', 'STS') AND rf_ind = 'X'`;
+  const params = [bayNo];
+  let paramIndex = 2;
+
+  // 日期条件：接收日期前3天到当天（放宽过滤范围）
+  if (receiveDate) {
+    // 计算起始日期（前3天）
+    const startDate = new Date(receiveDate);
+    startDate.setDate(startDate.getDate() - 3);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    whereClause += ` AND DATE(date_created AT TIME ZONE 'Asia/Shanghai') >= $${paramIndex}`;
+    params.push(startDateStr);
+    paramIndex++;
+    whereClause += ` AND DATE(date_created AT TIME ZONE 'Asia/Shanghai') <= $${paramIndex}`;
+    params.push(receiveDate);
+    paramIndex++;
+  }
+  // 注意：没有 receiveDate 时，不加日期限制，允许匹配任何日期的 SAP 数据
+
+  // Warehouse 条件
+  if (warehouse) {
+    whereClause += ` AND warehouse = $${paramIndex}`;
+    params.push(warehouse);
+    paramIndex++;
+  }
+
+  // Username 条件（支持多个）
+  if (usernames && usernames.length > 0) {
+    const usernamePlaceholders = usernames.map((_, idx) => `$${paramIndex + idx}`).join(', ');
+    whereClause += ` AND user_name IN (${usernamePlaceholders})`;
+    params.push(...usernames);
+  }
+
   const sapResult = await pool.query(`
     SELECT
       id,
@@ -81,14 +122,17 @@ export const reconcileItems = async (requestId, items) => {
       type,
       trans,
       rf_ind,
-      creation_date
+      date_created,
+      warehouse,
+      user_name,
+      reference
     FROM jso_sap_pull_log_partitioned
-    WHERE from_sloc = $1
-      AND DATE(creation_date) >= CURRENT_DATE - INTERVAL '30 days'
-    ORDER BY creation_date DESC
-  `, [bayNo]);
+    ${whereClause}
+    ORDER BY date_created DESC
+  `, params);
 
   const sapLogs = sapResult.rows;
+  logInfo('SAP查询结果', { count: sapLogs.length, bayNo, warehouse, usernames, receiveDate });
 
   const matchedItems = [];      // 匹配成功
   const listOnlyItems = [];     // 清单有，SAP 无
@@ -101,13 +145,32 @@ export const reconcileItems = async (requestId, items) => {
   for (const item of items) {
     let found = false;
 
-    // 在 SAP 日志中查找完全匹配（不合并，多条全部展示）
+    // 在 SAP 日志中查找完全匹配
     for (const sap of sapLogs) {
-      if (
-        sap.material === item.material &&
-        String(sap.quantity) === String(item.qty) &&
-        sap.from_sloc === item.bay_no
-      ) {
+      // 匹配条件：物料号 + 数量（注意：SAP的quantity可能有逗号格式如"1,132.000"）
+      const materialMatch = sap.material === item.material;
+      const qtyMatch = parseFloat(String(sap.quantity).replace(/,/g, '')) === parseFloat(String(item.qty).replace(/,/g, ''));
+
+      // GRN匹配：trans=FLR时需要，trans=STS时不需要
+      const grnMatch = (sap.trans === 'STS') || (sap.reference === item.grn);
+
+      // 调试日志：只对第一条物料打印前几次匹配尝试
+      if (item.id === items[0].id && sapLogs.indexOf(sap) < 3) {
+        logInfo('匹配调试', {
+          itemId: item.id,
+          material: item.material,
+          itemQty: item.qty,
+          sapId: sap.id,
+          sapMaterial: sap.material,
+          sapQty: sap.quantity,
+          sapRef: sap.reference,
+          materialMatch,
+          qtyMatch,
+          grnMatch
+        });
+      }
+
+      if (materialMatch && qtyMatch && grnMatch) {
         matchedItems.push({
           ...item,
           sap_item_id: sap.id,
@@ -122,6 +185,7 @@ export const reconcileItems = async (requestId, items) => {
         });
         matchedSapIds.add(sap.id);
         found = true;
+        break; // 找到第一个匹配就跳出
       }
     }
 
@@ -422,15 +486,15 @@ export const resendEmail = async (emailLogId) => {
  */
 export const getBuildingList = async () => {
   const result = await pool.query(`
-    SELECT building_code, building_name
+    SELECT building, warehouse_location
     FROM ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE}
     WHERE is_active = true
-    ORDER BY sort_order, building_code
+    ORDER BY sort_order, id
   `);
 
   return result.rows.map(row => ({
-    code: row.building_code,
-    name: row.building_name
+    code: row.building,
+    name: row.warehouse_location
   }));
 };
 
@@ -439,15 +503,17 @@ export const getBuildingList = async () => {
  */
 export const getAllBuildingsFromDb = async () => {
   const result = await pool.query(`
-    SELECT id, building_code, building_name, is_active, sort_order
+    SELECT id, building, warehouse_location, system_location, email, is_active, sort_order
     FROM ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE}
-    ORDER BY sort_order, building_code
+    ORDER BY sort_order, id
   `);
 
   return result.rows.map(row => ({
     id: row.id,
-    code: row.building_code,
-    name: row.building_name,
+    code: row.building,
+    name: row.warehouse_location,
+    systemLocation: row.system_location,
+    email: row.email,
     isActive: row.is_active,
     sortOrder: row.sort_order
   }));
@@ -457,24 +523,17 @@ export const getAllBuildingsFromDb = async () => {
  * 保存 Building 配置
  */
 export const saveBuildingConfigToDb = async (buildings) => {
-  // 先标记所有为非活跃
-  await pool.query(`
-    UPDATE ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE}
-    SET is_active = false
-  `);
+  // 先删除所有旧记录
+  await pool.query(`DELETE FROM ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE}`);
 
-  // 更新或插入配置
+  // 重新插入所有配置
   for (let i = 0; i < buildings.length; i++) {
     const b = buildings[i];
     if (b.code && b.name) {
       await pool.query(`
-        INSERT INTO ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE} (building_code, building_name, is_active, sort_order)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (building_code) DO UPDATE SET
-          building_name = $2,
-          is_active = $3,
-          sort_order = $4
-      `, [b.code, b.name, b.isActive !== false, i]);
+        INSERT INTO ${WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE} (building, warehouse_location, system_location, email, is_active, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [b.code, b.name, b.systemLocation || null, b.email || null, b.isActive !== false, i]);
     }
   }
 

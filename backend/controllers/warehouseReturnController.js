@@ -8,6 +8,7 @@ import fs from 'fs';
 import {
   WAREHOUSE_RETURN_REQUEST_TABLE,
   WAREHOUSE_RETURN_ITEMS_TABLE,
+  WAREHOUSE_RETURN_CONFIG_TABLE,
   USER_TABLE
 } from '../config/db_constants.js';
 import { success, paginated } from '../utils/responseHelper.js';
@@ -42,6 +43,7 @@ export const getDocuments = async (req, res, next) => {
       endDate,
       submitterName,
       bayNo,
+      receiveBuilding,
       page = 1,
       pageSize = 10
     } = req.query;
@@ -81,19 +83,18 @@ export const getDocuments = async (req, res, next) => {
       whereClause += ` AND bay_no LIKE $${params.length}`;
     }
 
-    // 根据用户角色过滤数据范围
+    if (receiveBuilding) {
+      params.push(`%${receiveBuilding}%`);
+      whereClause += ` AND receive_building LIKE $${params.length}`;
+    }
+
+    // 根据用户角色过滤数据范围（管理员角色可查看所有记录）
     const user = req.user;
-    if (user.role !== 'super_admin' && user.role !== 'plant_admin') {
-      // IA/MFG 只能查看本人的单据，部门管理员可查看本部门
-      if (user.role === 'dept_admin') {
-        // 部门管理员可以查看所有（后续可加部门过滤）
-        // whereClause += ` AND submitter_dept_id = $${params.length + 1}`;
-        // params.push(user.deptId);
-      } else {
-        // 普通用户只看本人
-        params.push(user.id);
-        whereClause += ` AND submitter_id = $${params.length}`;
-      }
+    const adminRoles = ['super_admin', 'plant_admin', 'dept_admin'];
+    if (user.role_id && !adminRoles.includes(user.role_id)) {
+      // 普通用户只看本人提交的单据
+      params.push(user.id);
+      whereClause += ` AND submitter_id = $${params.length}`;
     }
 
     const listParams = [...params, parseInt(pageSize), offset];
@@ -191,6 +192,7 @@ export const getDocumentById = async (req, res, next) => {
       SELECT
         id,
         request_id,
+        grn,
         material,
         qty,
         bay_no,
@@ -227,6 +229,7 @@ export const getDocumentById = async (req, res, next) => {
       items: itemsResult.rows.map(item => ({
         id: item.id,
         requestId: item.request_id,
+        grn: item.grn,
         material: item.material,
         qty: parseFloat(item.qty),
         bayNo: item.bay_no,
@@ -256,7 +259,7 @@ export const getDocumentById = async (req, res, next) => {
 export const createDocument = async (req, res, next) => {
   try {
     const { bayNo, receiveBuilding, items } = req.body;
-    const user = req.user;
+    const user = req.user || {};
 
     // 验证必填字段
     if (!bayNo) {
@@ -287,6 +290,10 @@ export const createDocument = async (req, res, next) => {
     // 生成回仓单号
     const returnNo = await generateReturnNo();
 
+    // 获取用户名称，添加兜底值防止 NULL
+    const submitterName = user.realName || user.name || user.username || user.account || `User_${user.id}`;
+    const submitterAccount = user.username || user.account || `user_${user.id}`;
+
     // 创建主表记录
     const docResult = await pool.query(`
       INSERT INTO ${WAREHOUSE_RETURN_REQUEST_TABLE} (
@@ -300,8 +307,8 @@ export const createDocument = async (req, res, next) => {
       receiveBuilding,
       ReturnStatus.PENDING_RECEIVING,
       user.id,
-      user.realName || user.name,
-      user.username || user.account
+      submitterName,
+      submitterAccount
     ]);
 
     const requestId = docResult.rows[0].id;
@@ -310,9 +317,9 @@ export const createDocument = async (req, res, next) => {
     for (const item of items) {
       await pool.query(`
         INSERT INTO ${WAREHOUSE_RETURN_ITEMS_TABLE} (
-          request_id, material, qty, bay_no
-        ) VALUES ($1, $2, $3, $4)
-      `, [requestId, item.material, item.qty, item.bayNo]);
+          request_id, grn, material, qty, bay_no
+        ) VALUES ($1, $2, $3, $4, $5)
+      `, [requestId, item.grn || null, item.material, item.qty, item.bayNo]);
     }
 
     logInfo('回仓申请创建成功', { returnNo, bayNo, submitter: user.username });
@@ -497,6 +504,8 @@ export const reconcileDocument = async (req, res, next) => {
     const { id } = req.params;
     const user = req.user;
 
+    logInfo('开始对账', { id, userId: user?.id, userAccount: user?.account });
+
     // 获取单据和物料明细
     const docResult = await pool.query(
       `SELECT * FROM ${WAREHOUSE_RETURN_REQUEST_TABLE} WHERE id = $1`,
@@ -509,32 +518,133 @@ export const reconcileDocument = async (req, res, next) => {
 
     const doc = docResult.rows[0];
 
-    if (doc.status !== ReturnStatus.RECEIVED) {
-      throw BadRequestError('只能对已接收的单据进行对账');
+    // 允许对 received 或 reconciled_diff 状态的单据进行对账
+    if (doc.status !== ReturnStatus.RECEIVED && doc.status !== 'reconciled_diff') {
+      throw BadRequestError('只能对已接收或对账差异状态的单据进行对账');
     }
 
-    // 获取物料明细
+    // 获取物料明细（只处理 pending 状态的物料）
     const itemsResult = await pool.query(`
-      SELECT id, material, qty, bay_no FROM ${WAREHOUSE_RETURN_ITEMS_TABLE}
+      SELECT id, grn, material, qty, bay_no FROM ${WAREHOUSE_RETURN_ITEMS_TABLE}
       WHERE request_id = $1 AND match_status = 'pending'
     `, [id]);
 
     const items = itemsResult.rows.map(item => ({
       id: item.id,
+      grn: item.grn,
       material: item.material,
       qty: parseFloat(item.qty),
       bay_no: item.bay_no
     }));
 
+    logInfo('物料明细查询结果', { itemCount: items.length, items: items.slice(0, 3) });
+
     if (items.length === 0) {
       throw BadRequestError('没有待匹配的物料明细');
     }
 
+    // 获取仓库-用户映射配置（按 warehouse 分组）
+    const configResult = await pool.query(`
+      SELECT warehouse, username FROM ${WAREHOUSE_RETURN_CONFIG_TABLE}
+      WHERE is_active = true
+      ORDER BY warehouse, username
+    `);
+
+    logInfo('仓库配置查询结果', { configCount: configResult.rows.length, config: configResult.rows });
+
+    // 获取单据的接收时间（用于日期筛选），转为中国时区日期
+    let receiveDate = null;
+    if (doc.received_at) {
+      const date = new Date(doc.received_at);
+      // 转换为中国时区 (UTC+8)
+      date.setHours(date.getHours() + 8);
+      receiveDate = date.toISOString().split('T')[0];
+    }
+
+    // 获取所有唯一的 warehouse 列表
+    const warehouses = [...new Set(configResult.rows.map(r => r.warehouse))];
+
     // 执行对账匹配
-    const reconcileResult = await reconcileItems(id, items);
+    // 已匹配的物料 ID 集合（用于去重）
+    const matchedItemIds = new Set();
+    // 已匹配的 SAP 记录 ID 集合
+    const matchedSapIds = new Set();
+    const allMatchedItems = [];
+    const allSapOnlyItems = [];
+    let reconcileResult;
+
+    if (configResult.rows.length > 0 && warehouses.length > 0) {
+      // 遍历每个 warehouse 查询 SAP 数据
+      for (const warehouse of warehouses) {
+        // 获取该 warehouse 下的所有 username
+        const usernames = configResult.rows
+          .filter(r => r.warehouse === warehouse)
+          .map(r => r.username);
+
+        // 只传入未匹配的物料
+        const pendingItems = items.filter(item => !matchedItemIds.has(item.id));
+
+        if (pendingItems.length === 0) break; // 所有物料都已匹配
+
+        const tempResult = await reconcileItems(id, pendingItems, {
+          warehouse: warehouse,
+          usernames: usernames,
+          receiveDate: receiveDate
+        });
+
+        // 收集匹配成功的物料
+        logInfo('对账匹配结果', {
+          warehouse,
+          usernames,
+          receiveDate,
+          tempMatched: tempResult.matchedItems.length,
+          tempListOnly: tempResult.listOnlyItems.length,
+          tempSapOnly: tempResult.sapOnlyItems.length
+        });
+
+        for (const item of tempResult.matchedItems) {
+          if (!matchedItemIds.has(item.id)) {
+            matchedItemIds.add(item.id);
+            matchedSapIds.add(item.sap_item_id);
+            allMatchedItems.push(item);
+            logInfo('匹配成功', { itemId: item.id, material: item.material, sapId: item.sap_item_id });
+          }
+        }
+
+        // 收集 SAP 独有的物料
+        for (const sapItem of tempResult.sapOnlyItems) {
+          if (!matchedSapIds.has(sapItem.sap_item_id)) {
+            matchedSapIds.add(sapItem.sap_item_id);
+            allSapOnlyItems.push(sapItem);
+          }
+        }
+      }
+
+      // 计算未匹配的物料
+      const listOnlyItems = items.filter(item => !matchedItemIds.has(item.id));
+
+      reconcileResult = {
+        matchedItems: allMatchedItems,
+        listOnlyItems: listOnlyItems,
+        sapOnlyItems: allSapOnlyItems,
+        summary: {
+          total: items.length,
+          matched: allMatchedItems.length,
+          listOnly: listOnlyItems.length,
+          sapOnly: allSapOnlyItems.length
+        }
+      };
+    } else {
+      // 没有配置时，使用原有逻辑（仅 bay_no 匹配）
+      reconcileResult = await reconcileItems(id, items, {
+        receiveDate: receiveDate
+      });
+    }
 
     // 更新物料明细的匹配状态
     for (const item of reconcileResult.matchedItems) {
+      // 移除数量中的逗号格式
+      const cleanQty = String(item.sap_quantity).replace(/,/g, '');
       await pool.query(`
         UPDATE ${WAREHOUSE_RETURN_ITEMS_TABLE}
         SET match_status = $1, sap_item_id = $2, to_sloc = $3, type = $4, trans = $5, rf_ind = $6,
@@ -548,17 +658,19 @@ export const reconcileDocument = async (req, res, next) => {
         item.trans,
         item.rf_ind,
         item.sap_material,
-        item.sap_quantity,
+        cleanQty,
         item.sap_from_sloc,
         item.id
       ]);
     }
 
     // 保存对账日志
+    const operatorName = user.realName || user.name || user.username || `User_${user.id}`;
+    const operatorAccount = user.username || user.account || `user_${user.id}`;
     await saveReconciliationLog(
       id,
       doc.return_no,
-      { id: user.id, name: user.realName, account: user.username },
+      { id: user.id, name: operatorName, account: operatorAccount },
       reconcileResult.matchedItems,
       reconcileResult.listOnlyItems,
       reconcileResult.sapOnlyItems,
@@ -567,22 +679,42 @@ export const reconcileDocument = async (req, res, next) => {
 
     // 更新单据状态
     let newStatus;
-    if (reconcileResult.summary.isFullMatch) {
-      // 100% 匹配
+    const isAllMatched = reconcileResult.matchedItems.length === items.length && reconcileResult.listOnlyItems.length === 0;
+
+    if (isAllMatched) {
+      // 100% 匹配 - 自动完成对账
+      newStatus = ReturnStatus.CLOSED;
+      await pool.query(`
+        UPDATE ${WAREHOUSE_RETURN_REQUEST_TABLE}
+        SET status = $1, pending_count = $2, closed_at = NOW(), updated_at = NOW()
+        WHERE id = $3
+      `, [newStatus, reconcileResult.matchedItems.length, id]);
+      logInfo('对账完成-自动完结', { id, returnNo: doc.return_no, matchedCount: reconcileResult.matchedItems.length, operator: user.username });
+    } else if (reconcileResult.summary.isFullMatch) {
+      // 100% 匹配且无SAP独有项
       newStatus = ReturnStatus.RECONCILED_FULL_MATCH;
+      await pool.query(`
+        UPDATE ${WAREHOUSE_RETURN_REQUEST_TABLE}
+        SET status = $1, pending_count = $2, updated_at = NOW()
+        WHERE id = $3
+      `, [newStatus, reconcileResult.matchedItems.length + reconcileResult.sapOnlyItems.length, id]);
     } else if (reconcileResult.matchedItems.length > 0) {
       // 部分匹配
       newStatus = ReturnStatus.RECONCILED_PARTIAL_RETURN;
+      await pool.query(`
+        UPDATE ${WAREHOUSE_RETURN_REQUEST_TABLE}
+        SET status = $1, pending_count = $2, updated_at = NOW()
+        WHERE id = $3
+      `, [newStatus, reconcileResult.matchedItems.length + reconcileResult.sapOnlyItems.length, id]);
     } else {
       // 全部异常
       newStatus = ReturnStatus.RECONCILED_DIFF;
+      await pool.query(`
+        UPDATE ${WAREHOUSE_RETURN_REQUEST_TABLE}
+        SET status = $1, pending_count = $2, updated_at = NOW()
+        WHERE id = $3
+      `, [newStatus, reconcileResult.matchedItems.length + reconcileResult.sapOnlyItems.length, id]);
     }
-
-    await pool.query(`
-      UPDATE ${WAREHOUSE_RETURN_REQUEST_TABLE}
-      SET status = $1, pending_count = $2, updated_at = NOW()
-      WHERE id = $3
-    `, [newStatus, reconcileResult.matchedItems.length + reconcileResult.sapOnlyItems.length, id]);
 
     logInfo('对账完成', {
       id,
@@ -938,6 +1070,116 @@ export const saveEmailCcConfig = async (req, res, next) => {
     logInfo('邮件抄送配置已保存', { count: configs.length });
 
     success(res, null, '保存成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 获取产线回仓通用配置
+ */
+export const getWarehouseReturnConfig = async (req, res, next) => {
+  try {
+    // 返回所有 warehouse-username 映射配置
+    const result = await pool.query(`
+      SELECT id, warehouse, username, is_active, created_at, updated_at
+      FROM ${WAREHOUSE_RETURN_CONFIG_TABLE}
+      ORDER BY warehouse, username
+    `);
+
+    const config = {
+      mappings: result.rows.map(row => ({
+        id: row.id,
+        warehouse: row.warehouse,
+        username: row.username,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+    };
+
+    success(res, config, '获取成功');
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 保存产线回仓通用配置（支持同一warehouse多个username）
+ */
+export const saveWarehouseReturnConfig = async (req, res, next) => {
+  try {
+    const { mappings } = req.body;
+
+    if (!Array.isArray(mappings)) {
+      throw new BadRequestError('mappings 必须是数组');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const mapping of mappings) {
+        const { warehouse, username, is_active = true, id } = mapping;
+
+        if (!warehouse || !username) {
+          throw new BadRequestError('warehouse 和 username 不能为空');
+        }
+
+        if (id) {
+          // 更新现有记录
+          await client.query(`
+            UPDATE ${WAREHOUSE_RETURN_CONFIG_TABLE}
+            SET warehouse = $1, username = $2, is_active = $3, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+          `, [warehouse, username, is_active, id]);
+        } else {
+          // 插入新记录（使用 UPSERT 防止重复）
+          await client.query(`
+            INSERT INTO ${WAREHOUSE_RETURN_CONFIG_TABLE} (warehouse, username, is_active)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (warehouse, username) DO UPDATE SET
+              is_active = $3,
+              updated_at = CURRENT_TIMESTAMP
+          `, [warehouse, username, is_active]);
+        }
+      }
+
+      await client.query('COMMIT');
+      logInfo('产线回仓通用配置已保存', { mappings });
+      success(res, null, '保存成功');
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 删除产线回仓配置映射
+ */
+export const deleteWarehouseReturnConfig = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new BadRequestError('id 不能为空');
+    }
+
+    await pool.query(`
+      DELETE FROM ${WAREHOUSE_RETURN_CONFIG_TABLE} WHERE id = $1
+    `, [id]);
+
+    logInfo('产线回仓配置已删除', { id });
+    success(res, null, '删除成功');
 
   } catch (err) {
     next(err);
@@ -1315,6 +1557,9 @@ export default {
   saveBuildingConfig,
   getEmailCcList,
   saveEmailCcConfig,
+  getWarehouseReturnConfig,
+  saveWarehouseReturnConfig,
+  deleteWarehouseReturnConfig,
   getDocumentStats,
   downloadTemplate,
   previewApplication,

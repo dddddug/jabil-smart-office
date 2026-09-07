@@ -141,16 +141,32 @@
         <!-- 数据表格 -->
         <div class="table-container" v-loading="isLoading">
           <table class="data-table">
-            <thead>
+            <thead class="sticky-header">
               <tr>
-                <th>单号</th>
-                <th>W/C名称</th>
-                <th>DA编号</th>
-                <th>ECN编号</th>
-                <th>管控类型</th>
-                <th>提交人</th>
-                <th>提交时间</th>
-                <th>状态</th>
+                <th class="sortable" @click="handleSort('document_no')">
+                  单号 <span class="sort-icon" :class="{ active: sortField === 'document_no' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('wc_name')">
+                  W/C名称 <span class="sort-icon" :class="{ active: sortField === 'wc_name' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('da_no')">
+                  DA编号 <span class="sort-icon" :class="{ active: sortField === 'da_no' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('ecn_no')">
+                  ECN编号 <span class="sort-icon" :class="{ active: sortField === 'ecn_no' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('control_type')">
+                  管控类型 <span class="sort-icon" :class="{ active: sortField === 'control_type' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('submitter_name')">
+                  提交人 <span class="sort-icon" :class="{ active: sortField === 'submitter_name' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('submitted_at')">
+                  提交时间 <span class="sort-icon" :class="{ active: sortField === 'submitted_at' }">{{ sortIcon }}</span>
+                </th>
+                <th class="sortable" @click="handleSort('status')">
+                  状态 <span class="sort-icon" :class="{ active: sortField === 'status' }">{{ sortIcon }}</span>
+                </th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -706,6 +722,47 @@ const paginationInfo = computed(() => {
   return `${start}-${end} 条，共 ${totalCount.value} 条`;
 });
 
+// 排序
+const sortField = ref('submitted_at');
+const sortOrder = ref<'asc' | 'desc'>('desc');
+const sortIcon = computed(() => {
+  return sortOrder.value === 'asc' ? '↑' : '↓';
+});
+const handleSort = (field: string) => {
+  if (sortField.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortField.value = field;
+    sortOrder.value = 'desc';
+  }
+  // 重置到第一页并重新加载
+  currentPage.value = 1;
+  loadDocuments();
+};
+
+const sortDocuments = () => {
+  documents.value.sort((a, b) => {
+    let aVal: any, bVal: any;
+    switch (sortField.value) {
+      case 'document_no': aVal = a.documentNo; bVal = b.documentNo; break;
+      case 'wc_name': aVal = a.wcName; bVal = b.wcName; break;
+      case 'da_no': aVal = a.daNo; bVal = b.daNo; break;
+      case 'ecn_no': aVal = a.ecnNo; bVal = b.ecnNo; break;
+      case 'control_type': aVal = a.controlType; bVal = b.controlType; break;
+      case 'submitter_name': aVal = a.submitterName; bVal = b.submitterName; break;
+      case 'submitted_at': aVal = a.submittedAt || a.createdAt; bVal = b.submittedAt || b.createdAt; break;
+      case 'status': aVal = a.status; bVal = b.status; break;
+      default: return 0;
+    }
+    if (aVal == null) aVal = '';
+    if (bVal == null) bVal = '';
+    if (typeof aVal === 'string') {
+      return sortOrder.value === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
+    return sortOrder.value === 'asc' ? aVal - bVal : bVal - aVal;
+  });
+};
+
 // 搜索条件
 const searchQuery = reactive({
   documentNo: '',
@@ -856,6 +913,8 @@ const loadDocuments = async () => {
       status: statusFilter,
       page: currentPage.value,
       pageSize: pageSize.value,
+      sortField: sortField.value,
+      sortOrder: sortOrder.value,
       _t: Date.now()
     };
 
@@ -2109,6 +2168,8 @@ onUnmounted(() => {
   overflow-x: auto;
   position: relative;
   min-height: 200px;
+  max-height: calc(100vh - 350px);
+  overflow-y: auto;
 }
 
 .data-table {
@@ -2128,6 +2189,36 @@ onUnmounted(() => {
   font-weight: 600;
   color: #374151;
   font-size: 13px;
+}
+
+/* 表头冻结 */
+.data-table thead.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* 排序样式 */
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.data-table th.sortable:hover {
+  background-color: #EEF2FF;
+}
+
+.sort-icon {
+  color: #C9D1D9;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.sort-icon.active {
+  color: #3B82F6;
+  font-weight: bold;
 }
 
 .data-table td {

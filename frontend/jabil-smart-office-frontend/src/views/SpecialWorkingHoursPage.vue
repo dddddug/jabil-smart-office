@@ -270,6 +270,8 @@ const handleExportExcel = async () => {
   try {
     const params = {
       ...searchForm,
+      startDate: props.startDate,
+      endDate: props.endDate,
     };
     const res = await exportSpecialWorkingHours(params);
     // 请求拦截器已返回 data 部分，res 本身就是 blob

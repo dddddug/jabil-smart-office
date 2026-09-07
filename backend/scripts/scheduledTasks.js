@@ -209,10 +209,48 @@ async function pullSAPData() {
       logInfo('ScheduledTasks', '导入 GRN: ' + file + ' (' + records.length + ' 条)');
     }
 
+    // GRN 数据导入完成后，同步待填充物料表
+    if (grnCount > 0) {
+      await syncMissingMaterialPackage();
+    }
+
     logInfo('ScheduledTasks', 'SAP 数据拉取完成: ITEM=' + itemCount + ' 条, GRN=' + grnCount + ' 条');
 
   } catch (error) {
     logError('ScheduledTasks', 'SAP 数据拉取失败:', error.message);
+  }
+}
+
+// ========== 2.5 待填充物料同步 ==========
+
+async function syncMissingMaterialPackage() {
+  try {
+    logInfo('ScheduledTasks', '开始同步待填充物料表...');
+
+    // 从 GRN 视图中获取去重的 material + manufacturer 数据
+    // 排除已经在 material_package 表中的数据
+    const result = await pool.query(`
+      INSERT INTO jso_missing_material_package (material, manufacturer)
+      SELECT DISTINCT
+        grn.material,
+        grn.manufacturer
+      FROM v_sap_grn_history_partitioned grn
+      WHERE grn.material IS NOT NULL
+        AND grn.material != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM jso_material_package mp
+          WHERE mp.part_no = grn.material
+        )
+      ON CONFLICT (material, COALESCE(manufacturer, '')) DO NOTHING
+      RETURNING id
+    `);
+
+    const countResult = await pool.query('SELECT COUNT(*) FROM jso_missing_material_package');
+    const total = countResult.rows[0].count;
+
+    logInfo('ScheduledTasks', '待填充物料同步完成: 新增 ' + result.rowCount + ' 条，总计 ' + total + ' 条');
+  } catch (error) {
+    logError('ScheduledTasks', '待填充物料同步失败:', error.message);
   }
 }
 
@@ -823,5 +861,6 @@ export {
   runScheduledArchive,
   partitionMaintenance,
   itemCountPrecompute,
-  importMaterialShelfLife
+  importMaterialShelfLife,
+  syncMissingMaterialPackage
 };

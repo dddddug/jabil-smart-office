@@ -19,7 +19,7 @@
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.pending }}</div>
-            <div class="stat-label">{{ tabType === 'annual' ? '待审批' : '待提交' }}</div>
+            <div class="stat-label">{{ tabType === 'annual' || tabType === 'resignation' ? '待审批' : '待提交' }}</div>
           </div>
         </div>
       </div>
@@ -30,7 +30,7 @@
           </div>
           <div class="stat-info">
             <div class="stat-value">{{ stats.approved }}</div>
-            <div class="stat-label">{{ tabType === 'annual' ? '已批准' : '已提交' }}</div>
+            <div class="stat-label">{{ tabType === 'annual' || tabType === 'resignation' ? '已批准' : '已提交' }}</div>
           </div>
         </div>
       </div>
@@ -58,8 +58,8 @@
       />
       <el-select v-model="filterStatus" placeholder="选择状态" clearable class="filter-select">
         <el-option label="全部" value="" />
-        <el-option :label="tabType === 'annual' ? '待审批' : '待提交'" value="pending" />
-        <el-option :label="tabType === 'annual' ? '已批准' : '已提交'" value="approved" />
+        <el-option :label="tabType === 'annual' || tabType === 'resignation' ? '待审批' : '待提交'" value="pending" />
+        <el-option :label="tabType === 'annual' || tabType === 'resignation' ? '已批准' : '已提交'" value="approved" />
         <el-option label="已拒绝" value="rejected" v-if="tabType === 'annual'" />
       </el-select>
       <el-input
@@ -96,7 +96,7 @@
     <!-- 批量操作栏 -->
     <div v-if="selectedRows.length > 0" class="batch-action-bar">
       <span>已选择 {{ selectedRows.length }} 条</span>
-      <el-button type="success" size="small" @click="handleBatchSubmit" :disabled="!hasBatchSubmitPermission()">
+      <el-button type="success" size="small" @click="handleBatchSubmit" :disabled="!hasBatchSubmitPermission()" v-if="tabType !== 'resignation'">
         批量提交
       </el-button>
       <el-button size="small" @click="clearSelection">取消选择</el-button>
@@ -116,7 +116,7 @@
     <!-- 通用信息列 -->
     <el-table-column prop="employeeName" label="姓名" width="80" fixed="left" />
     <el-table-column prop="departmentName" label="部门" width="140" />
-    <el-table-column prop="type" label="类型" width="80">
+    <el-table-column prop="type" label="类型" width="90">
       <template #default="{ row }">
         <el-tag :type="getTypeTagType(row.type)" size="small">{{ row.type }}</el-tag>
       </template>
@@ -139,12 +139,12 @@
       <el-table-column prop="endDate" label="结束日期" width="120" v-if="tabType === 'annual'" />
 
       <!-- 时长/天数（离职&转岗显示转入时间） -->
-      <el-table-column v-if="tabType !== 'resignation'" prop="duration" label="时长" width="80">
+      <el-table-column v-if="tabType !== 'resignation'" prop="duration" label="时长" width="90">
         <template #default="{ row }">
           <span class="duration-text">{{ row.duration }}{{ durationUnit }}</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="tabType === 'resignation'" prop="transferDate" label="转入时间" width="100">
+      <el-table-column v-if="tabType === 'resignation'" prop="transferDate" label="转入时间" width="105">
         <template #default="{ row }">
           <span>{{ (row.transferDate || row.transfer_date) ? (row.transferDate || row.transfer_date).split('T')[0] : '-' }}</span>
         </template>
@@ -159,7 +159,7 @@
 
       <!-- 转岗审批状态列 -->
       <template v-if="tabType === 'resignation'">
-        <el-table-column label="转出审批" width="80">
+        <el-table-column label="转出审批" width="85">
           <template #default="{ row }">
             <el-tag v-if="row.type === '转岗'" :type="getApprovalStatusTagType(row.transferOutApprovalStatus)" size="small">
               {{ getApprovalStatusText(row.transferOutApprovalStatus) }}
@@ -167,7 +167,7 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="转入审批" width="80">
+        <el-table-column label="转入审批" width="85">
           <template #default="{ row }">
             <el-tag v-if="row.type === '转岗'" :type="getApprovalStatusTagType(row.transferInApprovalStatus)" size="small">
               {{ getApprovalStatusText(row.transferInApprovalStatus) }}
@@ -237,12 +237,12 @@
             >
               编辑
             </el-button>
-            <el-button 
+            <el-button
               text
-              type="success" 
-              size="small" 
-              @click="handleSubmitStatus(row)" 
-              v-if="tabType !== 'annual' && row.status === 'pending'"
+              type="success"
+              size="small"
+              @click="handleSubmitStatus(row)"
+              v-if="tabType !== 'annual' && tabType !== 'resignation' && row.status === 'pending'"
             >
               提交
             </el-button>
@@ -1054,7 +1054,7 @@ const loadData = async () => {
             duration: duration,
             reason: item.reason || '',
             status: item.status || 'pending',
-            applyDate: item.createdAt ? item.createdAt.split(' ')[0] : (item.applyDate ? item.applyDate.split('T')[0] : ''),
+            applyDate: item.createdAt ? item.createdAt.split('T')[0] : (item.applyDate ? item.applyDate.split('T')[0] : ''),
             plantId: item.plantId,
             plantName: item.plantName || '',
             departmentId: item.departmentId,
@@ -1494,7 +1494,9 @@ const getStatusTagType = (status: string) => {
 }
 
 const getStatusText = (status: string) => {
-  if (props.tabType === 'annual') {
+  // 离职/转岗 和 年假 需要审批，其他（临时加班、临时请假）由员工提交
+  const needsApproval = props.tabType === 'annual' || props.tabType === 'resignation';
+  if (needsApproval) {
     if (status === 'approved') return '已批准'
     if (status === 'rejected') return '已拒绝'
     return '待审批'
@@ -1941,7 +1943,8 @@ const handleUnsubmit = async (row: LeaveRequest) => {
     return
   }
   try {
-    await ElMessageBox.confirm(`确定要撤回 "${row.employeeName}" 的申请吗？撤回后状态将变为待提交。`, {
+    const statusText = props.tabType === 'annual' || props.tabType === 'resignation' ? '待审批' : '待提交';
+    await ElMessageBox.confirm(`确定要撤回 "${row.employeeName}" 的申请吗？撤回后状态将变为${statusText}。`, {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',

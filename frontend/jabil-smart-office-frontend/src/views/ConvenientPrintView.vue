@@ -22,31 +22,63 @@
         <div class="history-header">
           <h3>📋 打印历史记录</h3>
           <div class="history-filters">
-            <input
-              type="text"
-              v-model="historySearch.transferNo"
-              placeholder="搜索单号..."
-              class="history-search"
-            />
-            <input
-              type="text"
-              v-model="historySearch.creatorName"
-              placeholder="搜索创建人..."
-              class="history-search"
-            />
-            <input
-              type="date"
-              v-model="historySearch.startDate"
-              class="history-date"
-            />
-            <span>至</span>
-            <input
-              type="date"
-              v-model="historySearch.endDate"
-              class="history-date"
-            />
-            <button class="btn-search" @click="historyPage = 1; loadHistory()">🔍 搜索</button>
+            <div class="history-filter-item">
+              <label>单号</label>
+              <input
+                type="text"
+                v-model="historySearch.transferNo"
+                placeholder="搜索单号..."
+                class="history-search"
+              />
+            </div>
+            <div class="history-filter-item">
+              <label>创建人</label>
+              <input
+                type="text"
+                v-model="historySearch.creatorName"
+                placeholder="搜索创建人..."
+                class="history-search"
+              />
+            </div>
+            <div class="history-filter-item">
+              <label>料号</label>
+              <input
+                type="text"
+                v-model="historySearch.partNumber"
+                placeholder="搜索料号..."
+                class="history-search"
+              />
+            </div>
+            <div class="history-filter-item">
+              <label>GRN</label>
+              <input
+                type="text"
+                v-model="historySearch.grn"
+                placeholder="搜索GRN..."
+                class="history-search"
+              />
+            </div>
+            <div class="history-filter-item">
+              <label>开始日期</label>
+              <input
+                type="date"
+                v-model="historySearch.startDate"
+                class="history-date"
+              />
+            </div>
+            <div class="history-filter-item">
+              <label>结束日期</label>
+              <input
+                type="date"
+                v-model="historySearch.endDate"
+                class="history-date"
+              />
+            </div>
+          </div>
+          <div class="history-filter-actions">
+            <button class="btn-reset" @click="resetHistorySearch">🔄 重置</button>
             <button class="btn-export" @click="exportHistory">📥 导出Excel</button>
+            <button class="btn-search" @click="historyPage = 1; loadHistory()">🔍 搜索</button>
           </div>
         </div>
 
@@ -753,11 +785,15 @@ const historySearch = reactive<{
   creatorName: string;
   startDate: string;
   endDate: string;
+  partNumber: string;
+  grn: string;
 }>({
   transferNo: '',
   creatorName: '',
   startDate: '',
-  endDate: ''
+  endDate: '',
+  partNumber: '',
+  grn: ''
 });
 const loadingHistory = ref(false);
 
@@ -827,16 +863,34 @@ const loadHistory = async () => {
     if (historySearch.endDate) {
       params.endDate = historySearch.endDate;
     }
+    if (historySearch.partNumber) {
+      params.partNumber = historySearch.partNumber;
+    }
+    if (historySearch.grn) {
+      params.grn = historySearch.grn;
+    }
     const res: any = await getDocuments(params);
-    // axios 拦截器返回 { code, message, data: { items, total } }
+    // axios 拦截器返回 { code, message, data: { items, pagination: { total, page, pageSize } } }
     historyList.value = res?.data?.items || res?.items || [];
-    historyTotal.value = res?.data?.total || res?.total || 0;
+    historyTotal.value = res?.data?.pagination?.total || res?.data?.total || res?.total || 0;
   } catch (error) {
     console.error('加载历史记录失败:', error);
     ElMessage.error({ message: '加载历史记录失败', showClose: true, duration: 3000 });
   } finally {
     loadingHistory.value = false;
   }
+};
+
+// 重置搜索条件
+const resetHistorySearch = () => {
+  historySearch.transferNo = '';
+  historySearch.creatorName = '';
+  historySearch.partNumber = '';
+  historySearch.grn = '';
+  historySearch.startDate = '';
+  historySearch.endDate = '';
+  historyPage.value = 1;
+  loadHistory();
 };
 
 // 格式化日期
@@ -1409,12 +1463,21 @@ const loadDepartments = async () => {
   }
 };
 
-// 加载活跃配置列表
+// 加载活跃配置列表（根据当前用户部门过滤）
 const loadActiveConfigs = async () => {
   try {
     const res: any = await getActiveConfigs();
-    // axios 拦截器返回 { code, message, data: [...] }
-    activeConfigs.value = res?.data || res || [];
+    const allConfigs = res?.data || res || [];
+    const currentDeptId = getCurrentUserDepartmentId();
+
+    if (currentDeptId) {
+      // 过滤出当前用户部门的配置，或未分配部门的配置
+      activeConfigs.value = allConfigs.filter((c: any) =>
+        !c.departmentId || c.departmentId === currentDeptId
+      );
+    } else {
+      activeConfigs.value = allConfigs;
+    }
   } catch (error) {
     console.error('加载配置失败:', error);
   }
@@ -1422,9 +1485,10 @@ const loadActiveConfigs = async () => {
 
 // 部门变更
 const onDepartmentChange = () => {
-  // 部门变更时清空配置选择
+  // 部门变更时清空配置选择并重新加载配置列表
   pncForm.configId = '';
   generatedTransferNo.value = '';
+  loadActiveConfigs();
 };
 
 // 配置变更
@@ -2444,8 +2508,8 @@ onMounted(async () => {
   background: white;
   border-radius: 12px;
   width: 100%;
-  max-width: 1200px;
-  max-height: 90vh;
+  max-width: 1400px;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2506,80 +2570,159 @@ onMounted(async () => {
 
 .history-filters {
   display: flex;
-  align-items: center;
-  gap: 12px;
   flex-wrap: wrap;
+  row-gap: 20px;
+  column-gap: 35px;
+  padding: 20px;
+  background: #F8FAFC;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.history-filter-item {
+  flex: 0 0 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-filter-item label {
+  font-size: 12px;
+  color: #64748B;
+  font-weight: 500;
 }
 
 .history-search {
   padding: 8px 12px;
-  border: 1px solid #D1D5DB;
+  border: 1px solid #E2E8F0;
   border-radius: 6px;
-  font-size: 14px;
-  width: 180px;
+  font-size: 13px;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.history-search:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
 }
 
 .history-date {
   padding: 8px 12px;
-  border: 1px solid #D1D5DB;
+  border: 1px solid #E2E8F0;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  width: 100%;
+}
+
+.history-date:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  outline: none;
+}
+
+.history-filter-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #E2E8F0;
 }
 
 .btn-search {
-  padding: 8px 16px;
-  background-color: #0066CC;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #3B82F6, #2563EB);
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 }
 
 .btn-search:hover {
-  background-color: #0052A3;
+  background: linear-gradient(135deg, #2563EB, #1D4ED8);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+}
+
+.btn-search:active {
+  transform: translateY(0);
 }
 
 .btn-export {
-  padding: 8px 16px;
-  background-color: #059669;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #10B981, #059669);
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.btn-export:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(16, 185, 129, 0.4);
+}
+
+.btn-reset {
+  padding: 8px 20px;
+  background: white;
+  color: #64748B;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-export:hover {
-  background-color: #047857;
+.btn-reset:hover {
+  background: #F1F5F9;
+  color: #475569;
+  border-color: #CBD5E1;
 }
 
 .history-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 16px;
+  margin-top: 12px;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .history-table th,
 .history-table td {
   padding: 12px 16px;
   text-align: left;
-  border-bottom: 1px solid #E5E7EB;
-  font-size: 14px;
+  border-bottom: 1px solid #F1F5F9;
+  font-size: 13px;
 }
 
 .history-table th {
-  background-color: #F9FAFB;
+  background: linear-gradient(135deg, #F8FAFC, #F1F5F9);
   font-weight: 600;
-  color: #374151;
-  position: sticky;
-  top: 0;
+  color: #475569;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.history-table tbody tr {
+  transition: all 0.15s;
 }
 
 .history-table tbody tr:hover {
-  background-color: #F9FAFB;
+  background-color: #F8FAFC;
 }
 
 .status-badge {
@@ -2619,29 +2762,32 @@ onMounted(async () => {
 .history-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: space-between;
   margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #E5E7EB;
+  padding: 12px 16px;
+  background: #F8FAFC;
+  border-radius: 8px;
 }
 
 .history-pagination button {
-  padding: 6px 12px;
-  border: 1px solid #D1D5DB;
+  padding: 6px 14px;
+  border: 1px solid #E2E8F0;
   border-radius: 6px;
   background: white;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  color: #64748B;
   transition: all 0.2s;
 }
 
 .history-pagination button:hover:not(:disabled) {
-  background-color: #F3F4F6;
+  background: #3B82F6;
+  color: white;
+  border-color: #3B82F6;
 }
 
 .history-pagination button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 </style>

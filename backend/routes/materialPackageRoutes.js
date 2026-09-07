@@ -9,10 +9,16 @@ const router = express.Router();
 
 // 内存存储配置
 const memoryStorage = multer.memoryStorage();
-const upload = multer({ storage: memoryStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: memoryStorage, limits: { fileSize: 100 * 1024 * 1024 } });
 
 // 获取列表（支持分页和搜索）
 router.get('/', authenticateToken, asyncHandler(materialPackageController.getMaterialPackages));
+
+// 获取规格列表（下拉选择用）
+router.get('/spec-options', authenticateToken, asyncHandler(materialPackageController.getSpecOptions));
+
+// 获取图表统计数据
+router.get('/chart-stats', authenticateToken, asyncHandler(materialPackageController.getChartStats));
 
 // 获取单条详情
 router.get('/:id', authenticateToken, asyncHandler(materialPackageController.getMaterialPackageById));

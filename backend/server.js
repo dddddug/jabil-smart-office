@@ -61,6 +61,7 @@ import stockroomUrgentPullRoutes, { startScheduledRefresh } from './routes/stock
 import stockroomUrgentPullConfigRoutes from './routes/stockroomUrgentPullConfigRoutes.js'; // Stockroom Urgent Pull 配置路由
 import warehouseMonitorRoutes from './routes/warehouseMonitorRoutes.js'; // 仓库物料监控路由
 import materialPackageRoutes from './routes/materialPackageRoutes.js'; // 物料包装信息路由
+import missingMaterialPackageRoutes from './routes/missingMaterialPackageRoutes.js'; // 待填充物料路由
 import temporaryOvertimeRoutes from './routes/temporaryOvertimeRoutes.js'; // 临时加班路由
 import temporaryLeaveRoutes from './routes/temporaryLeaveRoutes.js'; // 临时请假路由
 import class33MaterialsRoutes from './routes/class33MaterialsRoutes.js'; // 33类物料清单路由
@@ -166,6 +167,7 @@ app.use('/api/stockroom-urgent-pull', stockroomUrgentPullRoutes); // Stockroom U
 app.use('/api/stockroom-urgent-pull-config', stockroomUrgentPullConfigRoutes); // Stockroom Urgent Pull 配置路由
 app.use('/api/warehouse-monitor', warehouseMonitorRoutes); // 仓库物料监控路由
 app.use('/api/material-package', materialPackageRoutes); // 物料包装信息路由
+app.use('/api/missing-material-package', missingMaterialPackageRoutes); // 待填充物料路由
 app.use('/api/temporary-overtime', temporaryOvertimeRoutes); // 临时加班路由
 app.use('/api/temporary-leave', temporaryLeaveRoutes); // 临时请假路由
 app.use('/api/class33-materials', class33MaterialsRoutes); // 33类物料清单路由

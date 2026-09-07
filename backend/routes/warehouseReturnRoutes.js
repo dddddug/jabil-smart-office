@@ -98,4 +98,23 @@ router.post('/config/buildings',
   asyncHandler(warehouseReturnController.saveBuildingConfig)
 );
 
+// 产线回仓通用配置
+router.get('/config',
+  authenticateToken,
+  authorize(['dept_admin', 'super_admin', 'plant_admin']),
+  asyncHandler(warehouseReturnController.getWarehouseReturnConfig)
+);
+
+router.post('/config',
+  authenticateToken,
+  authorize(['dept_admin', 'super_admin', 'plant_admin']),
+  asyncHandler(warehouseReturnController.saveWarehouseReturnConfig)
+);
+
+router.delete('/config/:id',
+  authenticateToken,
+  authorize(['dept_admin', 'super_admin', 'plant_admin']),
+  asyncHandler(warehouseReturnController.deleteWarehouseReturnConfig)
+);
+
 export default router;

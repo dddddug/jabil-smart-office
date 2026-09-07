@@ -90,6 +90,8 @@ export const getDocuments = async (req, res, next) => {
       startDate,
       endDate,
       creatorName,
+      partNumber,
+      grn,
       page = 1,
       pageSize = 10
     } = req.query;
@@ -147,12 +149,12 @@ export const getDocuments = async (req, res, next) => {
 
     if (startDate) {
       params.push(startDate);
-      whereClause += ` AND DATE(d.created_at) >= $${params.length}`;
+      whereClause += ` AND d.created_at::date >= $${params.length}`;
     }
 
     if (endDate) {
       params.push(endDate);
-      whereClause += ` AND DATE(d.created_at) <= $${params.length}`;
+      whereClause += ` AND d.created_at::date <= $${params.length}`;
     }
 
     if (creatorName) {
@@ -160,12 +162,76 @@ export const getDocuments = async (req, res, next) => {
       whereClause += ` AND d.creator_name LIKE $${params.length}`;
     }
 
-    // 查询列表（使用 JOIN 一次性获取所有数据）
+    // 物料明细搜索条件 - 需要关联 items 表
+    let itemsWhereClause = '';
+    if (partNumber || grn) {
+      if (partNumber) {
+        params.push(`%${partNumber}%`);
+        itemsWhereClause += ` AND di.part_number LIKE $${params.length}`;
+      }
+      if (grn) {
+        params.push(`%${grn}%`);
+        itemsWhereClause += ` AND di.grn LIKE $${params.length}`;
+      }
+    }
+
+    // 先查询单据ID列表（带分页）
     const pageSizeNum = parseInt(pageSize, 10);
     const offsetNum = (parseInt(page, 10) - 1) * pageSizeNum;
-    const listParams = [...params, pageSizeNum, offsetNum];
+    const idsParams = [...params];
 
-    const listSql = `
+    // 如果有物料搜索条件，需要关联 items 表
+    let idsSql;
+    if (itemsWhereClause) {
+      idsSql = `
+        SELECT DISTINCT d.id, d.created_at FROM ${DOCUMENT_TABLE} d
+        LEFT JOIN ${ITEM_TABLE} di ON d.id = di.document_id
+        ${whereClause} ${itemsWhereClause}
+        ORDER BY d.created_at DESC
+        LIMIT $${idsParams.length + 1} OFFSET $${idsParams.length + 2}
+      `;
+    } else {
+      idsSql = `
+        SELECT d.id FROM ${DOCUMENT_TABLE} d
+        ${whereClause}
+        ORDER BY d.created_at DESC
+        LIMIT $${idsParams.length + 1} OFFSET $${idsParams.length + 2}
+      `;
+    }
+
+    const idsResult = await pool.query(idsSql, [...idsParams, pageSizeNum, offsetNum]);
+    const docIds = idsResult.rows.map(r => r.id);
+
+    if (docIds.length === 0) {
+      paginated(res, {
+        items: [],
+        total: 0,
+        page: parseInt(page),
+        pageSize: parseInt(pageSize)
+      }, '获取成功');
+      return;
+    }
+
+    // 查询总数
+    let countSql;
+    if (itemsWhereClause) {
+      countSql = `
+        SELECT COUNT(DISTINCT d.id) as total FROM ${DOCUMENT_TABLE} d
+        LEFT JOIN ${ITEM_TABLE} di ON d.id = di.document_id
+        ${whereClause} ${itemsWhereClause}
+      `;
+    } else {
+      countSql = `
+        SELECT COUNT(DISTINCT d.id) as total FROM ${DOCUMENT_TABLE} d ${whereClause}
+      `;
+    }
+    const countResult = await pool.query(countSql, params);
+
+    // 查询这些单据的完整信息（使用 id IN）
+    const placeholders = docIds.map((_, i) => `$${i + 1}`).join(',');
+    const detailParams = [...docIds];
+
+    const detailSql = `
       SELECT
         d.id,
         d.transfer_no,
@@ -193,17 +259,11 @@ export const getDocuments = async (req, res, next) => {
         i.quantity
       FROM ${DOCUMENT_TABLE} d
       LEFT JOIN ${ITEM_TABLE} i ON d.id = i.document_id
-      ${whereClause}
+      WHERE d.id IN (${placeholders})
       ORDER BY d.created_at DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `;
 
-    const listResult = await pool.query(listSql, listParams);
-
-    // 查询总数
-    const countResult = await pool.query(`
-      SELECT COUNT(DISTINCT d.id) as total FROM ${DOCUMENT_TABLE} d ${whereClause}
-    `, params);
+    const listResult = await pool.query(detailSql, detailParams);
 
     // 按单据分组，聚合明细项
     const documentMap = new Map();
@@ -244,13 +304,10 @@ export const getDocuments = async (req, res, next) => {
       }
     }
 
-    // 转换为响应格式并分页
-    const allDocuments = Array.from(documentMap.values()).map(row =>
-      rowToDocument(row, row.items)
-    );
-
-    // 应用分页
-    const paginatedDocuments = allDocuments.slice(0, parseInt(pageSize));
+    // 转换为响应格式
+    const paginatedDocuments = Array.from(documentMap.values())
+      .map(row => rowToDocument(row, row.items))
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
     paginated(res, {
       items: paginatedDocuments,

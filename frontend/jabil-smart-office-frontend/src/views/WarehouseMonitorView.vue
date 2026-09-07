@@ -1,5 +1,5 @@
 <template>
-  <div class="warehouse-monitor">
+  <div class="warehouse-monitor" v-loading="loading">
     <div class="header">
       <h2>📦 物料进出效期监控</h2>
       <div class="header-actions">
@@ -89,9 +89,9 @@
           <div v-for="slot in timeSlots" :key="slot.time" class="hour-bar" @mouseenter="setHovered(slot, $event)" @mouseleave="hoveredSlot = null" @click="clickTimeSlot(slot)">
             <div class="bar-container">
               <div class="bar-stack">
-                <div v-if="slot.PLR > 0" class="bar-item plr" :style="{ height: `${getBarHeight(slot.PLR)}%` }"></div>
-                <div v-if="slot.FLR > 0" class="bar-item flr" :style="{ height: `${getBarHeight(slot.FLR)}%` }"></div>
-                <div v-if="slot.IWS > 0" class="bar-item iws" :style="{ height: `${getBarHeight(slot.IWS)}%` }"></div>
+                <div v-if="(slot.PLR ?? 0) > 0" class="bar-item plr" :style="{ height: `${getBarHeight(slot.PLR ?? 0)}%` }"></div>
+                <div v-if="(slot.FLR ?? 0) > 0" class="bar-item flr" :style="{ height: `${getBarHeight(slot.FLR ?? 0)}%` }"></div>
+                <div v-if="(slot.IWS ?? 0) > 0" class="bar-item iws" :style="{ height: `${getBarHeight(slot.IWS ?? 0)}%` }"></div>
               </div>
             </div>
             <div class="hour-label">{{ slot.time }}</div>
@@ -128,6 +128,10 @@
             <el-select v-if="showExpiredMode" v-model="filterUser" placeholder="User" clearable size="small" style="width: 100px" >
               <el-option v-for="user in userOptions" :key="user" :label="user" :value="user" />
             </el-select>
+            <el-select v-if="showExpiredMode" v-model="filterProcessed" placeholder="处理状态" clearable size="small" style="width: 110px" >
+              <el-option label="已处理" :value="1" />
+              <el-option label="未处理" :value="0" />
+            </el-select>
             <el-select v-if="!showExpiredMode" v-model="filterTrans" placeholder="移动类型" clearable size="small" style="width: 120px">
               <el-option label="PLR" value="PLR" />
               <el-option label="FLR" value="FLR" />
@@ -142,7 +146,8 @@
           </div>
         </div>
       </template>
-      <el-table :data="sortedTableData" height="400" v-loading="loading" tableLayout="fixed" :cell-style="{ fontSize: '12px', padding: '2px 4px' }" :header-cell-style="{ fontSize: '12px', padding: '2px 4px' }" width="100%" @selection-change="handleSelectionChange">
+      <div class="table-wrapper" :style="{ transform: `scale(${tableZoom})`, transformOrigin: 'top left', width: (100 / tableZoom) + '%' }">
+        <el-table :data="sortedTableData" height="400" v-loading="loading" tableLayout="fixed" :cell-style="{ fontSize: '12px', padding: '2px 4px' }" :header-cell-style="{ fontSize: '12px', padding: '2px 4px' }" @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="45" v-if="showExpiredMode" />
         <el-table-column prop="warehouse" label="Whse No." width="70"  />
         <el-table-column prop="trans" label="Trans" width="70"  />
@@ -154,12 +159,12 @@
         <el-table-column prop="quantity" label="Qty." width="80" align="right">
           <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
         </el-table-column>
-        <el-table-column prop="gr_document" label="GRN No" width="155"  />
+        <el-table-column prop="gr_document" label="GRN No" width="160"  />
         <el-table-column prop="type" label="Type" width="70"  />
         <el-table-column prop="storage_bin" label="Storage Bin" width="120"  />
         <el-table-column prop="from_sloc" label="From SLoc" width="95"  />
         <el-table-column prop="to_sloc" label="To SLoc" width="85"  />
-        <el-table-column prop="reference" label="Reference" width="150"  />
+        <el-table-column prop="reference" label="Reference" width="155"  />
         <el-table-column prop="user_name" label="User" width="85"  />
         <el-table-column prop="date_code" label="DC" width="70"  />
         <el-table-column prop="shelf_life" label="SLife" width="70"  />
@@ -194,7 +199,10 @@
           </template>
         </el-table-column>
       </el-table>
-      <div class="pagination">
+      </div>
+      </el-card>
+
+      <div class="pagination" style="margin-top: 20px;">
         <el-pagination
           v-model:current-page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -205,7 +213,6 @@
           @size-change="handlePageChange"
         />
       </div>
-    </el-card>
 
     <!-- Pass处理弹窗 -->
     <el-dialog v-model="passDialogVisible" title="Pass处理" width="400px">
@@ -226,9 +233,9 @@
     <!-- 详情弹窗 -->
     <el-dialog v-model="detailDialogVisible" title="处理详情" width="400px">
       <el-descriptions :column="1" border>
-        <el-descriptions-item label="处理结果">{{ detailRow.process_result || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="处理人">{{ detailRow.processed_by || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="处理时间">{{ formatProcessedAt(detailRow.processed_at) }}</el-descriptions-item>
+        <el-descriptions-item label="处理结果">{{ detailRow?.process_result || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="处理人">{{ detailRow?.processed_by_name || detailRow?.processed_by || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="处理时间">{{ formatProcessedAt(detailRow?.processed_at) }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
@@ -237,6 +244,10 @@
       <div class="class33-header">
         <el-input v-model="class33Search" placeholder="搜索物料编号或事业部" style="width: 300px; margin-right: 10px;" clearable @input="loadClass33List" />
         <el-button type="primary" @click="showAddClass33Dialog = true">新增物料</el-button>
+        <el-button type="success" @click="triggerClass33FileUpload">
+          <el-icon><Upload /></el-icon> 附件删除
+        </el-button>
+        <input type="file" ref="class33FileInput" style="display: none" accept=".xlsx,.xls" @change="handleClass33FileChange" />
         <el-button type="danger" @click="batchDeleteClass33" :disabled="selectedClass33Rows.length === 0">批量删除</el-button>
       </div>
       <el-table ref="class33TableRef" :data="class33List" stripe border v-loading="class33Loading" @selection-change="handleClass33SelectionChange" style="margin-top: 10px; max-height: 500px; overflow-y: auto;">
@@ -302,13 +313,66 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Box, Warning, List } from '@element-plus/icons-vue'
+import { Refresh, Box, Warning, List, Upload } from '@element-plus/icons-vue'
 import request from '../utils/request'
 import dayjs from 'dayjs'
 import * as XLSX from 'xlsx'
 
+// 类型定义
+interface SummaryItem {
+  count?: number;
+  [key: string]: unknown;
+}
+
+interface TimeSlot {
+  time: string;
+  PLR?: number;
+  FLR?: number;
+  IWS?: number;
+  [key: string]: unknown;
+}
+
+interface TableRow {
+  id?: number;
+  warehouse?: string;
+  trans?: string;
+  trans_name?: string;
+  material?: string;
+  quantity?: number | string;
+  gr_document?: string;
+  type?: string;
+  storage_bin?: string;
+  from_sloc?: string;
+  to_sloc?: string;
+  reference?: string;
+  user_name?: string;
+  date_code?: string;
+  shelf_life?: string;
+  period_indicator?: string;
+  total_sl?: string;
+  extension_date?: string;
+  sled?: string;
+  expiry_days?: number;
+  expiry_source?: string;
+  is_processed?: boolean;
+  process_result?: string;
+  processed_by?: string;
+  processed_at?: string;
+  is_class33?: boolean;
+  [key: string]: unknown;
+}
+
+interface Class33Item {
+  id?: number;
+  part_no?: string;
+  division?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
 // 状态
 const loading = ref(false)
+
 // 检查是否是从缓存恢复的会话（刷新页面），还是新打开页签
 const isSessionRestored = localStorage.getItem('warehouse_monitor_date') && sessionStorage.getItem('warehouse_monitor_session')
 // 新打开页签显示当天，刷新后保持之前的选择
@@ -322,33 +386,42 @@ const filterTrans = ref('')
 const filterType = ref('')
 const filterReference = ref('')
 const filterUser = ref('')
+const filterProcessed = ref<number | null>(null)
 const userOptions = ref([])
 const referenceOptions = ref([])
 const transOptions = ref([])
 const typeOptions = ref([])
-const selectedRows = ref([])
+const selectedRows = ref<TableRow[]>([])
 const passDialogVisible = ref(false)
 const passResult = ref('')
 const detailDialogVisible = ref(false)
-const detailRow = ref({})
+const detailRow = ref<TableRow | null>(null)
 const exportLoading = ref(false)
 
 // 33类物料清单
 const showClass33Dialog = ref(false)
-const class33List = ref([])
+const class33List = ref<Class33Item[]>([])
 const class33Loading = ref(false)
 const class33Search = ref('')
 const class33Pagination = ref({ page: 1, pageSize: 20, total: 0 })
-const class33Set = ref(new Set()) // 用于快速查找
-const selectedClass33Rows = ref([])
+const class33Set = ref(new Set<string>()) // 用于快速查找
+const selectedClass33Rows = ref<Class33Item[]>([])
+
+// 表格缩放
+const STORAGE_KEY = 'warehouse_monitor_zoom'
+const defaultZoom = 1
+const tableZoom = ref(Number(localStorage.getItem(STORAGE_KEY)) || defaultZoom)
+const showZoomDialog = ref(false)
+const zoomSlider = ref(tableZoom.value)
 
 // 请求取消控制器
 let abortController: AbortController | null = null
 const class33TableRef = ref(null)
+const class33FileInput = ref(null)
 const showAddClass33Dialog = ref(false)
-const newClass33Form = ref({ part_no: '', division: '' })
+const newClass33Form = ref<{ part_no: string; division: string }>({ part_no: '', division: '' })
 const showEditClass33Dialog = ref(false)
-const editClass33Form = ref({ id: null, part_no: '', division: '' })
+const editClass33Form = ref<{ id: number | null; part_no: string; division: string }>({ id: null, part_no: '', division: '' })
 
 // 标记会话已开始，刷新时不再重置
 sessionStorage.setItem('warehouse_monitor_session', '1')
@@ -372,7 +445,7 @@ const nextDay = () => {
 }
 
 // 按Trans类型筛选
-const filterByTrans = (trans) => {
+const filterByTrans = (trans: string) => {
   showExpiredMode.value = false
   filterTrans.value = trans
   pagination.page = 1
@@ -380,7 +453,7 @@ const filterByTrans = (trans) => {
 }
 
 // 点击时间段跳转到明细
-const clickTimeSlot = (slot) => {
+const clickTimeSlot = (slot: TimeSlot) => {
   if (!slot) return
   showExpiredMode.value = false
   filterTrans.value = ''
@@ -389,24 +462,24 @@ const clickTimeSlot = (slot) => {
 }
 
 // 数据
-const summary = reactive({ PLR: {}, FLR: {}, IWS: {} })
-const timeSlots = ref([])
-const hoveredSlot = ref(null)
+const summary = reactive<Record<string, SummaryItem>>({ PLR: {}, FLR: {}, IWS: {} })
+const timeSlots = ref<TimeSlot[]>([])
+const hoveredSlot = ref<TimeSlot | null>(null)
 const tooltipLeft = ref(0)
 
-const setHovered = (slot, event) => {
+const setHovered = (slot: TimeSlot, event: MouseEvent) => {
   hoveredSlot.value = slot
-  const chartEl = event.target.closest('.hourly-chart')
-  const barEl = event.target.closest('.hour-bar')
+  const chartEl = (event.target as HTMLElement).closest('.hourly-chart')
+  const barEl = (event.target as HTMLElement).closest('.hour-bar')
   if (chartEl && barEl) {
     const chartRect = chartEl.getBoundingClientRect()
     const barRect = barEl.getBoundingClientRect()
     tooltipLeft.value = barRect.left - chartRect.left + barRect.width / 2
   }
 }
-const tableData = ref([])
-const expiredList = ref([])
-const expiringList = ref([])
+const tableData = ref<TableRow[]>([])
+const expiredList = ref<TableRow[]>([])
+const expiringList = ref<TableRow[]>([])
 const expiryStats = reactive({ expired: 0, expiring_soon: 0, total: 0 })
 const pagination = reactive({
   page: 1,
@@ -427,7 +500,7 @@ const maxRolls = computed(() => {
 })
 
 // 获取柱状图高度
-const getBarHeight = (value) => {
+const getBarHeight = (value: number) => {
   return Math.max(2, (value / maxRolls.value) * 100)
 }
 
@@ -450,8 +523,8 @@ const loadSummary = async () => {
       Object.assign(summary, res.data.trans)
       Object.assign(expiryStats, res.data.expiry)
     }
-  } catch (error) {
-    if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'name' in error && (error as Record<string, unknown>).name !== 'CanceledError' && (error as Record<string, unknown>).name !== 'AbortError') {
       console.error('加载汇总失败:', error)
     }
   }
@@ -475,15 +548,15 @@ const loadTimeStats = async () => {
     if (res.success) {
       timeSlots.value = res.data.timeSlots
     }
-  } catch (error) {
-    if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'name' in error && (error as Record<string, unknown>).name !== 'CanceledError' && (error as Record<string, unknown>).name !== 'AbortError') {
       console.error('加载时间统计失败:', error)
     }
   }
 }
 
 // 加载表格数据
-const loadTableData = async (forceMode) => {
+const loadTableData = async (forceMode?: string) => {
   // 取消之前的请求
   if (abortController) {
     abortController.abort()
@@ -516,13 +589,14 @@ const loadTableData = async (forceMode) => {
     })
 
     if (res.code === 200 || res.success) {
-      const dataList = res.data?.data || res.data || []
-      tableData.value = dataList
-      pagination.total = res.data?.total || res.total || dataList.length
+      const dataList = (res.data as Record<string, unknown>)?.data || res.data || []
+      tableData.value = dataList as TableRow[]
+      pagination.total = (res.data as Record<string, unknown>)?.total || res.total || dataList.length
     }
-  } catch (error) {
+  } catch (error: unknown) {
     // 忽略取消的请求错误
-    if (error?.code !== 'CANCELLED' && error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
+    const err = error as Record<string, unknown> | undefined;
+    if (err?.code !== 'CANCELLED' && err?.name !== 'AbortError' && err?.name !== 'CanceledError') {
       console.error('加载表格数据失败:', error)
     }
   } finally {
@@ -537,7 +611,8 @@ const onExpiryCardClick = async () => {
     trans: filterTrans.value,
     type: filterType.value,
     reference: filterReference.value,
-    user: filterUser.value
+    user: filterUser.value,
+    processed: filterProcessed.value
   }
   showExpiredMode.value = true
   pagination.page = 1
@@ -545,6 +620,7 @@ const onExpiryCardClick = async () => {
   filterType.value = ''
   filterReference.value = ''
   filterUser.value = ''
+  filterProcessed.value = null
   selectedRows.value = []
 
   // 加载过期数据
@@ -579,7 +655,8 @@ const savedFilters = ref({
   trans: '',
   type: '',
   reference: '',
-  user: ''
+  user: '',
+  processed: null as number | null
 })
 
 const goToNormalMode = () => {
@@ -594,7 +671,7 @@ const goToNormalMode = () => {
 }
 
 // 多选处理
-const handleSelectionChange = (selection) => {
+const handleSelectionChange = (selection: TableRow[]) => {
   selectedRows.value = selection
 }
 
@@ -609,13 +686,13 @@ const showPassDialog = () => {
 }
 
 // 查看详情弹窗
-const showDetailDialog = (row) => {
+const showDetailDialog = (row: TableRow) => {
   detailRow.value = { ...row }
   detailDialogVisible.value = true
 }
 
 // 格式化处理时间（转换为中国本地时间）
-const formatProcessedAt = (datetime) => {
+const formatProcessedAt = (datetime: string | undefined) => {
   if (!datetime) return '-'
   const d = new Date(datetime)
   const year = d.getFullYear()
@@ -653,7 +730,8 @@ const exportData = async () => {
       res = await request.get('/warehouse-monitor/today-records', { params })
     }
 
-    if (!res.data || res.data.length === 0) {
+    const data = (res as Record<string, unknown>).data as TableRow[] | undefined;
+    if (!data || data.length === 0) {
       ElMessage.warning('没有数据可导出')
       return
     }
@@ -670,7 +748,7 @@ const exportData = async () => {
       'extension_date': '延期日期'
     }
 
-    const rows = res.data.map((r: Record<string, unknown>) => {
+    const rows = data.map((r: TableRow) => {
       const baseRow = [
         r.warehouse || '',
         r.trans_name || r.trans || '',
@@ -690,7 +768,7 @@ const exportData = async () => {
         formatExtensionDate(r.extension_date) || '',
         r.sled || '',
         r.expiry_days ?? '',
-        expirySourceMap[r.expiry_source] || ''
+        expirySourceMap[r.expiry_source || ''] || ''
       ]
 
       if (showExpiredMode.value) {
@@ -731,12 +809,12 @@ const confirmPass = async () => {
     return
   }
   try {
-    const ids = selectedRows.value.map(r => r.id)
+    const ids = selectedRows.value.map((r: TableRow) => r.id)
     const user = localStorage.getItem('user') || ''
     let processedBy = ''
     try {
       const userObj = JSON.parse(user)
-      processedBy = (userObj as Record<string, unknown>).username || (userObj as Record<string, unknown>).name || ''
+      processedBy = userObj.realName || userObj.name || userObj.username || ''
     } catch {}
     const res = await request.post('/warehouse-monitor/mark-processed', {
       ids,
@@ -781,6 +859,7 @@ const loadExpiryData = async () => {
     if (filterType.value) params.type = filterType.value
     if (filterReference.value) params.reference = filterReference.value
     if (filterUser.value) params.user = filterUser.value
+    if (filterProcessed.value !== null && filterProcessed.value !== undefined) params.is_processed = filterProcessed.value
 
     const res = await request.get('/warehouse-monitor/expiry-alerts', { params, signal: abortController.signal })
     if (res.code === 200) {
@@ -792,9 +871,10 @@ const loadExpiryData = async () => {
       tableData.value = allData
       pagination.total = res.data?.total || res.total || allData.length
     }
-  } catch (error) {
+  } catch (error: unknown) {
     // 忽略取消的请求错误
-    if (error?.code !== 'CANCELLED' && error?.name !== 'AbortError' && error?.name !== 'CanceledError') {
+    const err = error as Record<string, unknown> | undefined;
+    if (err?.code !== 'CANCELLED' && err?.name !== 'AbortError' && err?.name !== 'CanceledError') {
       console.error('加载过期预警失败:', error)
     }
   } finally {
@@ -824,7 +904,7 @@ const loadData = async () => {
 }
 
 // 工具函数
-const formatNumber = (num) => {
+const formatNumber = (num: number | string | undefined | null) => {
   if (!num) return '0'
   // 去掉逗号后再转换
   const cleaned = String(num).replace(/,/g, '')
@@ -834,7 +914,7 @@ const formatNumber = (num) => {
 }
 
 // 延期日期格式化
-const formatExtensionDate = (date) => {
+const formatExtensionDate = (date: string | undefined | null) => {
   if (!date) return '-'
   // 支持 YYYY-MM-DD 和其他格式
   const d = new Date(date)
@@ -857,7 +937,7 @@ const handlePageChange = () => {
   loadTableData()
 }
 
-watch([selectedDate, filterPlant, filterWarehouse, filterTrans, filterType, filterReference, filterUser], handleFilterChange)
+watch([selectedDate, filterPlant, filterWarehouse, filterTrans, filterType, filterReference, filterUser, filterProcessed], handleFilterChange)
 
 onMounted(() => {
   loadData()
@@ -875,9 +955,9 @@ const loadClass33List = async () => {
         search: class33Search.value || undefined
       }
     })
-    if (res.success) {
-      class33List.value = res.data
-      class33Pagination.value.total = res.total
+    if (res) {
+      class33List.value = (res.data as Class33Item[]) || []
+      class33Pagination.value.total = res.total || 0
     }
   } catch (error) {
     console.error('加载33类物料清单失败:', error)
@@ -890,7 +970,7 @@ const loadClass33List = async () => {
 const loadClass33Set = async () => {
   try {
     const res = await request.get('/class33-materials/all-parts')
-    if (res.success) {
+    if (res && res.data) {
       class33Set.value = new Set(res.data)
     }
   } catch (error) {
@@ -925,7 +1005,7 @@ const addClass33Item = async () => {
 }
 
 // 删除物料
-const deleteClass33Item = async (row) => {
+const deleteClass33Item = async (row: Class33Item) => {
   try {
     const res = await request.delete(`/class33-materials/${row.id}`)
     if (res.success) {
@@ -946,7 +1026,7 @@ const batchDeleteClass33 = async () => {
     return
   }
   try {
-    const ids = selectedClass33Rows.value.map(row => row.id)
+    const ids = selectedClass33Rows.value.map((row: Class33Item) => row.id)
     const res = await request.delete('/class33-materials', { data: { ids } })
     if (res.success) {
       ElMessage.success(res.message || '删除成功')
@@ -960,13 +1040,49 @@ const batchDeleteClass33 = async () => {
   }
 }
 
+// 触发附件上传
+const triggerClass33FileUpload = () => {
+  const input = class33FileInput.value as unknown as HTMLInputElement
+  if (input) {
+    input.click()
+  }
+}
+
+// 处理附件上传
+const handleClass33FileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await request.post('/class33-materials/batch-delete-by-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    if (res.success) {
+      ElMessage.success(res.message || '删除成功')
+      loadClass33List()
+      loadClass33Set()
+    }
+  } catch (error) {
+    console.error('上传附件批量删除失败:', error)
+    ElMessage.error('批量删除失败')
+  }
+
+  // 清空文件输入框
+  target.value = ''
+}
+
 // 选中33类物料行
-const handleClass33SelectionChange = (selection) => {
+const handleClass33SelectionChange = (selection: Class33Item[]) => {
   selectedClass33Rows.value = selection
 }
 
 // 编辑物料
-const editClass33Item = (row) => {
+const editClass33Item = (row: Class33Item) => {
   editClass33Form.value = {
     id: row.id,
     part_no: row.part_no,
@@ -997,11 +1113,37 @@ const saveEditClass33Item = async () => {
     ElMessage.error('保存失败')
   }
 }
+
+// 表格缩放
+const handleZoomChange = (val: number) => {
+  tableZoom.value = val
+  localStorage.setItem(STORAGE_KEY, val.toString())
+}
+
+const resetZoom = () => {
+  tableZoom.value = defaultZoom
+  zoomSlider.value = defaultZoom
+  localStorage.removeItem(STORAGE_KEY)
+}
 </script>
 
 <style scoped>
 .warehouse-monitor {
   padding: 20px;
+  min-height: calc(100vh - 120px);
+}
+
+.warehouse-monitor :deep(.el-loading-mask) {
+  background-color: rgba(255, 255, 255, 0.95);
+}
+
+.warehouse-monitor :deep(.el-loading-spinner) {
+  top: 40%;
+}
+
+.warehouse-monitor :deep(.el-loading-text) {
+  color: #606266;
+  font-size: 14px;
 }
 
 .header {
@@ -1020,6 +1162,10 @@ const saveEditClass33Item = async () => {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.table-wrapper {
+  overflow: visible;
 }
 
 /* 汇总卡片 */

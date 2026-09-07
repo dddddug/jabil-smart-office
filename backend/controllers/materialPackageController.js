@@ -14,27 +14,33 @@ const TABLE_NAME = 'jso_material_package';
  */
 export const getMaterialPackages = async (req, res, next) => {
   try {
-    const { partNo, materialGroup, manufacturer, page, pageSize } = req.query;
+    const { partNo, materialGroup, manufacturer, spec, page, pageSize } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
     let paramIndex = 1;
 
     if (partNo) {
-      whereClause += ` AND part_no LIKE $${paramIndex}`;
+      whereClause += ` AND part_no ILIKE $${paramIndex}`;
       params.push(`%${partNo}%`);
       paramIndex++;
     }
 
     if (materialGroup) {
-      whereClause += ` AND material_group LIKE $${paramIndex}`;
+      whereClause += ` AND material_group ILIKE $${paramIndex}`;
       params.push(`%${materialGroup}%`);
       paramIndex++;
     }
 
     if (manufacturer) {
-      whereClause += ` AND manufacturer LIKE $${paramIndex}`;
+      whereClause += ` AND manufacturer ILIKE $${paramIndex}`;
       params.push(`%${manufacturer}%`);
+      paramIndex++;
+    }
+
+    if (spec) {
+      whereClause += ` AND spec ILIKE $${paramIndex}`;
+      params.push(`%${spec}%`);
       paramIndex++;
     }
 
@@ -81,6 +87,86 @@ export const getMaterialPackages = async (req, res, next) => {
     success(res, { items, total, page: pageNum, pageSize: pageSizeNum });
   } catch (err) {
     logError('获取物料包装信息列表失败', { error: err.message });
+    next(err);
+  }
+};
+
+/**
+ * 获取所有规格列表（下拉选择用）
+ */
+export const getSpecOptions = async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT spec FROM ${TABLE_NAME} WHERE spec IS NOT NULL AND spec != '' ORDER BY spec`
+    );
+    const options = result.rows.map(row => row.spec);
+    success(res, options);
+  } catch (err) {
+    logError('获取规格列表失败', { error: err.message });
+    next(err);
+  }
+};
+
+/**
+ * 获取图表统计数据（聚合查询，包含所有记录）
+ */
+export const getChartStats = async (req, res, next) => {
+  try {
+    const { partNo, materialGroup, manufacturer, spec } = req.query;
+
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+
+    if (partNo) {
+      whereClause += ` AND part_no ILIKE $${paramIndex}`;
+      params.push(`%${partNo}%`);
+      paramIndex++;
+    }
+
+    if (materialGroup) {
+      whereClause += ` AND material_group ILIKE $${paramIndex}`;
+      params.push(`%${materialGroup}%`);
+      paramIndex++;
+    }
+
+    if (manufacturer) {
+      whereClause += ` AND manufacturer ILIKE $${paramIndex}`;
+      params.push(`%${manufacturer}%`);
+      paramIndex++;
+    }
+
+    if (spec) {
+      whereClause += ` AND spec ILIKE $${paramIndex}`;
+      params.push(`%${spec}%`);
+      paramIndex++;
+    }
+
+    // 规格分布统计
+    const specStats = await pool.query(
+      `SELECT spec, COUNT(*) as count FROM ${TABLE_NAME} ${whereClause} AND spec IS NOT NULL AND spec != '' GROUP BY spec ORDER BY count DESC LIMIT 20`,
+      params
+    );
+
+    // 物料组分布统计
+    const materialGroupStats = await pool.query(
+      `SELECT material_group, COUNT(*) as count FROM ${TABLE_NAME} ${whereClause} AND material_group IS NOT NULL AND material_group != '' GROUP BY material_group ORDER BY count DESC LIMIT 20`,
+      params
+    );
+
+    // 制造商分布统计
+    const manufacturerStats = await pool.query(
+      `SELECT manufacturer, COUNT(*) as count FROM ${TABLE_NAME} ${whereClause} AND manufacturer IS NOT NULL AND manufacturer != '' GROUP BY manufacturer ORDER BY count DESC LIMIT 20`,
+      params
+    );
+
+    success(res, {
+      specStats: specStats.rows,
+      materialGroupStats: materialGroupStats.rows,
+      manufacturerStats: manufacturerStats.rows
+    });
+  } catch (err) {
+    logError('获取图表统计数据失败', { error: err.message });
     next(err);
   }
 };
@@ -294,85 +380,109 @@ export const batchImportMaterialPackages = async (req, res, next) => {
 };
 
 /**
- * 处理批量导入的核心逻辑
+ * 处理批量导入的核心逻辑（批量优化版）
+ * part_no + manufacturer 作为唯一约束
  */
 const processBatchImport = async (items, username) => {
   const errors = [];
-  const successCount = { inserted: 0, updated: 0 };
+  let inserted = 0;
+  let updated = 0;
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const rowNum = i + 2;
+  // 过滤有效数据
+  const validItems = items.filter(item => item.partNo);
+  const invalidItems = items.filter(item => !item.partNo);
+
+  invalidItems.forEach((item, i) => {
+    errors.push(`第${i + 2}行：PartNo不能为空`);
+  });
+
+  if (validItems.length === 0) {
+    return { inserted: 0, updated: 0, errors };
+  }
+
+  // 批量处理，每100条一批
+  const BATCH_SIZE = 100;
+
+  for (let batchStart = 0; batchStart < validItems.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, validItems.length);
+    const batch = validItems.slice(batchStart, batchEnd);
 
     try {
-      if (!item.partNo) {
-        errors.push(`第${rowNum}行：PartNo不能为空`);
-        continue;
+      // 构建批量 INSERT ... ON CONFLICT 语句
+      const values = [];
+      const params = [];
+      let paramIndex = 1;
+
+      for (const item of batch) {
+        const manufacturer = item.manufacturer || '';
+        values.push(`($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, $${paramIndex+4}, $${paramIndex+5}, $${paramIndex+6}, $${paramIndex+7}, $${paramIndex+8}, $${paramIndex+9}, $${paramIndex+10})`);
+        params.push(
+          item.partNo,
+          item.materialGroup,
+          manufacturer || null,
+          item.spec,
+          item.length,
+          item.width,
+          item.height,
+          item.thickness,
+          item.remark,
+          username
+        );
+        paramIndex += 10;
       }
 
-      // 先按 PartNo + Manufacturer 查找
-      const existResult = await pool.query(
-        `SELECT id FROM ${TABLE_NAME} WHERE part_no = $1`,
-        [item.partNo]
-      );
+      const sql = `
+        INSERT INTO ${TABLE_NAME}
+        (part_no, material_group, manufacturer, spec, length, width, height, thickness, remark, created_by, updated_by)
+        VALUES ${values.join(', ')}
+        ON CONFLICT (part_no, COALESCE(manufacturer, '')) DO UPDATE SET
+        material_group = COALESCE(EXCLUDED.material_group, ${TABLE_NAME}.material_group),
+        spec = COALESCE(EXCLUDED.spec, ${TABLE_NAME}.spec),
+        length = COALESCE(EXCLUDED.length, ${TABLE_NAME}.length),
+        width = COALESCE(EXCLUDED.width, ${TABLE_NAME}.width),
+        height = COALESCE(EXCLUDED.height, ${TABLE_NAME}.height),
+        thickness = COALESCE(EXCLUDED.thickness, ${TABLE_NAME}.thickness),
+        remark = COALESCE(EXCLUDED.remark, ${TABLE_NAME}.remark),
+        updated_by = EXCLUDED.updated_by,
+        updated_at = CURRENT_TIMESTAMP
+      `;
 
-      if (existResult.rows.length > 0) {
-        // 物料号已存在，检查Manufacturer是否一致
-        const existing = await pool.query(
-          `SELECT manufacturer FROM ${TABLE_NAME} WHERE part_no = $1`,
-          [item.partNo]
-        );
+      await pool.query(sql, params);
+      inserted += batch.length;
 
-        const existingManufacturer = existing.rows[0]?.manufacturer || '';
-        const importManufacturer = item.manufacturer || '';
+    } catch (err) {
+      // 批量失败，回退到逐条处理
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        const rowNum = batchStart + i + 2;
+        const manufacturer = item.manufacturer || '';
 
-        // 如果Manufacturer一致，则更新
-        if (existingManufacturer === importManufacturer) {
-          await pool.query(
-            `UPDATE ${TABLE_NAME} SET
-             material_group = COALESCE(NULLIF($1, ''), material_group),
-             spec = COALESCE(NULLIF($2, ''), spec),
-             length = CASE WHEN $3 IS NOT NULL THEN $3 ELSE length END,
-             width = CASE WHEN $4 IS NOT NULL THEN $4 ELSE width END,
-             height = CASE WHEN $5 IS NOT NULL THEN $5 ELSE height END,
-             thickness = CASE WHEN $6 IS NOT NULL THEN $6 ELSE thickness END,
-             remark = COALESCE(NULLIF($7, ''), remark),
-             updated_by = $8,
-             updated_at = CURRENT_TIMESTAMP
-             WHERE part_no = $9`,
-            [item.materialGroup, item.spec, item.length, item.width, item.height, item.thickness, item.remark, username, item.partNo]
-          );
-          successCount.updated++;
-        } else {
-          // Manufacturer不一致，新增一条记录
+        try {
           await pool.query(
             `INSERT INTO ${TABLE_NAME}
              (part_no, material_group, manufacturer, spec, length, width, height, thickness, remark, created_by, updated_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+             ON CONFLICT (part_no, COALESCE(manufacturer, '')) DO UPDATE SET
+             material_group = COALESCE(EXCLUDED.material_group, ${TABLE_NAME}.material_group),
+             spec = COALESCE(EXCLUDED.spec, ${TABLE_NAME}.spec),
+             length = COALESCE(EXCLUDED.length, ${TABLE_NAME}.length),
+             width = COALESCE(EXCLUDED.width, ${TABLE_NAME}.width),
+             height = COALESCE(EXCLUDED.height, ${TABLE_NAME}.height),
+             thickness = COALESCE(EXCLUDED.thickness, ${TABLE_NAME}.thickness),
+             remark = COALESCE(EXCLUDED.remark, ${TABLE_NAME}.remark),
+             updated_by = EXCLUDED.updated_by,
+             updated_at = CURRENT_TIMESTAMP`,
             [item.partNo, item.materialGroup, item.manufacturer, item.spec, item.length, item.width, item.height, item.thickness, item.remark, username]
           );
-          successCount.inserted++;
+          inserted++;
+        } catch (singleErr) {
+          errors.push(`第${rowNum}行 ${item.partNo}：${singleErr.message}`);
         }
-      } else {
-        // 新增记录
-        await pool.query(
-          `INSERT INTO ${TABLE_NAME}
-           (part_no, material_group, manufacturer, spec, length, width, height, thickness, remark, created_by, updated_by)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)`,
-          [item.partNo, item.materialGroup, item.manufacturer, item.spec, item.length, item.width, item.height, item.thickness, item.remark, username]
-        );
-        successCount.inserted++;
       }
-    } catch (itemErr) {
-      errors.push(`第${rowNum}行：${itemErr.message}`);
     }
   }
 
-  return {
-    inserted: successCount.inserted,
-    updated: successCount.updated,
-    errors
-  };
+  return { inserted, updated, errors };
 };
 
 /**
@@ -380,27 +490,33 @@ const processBatchImport = async (items, username) => {
  */
 export const exportMaterialPackages = async (req, res, next) => {
   try {
-    const { partNo, materialGroup, manufacturer } = req.query;
+    const { partNo, materialGroup, manufacturer, spec } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params = [];
     let paramIndex = 1;
 
     if (partNo) {
-      whereClause += ` AND part_no LIKE $${paramIndex}`;
+      whereClause += ` AND part_no ILIKE $${paramIndex}`;
       params.push(`%${partNo}%`);
       paramIndex++;
     }
 
     if (materialGroup) {
-      whereClause += ` AND material_group LIKE $${paramIndex}`;
+      whereClause += ` AND material_group ILIKE $${paramIndex}`;
       params.push(`%${materialGroup}%`);
       paramIndex++;
     }
 
     if (manufacturer) {
-      whereClause += ` AND manufacturer LIKE $${paramIndex}`;
+      whereClause += ` AND manufacturer ILIKE $${paramIndex}`;
       params.push(`%${manufacturer}%`);
+      paramIndex++;
+    }
+
+    if (spec) {
+      whereClause += ` AND spec ILIKE $${paramIndex}`;
+      params.push(`%${spec}%`);
       paramIndex++;
     }
 
@@ -477,14 +593,14 @@ export const batchImportWithFile = async (req, res, next) => {
 
       items.push({
         partNo: String(partNo).trim(),
-        materialGroup: row[headerMap['MaterialGroup']] ? String(row[headerMap['MaterialGroup']]).trim() : undefined,
-        manufacturer: row[headerMap['Manufacturer']] ? String(row[headerMap['Manufacturer']]).trim() : undefined,
-        spec: row[headerMap['规格']] ? String(row[headerMap['规格']]).trim() : undefined,
-        length: row[headerMap['长(cm)']] ? parseFloat(row[headerMap['长(cm)']]) : undefined,
-        width: row[headerMap['宽(cm)']] ? parseFloat(row[headerMap['宽(cm)']]) : undefined,
-        height: row[headerMap['高(cm)']] ? parseFloat(row[headerMap['高(cm)']]) : undefined,
-        thickness: row[headerMap['厚度(mm)']] ? parseFloat(row[headerMap['厚度(mm)']]) : undefined,
-        remark: row[headerMap['备注']] ? String(row[headerMap['备注']]).trim() : undefined
+        materialGroup: row[headerMap['MaterialGroup']] ? String(row[headerMap['MaterialGroup']]).trim() : null,
+        manufacturer: row[headerMap['Manufacturer']] ? String(row[headerMap['Manufacturer']]).trim() : null,
+        spec: row[headerMap['规格']] ? String(row[headerMap['规格']]).trim() : null,
+        length: row[headerMap['长(cm)']] ? parseFloat(row[headerMap['长(cm)']]) : null,
+        width: row[headerMap['宽(cm)']] ? parseFloat(row[headerMap['宽(cm)']]) : null,
+        height: row[headerMap['高(cm)']] ? parseFloat(row[headerMap['高(cm)']]) : null,
+        thickness: row[headerMap['厚度(mm)']] ? parseFloat(row[headerMap['厚度(mm)']]) : null,
+        remark: row[headerMap['备注']] ? String(row[headerMap['备注']]).trim() : null
       });
     }
 
@@ -562,6 +678,8 @@ export const downloadTemplate = async (req, res, next) => {
 
 export default {
   getMaterialPackages,
+  getSpecOptions,
+  getChartStats,
   getMaterialPackageById,
   createMaterialPackage,
   updateMaterialPackage,

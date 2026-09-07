@@ -436,13 +436,14 @@ const loadConfigs = async () => {
   clearRequestCache();
   try {
     const res = await getStockroomUrgentPullConfigs();
-    locationMappings.value = (res.location_mapping || []).map((x: any) => ({
+    const data = res.data || res;
+    locationMappings.value = (data.location_mapping || []).map((x: any) => ({
       ...x,
       _input: '',
       _keywords: (x.configValue || '').split(',').filter((k: string) => k.trim())
     }));
-    wcMappings.value = res.wc_mapping || [];
-    pulllistTypes.value = (res.pulllist_type || []).map((x: any) => ({
+    wcMappings.value = data.wc_mapping || [];
+    pulllistTypes.value = (data.pulllist_type || []).map((x: any) => ({
       id: x.id,
       configKey: x.configKey,
       configValue: x.configValue,

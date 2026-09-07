@@ -24,6 +24,7 @@
         </div>
         <div class="header-right-actions">
           <div class="header-actions">
+            <span class="header-action" @click="showZoomDialog = true">🔍 缩放 {{ (tableZoom * 100).toFixed(0) }}%</span>
             <span class="header-action" @click="router.push('/announcement-management')">🌐 系统公告</span>
             <div class="notification-wrapper" @click.stop>
               <span class="header-action notification-icon" @click.stop="toggleNotificationPanel">
@@ -136,6 +137,22 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 表格缩放弹窗 -->
+    <el-dialog v-model="showZoomDialog" title="表格缩放" width="400px">
+      <div style="padding: 20px 0;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+          <span style="width: 50px;">50%</span>
+          <el-slider v-model="zoomSlider" :min="0.5" :max="2" :step="0.05" :show-tooltip="true" style="flex: 1;" @change="handleZoomChange" />
+          <span style="width: 50px;">200%</span>
+          <span style="width: 60px; text-align: right;">{{ (zoomSlider * 100).toFixed(0) }}%</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showZoomDialog = false">关闭</el-button>
+        <el-button type="primary" @click="resetZoom">恢复默认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -253,6 +270,24 @@ const displayNotifications = computed(() => {
   }
   return notifications.value.filter(n => n.read);
 });
+
+// 表格缩放
+const STORAGE_KEY = 'warehouse_monitor_zoom'
+const defaultZoom = 1
+const tableZoom = ref(Number(localStorage.getItem(STORAGE_KEY)) || defaultZoom)
+const showZoomDialog = ref(false)
+const zoomSlider = ref(tableZoom.value)
+
+const handleZoomChange = (val: number) => {
+  tableZoom.value = val
+  localStorage.setItem(STORAGE_KEY, val.toString())
+}
+
+const resetZoom = () => {
+  tableZoom.value = defaultZoom
+  zoomSlider.value = defaultZoom
+  localStorage.removeItem(STORAGE_KEY)
+}
 
 const toggleNotificationPanel = async () => {
   // 如果正在打开，先移除旧的监听器
@@ -385,7 +420,7 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '工位安排', icon: '🏭', routeName: 'station-arrangement', parent: '业务中心', expanded: false },
   { name: 'K045 单据管理', icon: '📦', routeName: 'k045', parent: '业务中心', expanded: false },
   { name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', parent: '业务中心', expanded: false },
-  { name: '回仓申请', icon: '📥', routeName: 'warehouse-return', parent: '业务中心', expanded: false },
+  { name: '产线回仓申请', icon: '📥', routeName: 'warehouse-return', parent: '业务中心', expanded: false },
   { name: '数据中心', isHeader: true, label: '数据中心', expanded: false, icon: '📊' },
   { name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', parent: '数据中心', expanded: false },
   { name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', parent: '数据中心', expanded: false },

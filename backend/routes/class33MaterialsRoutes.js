@@ -3,10 +3,15 @@
  */
 
 import express from 'express';
+import multer from 'multer';
 import pg from 'pg';
 
 const router = express.Router();
 const { Pool } = pg;
+
+// 文件上传配置
+const memoryStorage = multer.memoryStorage();
+const upload = multer({ storage: memoryStorage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 const pool = new Pool({
   host: process.env.DB_HOST || '10.114.100.171',
@@ -189,6 +194,57 @@ router.delete('/', async (req, res) => {
     res.json({ success: true, message: `删除成功 ${result.rows.length} 条`, data: result.rows });
   } catch (error) {
     console.error('批量删除物料失败:', error);
+    res.status(500).json({ success: false, message: '批量删除失败' });
+  }
+});
+
+// 上传附件批量删除
+router.post('/batch-delete-by-file', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: '请上传Excel文件' });
+    }
+
+    // 解析Excel文件
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    // 从第一列获取物料编号
+    const partNos = [];
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (row && row[0]) {
+        const partNo = String(row[0]).trim();
+        if (partNo && partNo !== 'part_no' && partNo !== 'PartNo' && partNo !== '物料编号') {
+          partNos.push(partNo);
+        }
+      }
+    }
+
+    if (partNos.length === 0) {
+      return res.status(400).json({ success: false, message: '文件中没有找到有效的物料编号' });
+    }
+
+    // 根据物料编号删除
+    const deleteResult = await pool.query(
+      `DELETE FROM ${TABLE} WHERE part_no = ANY($1) RETURNING id, part_no`,
+      [partNos]
+    );
+
+    res.json({
+      success: true,
+      message: `成功删除 ${deleteResult.rows.length} 条记录（文件中有 ${partNos.length} 个编号）`,
+      data: {
+        deletedCount: deleteResult.rows.length,
+        fileCount: partNos.length,
+        deletedParts: deleteResult.rows.map(r => r.part_no)
+      }
+    });
+  } catch (error) {
+    console.error('上传附件批量删除失败:', error);
     res.status(500).json({ success: false, message: '批量删除失败' });
   }
 });

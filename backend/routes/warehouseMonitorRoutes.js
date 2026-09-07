@@ -37,7 +37,7 @@ const TRANS_TYPES = {
 // 过期预警列表 - 优化版：基于今日明细数据筛选过期
 router.get('/expiry-alerts', async (req, res) => {
   try {
-    const { plant, warehouse, trans, page = 1, pageSize = 100, date } = req.query;
+    const { plant, warehouse, trans, page = 1, pageSize = 100, date, is_processed } = req.query;
     const d = date ? new Date(date) : new Date();
     const targetDate = d.toISOString().split('T')[0];
 
@@ -52,10 +52,21 @@ router.get('/expiry-alerts', async (req, res) => {
     const class33 = `(SELECT 1 FROM jso_class33_materials c33 WHERE c33.part_no = h.material LIMIT 1)`;
 
     // 计算 TotalSLife（DC + SLife）- YYYYMMDD 格式用于日期比较
+    // 修复: date_code 是 ISO 周 (YYWW)，TO_DATE(IYYY-IW) 直接返回该周周一
     const calcTotalSl = `
       CASE
         WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          TO_CHAR((TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * CASE sl.period_indicator WHEN 'D' THEN 1 WHEN 'W' THEN 7 WHEN 'M' THEN 30 WHEN 'Y' THEN 365 ELSE 30 END))::date, 'YYYYMMDD')
+          TO_CHAR(
+            TO_DATE((2000 + CAST(SUBSTR(h.date_code, 1, 2) AS INT)) || '-' || SUBSTR(h.date_code, 3, 2), 'IYYY-IW')::date
+            + CASE sl.period_indicator
+                WHEN 'D' THEN make_interval(days => sl.shelf_life)
+                WHEN 'W' THEN make_interval(days => sl.shelf_life * 7)
+                WHEN 'M' THEN make_interval(months => sl.shelf_life)
+                WHEN 'Y' THEN make_interval(months => sl.shelf_life * 12)
+                ELSE make_interval(months => sl.shelf_life)
+              END,
+            'YYYYMMDD'
+          )
         ELSE NULL
       END
     `;
@@ -64,37 +75,58 @@ router.get('/expiry-alerts', async (req, res) => {
     const displayTotalSl = `
       CASE
         WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          TO_CHAR((TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * CASE sl.period_indicator WHEN 'D' THEN 1 WHEN 'W' THEN 7 WHEN 'M' THEN 30 WHEN 'Y' THEN 365 ELSE 30 END))::date, 'MM/DD/YYYY')
+          TO_CHAR(
+            TO_DATE((2000 + CAST(SUBSTR(h.date_code, 1, 2) AS INT)) || '-' || SUBSTR(h.date_code, 3, 2), 'IYYY-IW')::date
+            + CASE sl.period_indicator
+                WHEN 'D' THEN make_interval(days => sl.shelf_life)
+                WHEN 'W' THEN make_interval(days => sl.shelf_life * 7)
+                WHEN 'M' THEN make_interval(months => sl.shelf_life)
+                WHEN 'Y' THEN make_interval(months => sl.shelf_life * 12)
+                ELSE make_interval(months => sl.shelf_life)
+              END,
+            'MM/DD/YYYY'
+          )
         ELSE NULL
       END
     `;
 
     // 计算 Expiry Days（核心过期判定）- 与今日明细一致
     // 使用 displayTotalSl (MM/DD/YYYY) 来解析和比较
+    // 33类物料: TotalSLife | 有SLED的其他物料: SLED | 无SLED的其他物料: TotalSLife
+    // 有延期日期时，过期用延期日期
     const calcExpiryDays = `
       CASE
+        -- 33类物料: TotalSLife <= 今天 且有延期 -> 用延期日期
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - $1::date)
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
+        -- 33类物料: TotalSLife <= 今天 且无延期 -> 用TotalSLife
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date THEN
           (TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') - $1::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
+        -- 有SLED的其他物料: SLED <= 今天 且有延期 -> 用延期日期
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - $1::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN
+        -- 有SLED的其他物料: SLED <= 今天 且无延期 -> 用SLED
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date THEN
           (TO_DATE(h.sled, 'MM/DD/YYYY')::date - $1::date)
-        WHEN e.extension_date IS NOT NULL THEN
+        -- 无SLED的其他物料: TotalSLife <= 今天 且有延期 -> 用延期日期
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - $1::date)
+        -- 无SLED的其他物料: TotalSLife <= 今天 且无延期 -> 用TotalSLife
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date THEN
+          (TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') - $1::date)
         ELSE NULL
       END
     `;
 
-    // Expiry 来源（与今日明细一致：过期则用延期日期）
+    // Expiry 来源
     const calcExpirySource = `
       CASE
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN 'dc_sl'
-        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN 'sled'
-        WHEN e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date THEN 'dc_sl'
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date THEN 'sled'
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${displayTotalSl}, 'MM/DD/YYYY') <= $1::date THEN 'dc_sl'
         ELSE NULL
       END
     `;
@@ -105,6 +137,7 @@ router.get('/expiry-alerts', async (req, res) => {
       h.creation_date, h.creation_time, h.from_sloc, h.masked_mpn,
       h.sled, h.mfg_date, h.date_code, h.lot_code, h.manufacturer_code,
       h.is_processed, h.processed_at, h.processed_by, h.process_result, h.reference,
+      COALESCE(u.real_name, h.processed_by) as processed_by_name,
       TO_CHAR(e.extension_date, 'YYYY-MM-DD') as extension_date,
       e.extension_file_no, e.date_code as extension_date_code,
       e.user_name as extension_user_name,
@@ -119,6 +152,7 @@ router.get('/expiry-alerts', async (req, res) => {
     let fromClause = `FROM ${GRN_HISTORY_TABLE} h
       LEFT JOIN jso_material_shelf_life sl ON sl.material = h.material AND sl.plant = h.plant
       LEFT JOIN jso_material_extension e ON e.grn = h.gr_document
+      LEFT JOIN jso_system_user_management u ON u.username = h.processed_by OR u.employee_id = h.processed_by OR u.old_employee_id = h.processed_by
       LEFT JOIN LATERAL (
         SELECT type, storage_bin, user_name
         FROM ${pullLogTable}
@@ -135,6 +169,11 @@ router.get('/expiry-alerts', async (req, res) => {
     if (plant) { whereClause += ` AND h.plant = $${params.length + 1}`; params.push(plant); }
     if (warehouse && warehouse.trim()) { whereClause += ` AND h.warehouse = $${params.length + 1}`; params.push(warehouse); }
     if (trans && trans.trim()) { whereClause += ` AND h.trans = $${params.length + 1}`; params.push(trans); }
+    if (is_processed !== undefined && is_processed !== null && is_processed !== '') {
+      const isProcessedBool = (is_processed == '1' || is_processed == 1 || is_processed === true || is_processed === 'true');
+      whereClause += ` AND h.is_processed = $${params.length + 1}`;
+      params.push(isProcessedBool);
+    }
 
     // 过期筛选条件（PLR不在过期清单中 + 33类SLife不为0）
     const expiredFilter = `AND (${calcExpiryDays} IS NOT NULL AND ${calcExpiryDays} <= 0)
@@ -217,7 +256,7 @@ router.get('/expired-filter-options', async (req, res) => {
     // 计算过期日期（简化版本）
     const calcExpiry = `
       CASE
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN
+        WHEN COALESCE(h.sled, '') != '' THEN
           TO_DATE(h.sled, 'MM/DD/YYYY')::date
         WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
           TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * 30)
@@ -334,27 +373,42 @@ router.get('/summary', async (req, res) => {
 
     // 过期预警统计：与过期预警明细保持一致
     // 计算 TotalSLife（MM/DD/YYYY 格式用于日期比较）
-    const calcTotalSl = `
+    // 修复: date_code 是 ISO 周，TO_DATE(IYYY-IW) 直接返回该周周一
+    const calcTotalSlSummary = `
       CASE
         WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          TO_CHAR((TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * CASE sl.period_indicator WHEN 'D' THEN 1 WHEN 'W' THEN 7 WHEN 'M' THEN 30 WHEN 'Y' THEN 365 ELSE 30 END))::date, 'MM/DD/YYYY')
+          TO_CHAR(
+            TO_DATE((2000 + CAST(SUBSTR(h.date_code, 1, 2) AS INT)) || '-' || SUBSTR(h.date_code, 3, 2), 'IYYY-IW')::date
+            + CASE sl.period_indicator
+                WHEN 'D' THEN make_interval(days => sl.shelf_life)
+                WHEN 'W' THEN make_interval(days => sl.shelf_life * 7)
+                WHEN 'M' THEN make_interval(months => sl.shelf_life)
+                WHEN 'Y' THEN make_interval(months => sl.shelf_life * 12)
+                ELSE make_interval(months => sl.shelf_life)
+              END,
+            'MM/DD/YYYY'
+          )
         ELSE NULL
       END
     `;
 
     const class33 = `(SELECT 1 FROM jso_class33_materials c33 WHERE c33.part_no = h.material LIMIT 1)`;
+    // 33类物料: TotalSLife | 有SLED的其他物料: SLED | 无SLED的其他物料: TotalSLife
+    // 有延期日期时，过期用延期日期
     const calcExpiryDays = `
       CASE
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - '${targetDate}'::date)
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          (TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') - '${targetDate}'::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') <= '${targetDate}'::date THEN
+          (TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') - '${targetDate}'::date)
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - '${targetDate}'::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN
+        WHEN COALESCE(h.sled, '') != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= '${targetDate}'::date THEN
           (TO_DATE(h.sled, 'MM/DD/YYYY')::date - '${targetDate}'::date)
-        WHEN e.extension_date IS NOT NULL THEN
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') <= '${targetDate}'::date AND e.extension_date IS NOT NULL THEN
           (e.extension_date - '${targetDate}'::date)
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND h.sled IS NULL AND TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') <= '${targetDate}'::date THEN
+          (TO_DATE(${calcTotalSlSummary}, 'MM/DD/YYYY') - '${targetDate}'::date)
         ELSE NULL
       END
     `;
@@ -430,43 +484,54 @@ router.get('/today-records', async (req, res) => {
     const class33 = `(SELECT 1 FROM jso_class33_materials c33 WHERE c33.part_no = h.material LIMIT 1)`;
 
     // 计算 TotalSLife（DC + SLife）
+    // 修复: date_code 是 ISO 周，TO_DATE(IYYY-IW) 直接返回该周周一
     const calcTotalSl = `
       CASE
         WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
-          TO_CHAR((TO_DATE(h.date_code, 'YYWW')::date + make_interval(days => sl.shelf_life * CASE sl.period_indicator WHEN 'D' THEN 1 WHEN 'W' THEN 7 WHEN 'M' THEN 30 WHEN 'Y' THEN 365 ELSE 30 END))::date, 'MM/DD/YYYY')
+          TO_CHAR(
+            TO_DATE((2000 + CAST(SUBSTR(h.date_code, 1, 2) AS INT)) || '-' || SUBSTR(h.date_code, 3, 2), 'IYYY-IW')::date
+            + CASE sl.period_indicator
+                WHEN 'D' THEN make_interval(days => sl.shelf_life)
+                WHEN 'W' THEN make_interval(days => sl.shelf_life * 7)
+                WHEN 'M' THEN make_interval(months => sl.shelf_life)
+                WHEN 'Y' THEN make_interval(months => sl.shelf_life * 12)
+                ELSE make_interval(months => sl.shelf_life)
+              END,
+            'MM/DD/YYYY'
+          )
         ELSE NULL
       END
     `;
 
     // 直接从GRN表查询，JOIN获取type/storage_bin/user_name/shelf_life/extension_date
     // 使用分区感知的 LATERAL JOIN 避免扫描所有分区
+    // 33类物料: TotalSLife | 有SLED的其他物料: SLED | 无SLED的其他物料: TotalSLife
     let selectCols = `h.id, h.gr_document, h.material, h.quantity, h.plant, h.warehouse, h.to_number, h.to_sloc, h.trans, h.movmt_type, h.creation_date, h.creation_time, h.from_sloc, h.masked_mpn, h.sled, h.mfg_date, h.date_code, h.lot_code, h.reference, h.is_processed, h.process_result, h.processed_by, h.processed_at,
       sl.shelf_life, sl.period_indicator,
       TO_CHAR(e.extension_date, 'YYYY-MM-DD') as extension_date,
       pull.type, pull.storage_bin, pull.user_name,
       CASE WHEN ${class33} IS NOT NULL THEN 1 ELSE 0 END as is_class33,
       ${calcTotalSl} as total_sl,
-      -- Expiry来源（按原逻辑：过期则用延期日期）
+      -- Expiry来源（COALESCE处理空字符串）
       CASE
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND e.extension_date IS NOT NULL THEN 'extension_date'
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN 'dc_sl'
-        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN 'extension_date'
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN 'sled'
-        WHEN e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN COALESCE(h.sled, '') != '' AND e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN COALESCE(h.sled, '') != '' THEN 'sled'
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND COALESCE(h.sled, '') = '' AND e.extension_date IS NOT NULL THEN 'extension_date'
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND COALESCE(h.sled, '') = '' THEN 'dc_sl'
         ELSE NULL
       END as expiry_source,
-      -- Expiry Days（过期则显示负数）
+      -- Expiry Days（总是计算，有延期则用延期日期，COALESCE处理空字符串）
       CASE
-        WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
+        WHEN e.extension_date IS NOT NULL THEN
           (e.extension_date - $1::date)
         WHEN ${class33} IS NOT NULL AND sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' THEN
           (TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') - $1::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' AND TO_DATE(h.sled, 'MM/DD/YYYY') <= $1::date AND e.extension_date IS NOT NULL THEN
-          (e.extension_date - $1::date)
-        WHEN h.sled IS NOT NULL AND h.sled != '' THEN
+        WHEN COALESCE(h.sled, '') != '' THEN
           (TO_DATE(h.sled, 'MM/DD/YYYY') - $1::date)
-        WHEN e.extension_date IS NOT NULL THEN
-          (e.extension_date - $1::date)
+        WHEN sl.shelf_life IS NOT NULL AND h.date_code ~ '^[0-9]{4}$' AND COALESCE(h.sled, '') = '' THEN
+          (TO_DATE(${calcTotalSl}, 'MM/DD/YYYY') - $1::date)
         ELSE NULL
       END as expiry_days`;
 

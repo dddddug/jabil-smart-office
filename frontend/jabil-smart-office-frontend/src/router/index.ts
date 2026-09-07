@@ -107,6 +107,12 @@ const router = createRouter({
           meta: { requiresAuth: true, title: '物料包装信息' },
         },
         {
+          path: 'missing-material-package',
+          name: 'missing-material-package',
+          component: () => import('../views/MissingMaterialPackageView.vue'),
+          meta: { requiresAuth: true, title: '待填充料号' },
+        },
+        {
           path: 'leave-management',
           name: 'leave-management',
           component: () => import('../views/LeaveManagementView.vue'),

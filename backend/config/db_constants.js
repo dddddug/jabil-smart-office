@@ -45,3 +45,4 @@ export const WAREHOUSE_RETURN_RECONCILIATION_LOGS_TABLE = 'jso_warehouse_return_
 export const WAREHOUSE_RETURN_EMAIL_LOGS_TABLE = 'jso_warehouse_return_email_logs';
 export const WAREHOUSE_RETURN_BUILDING_CONFIG_TABLE = 'jso_warehouse_return_building_config';
 export const WAREHOUSE_RETURN_EMAIL_CC_CONFIG_TABLE = 'jso_warehouse_return_email_cc_config';
+export const WAREHOUSE_RETURN_CONFIG_TABLE = 'jso_warehouse_return_config';
