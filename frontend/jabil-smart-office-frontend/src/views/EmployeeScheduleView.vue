@@ -1521,8 +1521,9 @@ const shiftDurationMap = ref<Map<string, number>>(new Map());
 // 获取所有可用班次
 const loadAvailableShifts = async () => {
   try {
-    const res = await request.get<{ shifts: Shift[] }>('/schedule/shifts');
-    const data = res?.data || res;
+    const res = await request.get<{ shifts: Shift[] } | { code: number; data: { shifts: Shift[] } }>('/schedule/shifts');
+    const responseData = res as { shifts?: Shift[]; data?: { shifts?: Shift[] } };
+    const data = responseData?.data || responseData;
     availableShifts.value = data?.shifts || [];
 
     // 构建班次时长映射表
@@ -2381,20 +2382,21 @@ const errandFixList = computed(() => {
       const emp = employees.value.find(e => e.id === item.employeeId);
 
       // 正确格式化开始时间和结束时间：月/日/年 时:分
-      const formatDateTime = (dateStr: string, timeStr: string): string => {
+      const formatDateTime = (dateStr: string | undefined, timeStr: string | undefined): string => {
         if (!dateStr && !timeStr) return '';
         // 如果日期为空但有时间，直接返回时间
         if (!dateStr && timeStr) {
           return timeStr.substring(0, 5);
         }
+        if (!dateStr) return '';
         // 解析日期，使用中国时区
-        const dateParts = dateStr.split('T')[0].split('-');
+        const dateParts = (dateStr.split('T')[0] || '').split('-');
         if (dateParts.length !== 3) {
           return dateStr + (timeStr ? ' ' + timeStr.substring(0, 5) : '');
         }
-        const year = parseInt(dateParts[0]);
-        const month = parseInt(dateParts[1]);
-        const day = parseInt(dateParts[2]);
+        const year = parseInt(dateParts[0] || '0');
+        const month = parseInt(dateParts[1] || '0');
+        const day = parseInt(dateParts[2] || '0');
         let result = `${month}/${day}/${year}`;
         if (timeStr) {
           result += ' ' + timeStr.substring(0, 5);
@@ -2665,7 +2667,7 @@ const loadEmployeesAndSchedules = async () => {
   try {
     const { startDate, endDate } = currentCalculatedDateRange.value;
 
-    const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
+    const response = await request.get<{ employees: Employee[] } | { code: number; data: { employees: Employee[] } }>('/schedule/employees', {
       params: {
         startDate,
         endDate,
@@ -2683,7 +2685,7 @@ const loadEmployeesAndSchedules = async () => {
     }
 
     // 处理响应数据（request 拦截器已自动解包 data）
-    const data = response;
+    const data = response as { employees?: Employee[]; data?: { employees?: Employee[] } } | Employee[];
 
     // 防御：处理不同的响应格式
     let rawEmployees: Employee[] = [];
@@ -2997,12 +2999,12 @@ const fetchEmployees = async () => {
       ElMessage.warning({ message: '获取临时数据失败，继续加载排班数据！', showClose: true, duration: 3000 });
     }
 
-    const response = await request.get<{ employees: Employee[] }>('/schedule/employees', {
+    const response = await request.get<{ employees: Employee[] } | { code: number; data: { employees: Employee[] } }>('/schedule/employees', {
       params: { startDate, endDate }
     });
 
     let rawEmployees: Employee[] = [];
-    const data = response;
+    const data = response as { employees?: Employee[]; data?: { employees?: Employee[] } };
     if (data?.employees) {
       rawEmployees = data.employees;
     } else if (data?.data?.employees) {

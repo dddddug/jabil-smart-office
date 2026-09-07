@@ -865,8 +865,8 @@ const loadExpiryData = async () => {
     if (res.code === 200) {
       const allData = res.data?.data || res.data || []
       // 分类：已过期和7天内过期
-      expiredList.value = allData.filter(item => item.expiry_days < 0)
-      expiringList.value = allData.filter(item => item.expiry_days >= 0 && item.expiry_days <= 7)
+      expiredList.value = allData.filter((item: any) => item.expiry_days < 0)
+      expiringList.value = allData.filter((item: any) => item.expiry_days >= 0 && item.expiry_days <= 7)
       // 合并到 tableData 用于显示
       tableData.value = allData
       pagination.total = res.data?.total || res.total || allData.length
@@ -998,9 +998,10 @@ const addClass33Item = async () => {
     } else {
       ElMessage.error(res.message || '添加失败')
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('添加物料失败:', error)
-    ElMessage.error(error.response?.data?.message || '添加失败')
+    const err = error as { response?: { data?: { message?: string } } };
+    ElMessage.error(err?.response?.data?.message || '添加失败')
   }
 }
 
@@ -1084,9 +1085,9 @@ const handleClass33SelectionChange = (selection: Class33Item[]) => {
 // 编辑物料
 const editClass33Item = (row: Class33Item) => {
   editClass33Form.value = {
-    id: row.id,
-    part_no: row.part_no,
-    division: row.division
+    id: row.id!,
+    part_no: row.part_no || '',
+    division: row.division || ''
   }
   showEditClass33Dialog.value = true
 }

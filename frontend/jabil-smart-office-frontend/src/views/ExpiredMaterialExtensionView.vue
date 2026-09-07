@@ -367,7 +367,7 @@ const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   if (parts.length !== 3) return dateStr;
-  return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+  return `${(parts[2] || '').padStart(2, '0')}/${(parts[1] || '').padStart(2, '0')}/${parts[0]}`;
 };
 
 const extensionDialogVisible = ref(false);
