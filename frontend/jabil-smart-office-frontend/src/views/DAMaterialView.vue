@@ -259,15 +259,33 @@
             <div class="form-row">
               <div class="form-group">
                 <label>DA编号 <span class="required">*</span></label>
-                <input type="text" v-model="submitForm.daNo" required placeholder="请输入DA编号" @input="checkDaNoInput">
-                <div class="form-hint" v-if="submitForm.daNo.toUpperCase() === 'N/A'">⚠️ DA编号为N/A时，ECN编号和ECN附件为必填</div>
+                <div class="da-no-input-container">
+                  <input
+                    type="text"
+                    v-model="currentDaNo"
+                    placeholder="输入DA编号后按回车添加"
+                    @keydown.enter.prevent="addDaNo"
+                    @input="currentDaNo = currentDaNo.toUpperCase()"
+                  >
+                  <div class="da-no-tags" v-if="submitForm.daNos.length > 0">
+                    <span
+                      v-for="(daNo, index) in submitForm.daNos"
+                      :key="index"
+                      class="da-no-tag"
+                    >
+                      {{ daNo }}
+                      <button type="button" class="da-no-tag-remove" @click="removeDaNo(index)">×</button>
+                    </span>
+                  </div>
+                </div>
+                <div class="form-hint" v-if="hasNaDaNo">⚠️ DA编号为N/A时，ECN编号和ECN附件为必填</div>
               </div>
               <div class="form-group">
-                <label>ECN编号 <span class="required" v-if="submitForm.daNo.toUpperCase() === 'N/A'">*</span></label>
+                <label>ECN编号 <span class="required" v-if="hasNaDaNo">*</span></label>
                 <input type="text" v-model="submitForm.ecnNo" placeholder="DA为N/A时必填">
               </div>
             </div>
-            <div v-if="submitForm.daNo.toUpperCase() === 'N/A'" class="form-group">
+            <div v-if="hasNaDaNo" class="form-group">
               <label>上传ECN附件（必须）<span class="required">*</span></label>
               <div class="upload-area" @click="triggerEcnFileInput" @dragover.prevent="onEcnDragOver" @dragleave="onEcnDragLeave" @drop.prevent="onEcnDrop" :class="{ 'drag-over': isEcnDragOver, 'uploading': isEcnUploading }">
                 <input type="file" ref="ecnFileInput" @change="handleEcnFileChange" accept=".pdf,.xlsx,.xls,.csv" style="display: none;">
@@ -372,15 +390,33 @@
             <div class="form-row">
               <div class="form-group">
                 <label>DA编号 <span class="required">*</span></label>
-                <input type="text" v-model="submitForm.daNo" required placeholder="请输入DA编号" @input="checkDaNoInput">
-                <div class="form-hint" v-if="submitForm.daNo.toUpperCase() === 'N/A'">⚠️ DA编号为N/A时，ECN编号和ECN附件为必填</div>
+                <div class="da-no-input-container">
+                  <input
+                    type="text"
+                    v-model="currentDaNo"
+                    placeholder="输入DA编号后按回车添加"
+                    @keydown.enter.prevent="addDaNo"
+                    @input="currentDaNo = currentDaNo.toUpperCase()"
+                  >
+                  <div class="da-no-tags" v-if="submitForm.daNos.length > 0">
+                    <span
+                      v-for="(daNo, index) in submitForm.daNos"
+                      :key="index"
+                      class="da-no-tag"
+                    >
+                      {{ daNo }}
+                      <button type="button" class="da-no-tag-remove" @click="removeDaNo(index)">×</button>
+                    </span>
+                  </div>
+                </div>
+                <div class="form-hint" v-if="hasNaDaNo">⚠️ DA编号为N/A时，ECN编号和ECN附件为必填</div>
               </div>
               <div class="form-group">
-                <label>ECN编号 <span class="required" v-if="submitForm.daNo.toUpperCase() === 'N/A'">*</span></label>
+                <label>ECN编号 <span class="required" v-if="hasNaDaNo">*</span></label>
                 <input type="text" v-model="submitForm.ecnNo" placeholder="DA为N/A时必填">
               </div>
             </div>
-            <div v-if="submitForm.daNo.toUpperCase() === 'N/A'" class="form-group">
+            <div v-if="hasNaDaNo" class="form-group">
               <label>上传ECN附件（必须）<span class="required">*</span></label>
               <div class="upload-area" @click="triggerEcnFileInput" @dragover.prevent="onEcnDragOver" @dragleave="onEcnDragLeave" @drop.prevent="onEcnDrop" :class="{ 'drag-over': isEcnDragOver, 'uploading': isEcnUploading }">
                 <input type="file" ref="ecnFileInput" @change="handleEcnFileChange" accept=".pdf,.xlsx,.xls,.csv" style="display: none;">
@@ -779,10 +815,34 @@ const isSubmitting = ref(false);
 const isDragOver = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 const editingDocumentId = ref<number | null>(null);
-const submitForm = reactive<DAMaterialDocumentForm>({
+
+// DA编号输入相关
+const currentDaNo = ref('');
+
+// 检查是否包含N/A的DA编号
+const hasNaDaNo = computed(() => {
+  return submitForm.daNos.some(da => da.toUpperCase() === 'N/A');
+});
+
+// 添加DA编号
+const addDaNo = () => {
+  const daNo = currentDaNo.value.trim();
+  if (daNo && !submitForm.daNos.includes(daNo)) {
+    submitForm.daNos.push(daNo);
+  }
+  currentDaNo.value = '';
+};
+
+// 移除DA编号
+const removeDaNo = (index: number) => {
+  submitForm.daNos.splice(index, 1);
+};
+
+const submitForm = reactive<DAMaterialDocumentForm & { daNos: string[] }>({
   documentNo: '',
   wcName: '',
-  daNo: '',
+  daNos: [],
+  daNo: '',  // 保留兼容性
   ecnNo: '',
   ecnAttachmentUrl: '',
   ecnAttachmentName: '',
@@ -1071,7 +1131,9 @@ const openEditDialog = (doc: DAMaterialDocument) => {
   editingDocumentId.value = doc.id || null;
   submitForm.documentNo = doc.documentNo;
   submitForm.wcName = doc.wcName;
-  submitForm.daNo = doc.daNo;
+  // 解析DA编号（可能是逗号分隔的多个）
+  submitForm.daNos = doc.daNo ? doc.daNo.split(',').map(d => d.trim()).filter(d => d) : [];
+  submitForm.daNo = doc.daNo || '';
   submitForm.ecnNo = doc.ecnNo || '';
   submitForm.ecnAttachmentUrl = doc.ecnAttachmentUrl || '';
   submitForm.ecnAttachmentName = doc.ecnAttachmentName || '';
@@ -1094,10 +1156,15 @@ const closeEditDialog = () => {
 const handleReSubmit = async () => {
   if (!editingDocumentId.value) return;
 
+  if (submitForm.daNos.length === 0) {
+    ElMessage.warning({ message: '请至少添加一个DA编号', showClose: true, duration: 3000 });
+    return;
+  }
+
   const ecnNo = submitForm.ecnNo ?? '';
 
   // DA编号为N/A时，ECN编号和ECN附件为必填
-  if (submitForm.daNo.toUpperCase() === 'N/A') {
+  if (hasNaDaNo.value) {
     if (!ecnNo.trim()) {
       ElMessage.warning({ message: 'DA编号为N/A时，ECN编号为必填', showClose: true, duration: 3000 });
       return;
@@ -1108,11 +1175,14 @@ const handleReSubmit = async () => {
     }
   }
 
+  // 使用逗号连接的DA编号字符串
+  const daNoStr = submitForm.daNos.join(',');
+
   isSubmitting.value = true;
   try {
     await updateDAMaterialDocument(editingDocumentId.value, {
       wcName: submitForm.wcName,
-      daNo: submitForm.daNo,
+      daNo: daNoStr,
       ecnNo: submitForm.ecnNo,
       ecnAttachmentUrl: submitForm.ecnAttachmentUrl,
       ecnAttachmentName: submitForm.ecnAttachmentName,
@@ -1138,6 +1208,7 @@ const handleReSubmit = async () => {
 const resetSubmitForm = () => {
   submitForm.documentNo = '';
   submitForm.wcName = '';
+  submitForm.daNos = [];
   submitForm.daNo = '';
   submitForm.ecnNo = '';
   submitForm.ecnAttachmentUrl = '';
@@ -1158,8 +1229,9 @@ const resetSubmitForm = () => {
   submitForm.attachmentUrl = '';
   submitForm.attachmentName = '';
   submitForm.controlType = controlTypes.value[0] || '正常';
-	  submitForm.isTO = false;
-	  submitForm.deliveryLocation = '';
+  submitForm.isTO = false;
+  submitForm.deliveryLocation = '';
+  currentDaNo.value = '';
 };
 
 // 加载管控类型
@@ -1182,10 +1254,6 @@ const loadControlTypes = async () => {
 };
 
 // DA编号自动转大写
-const checkDaNoInput = () => {
-  submitForm.daNo = submitForm.daNo.toUpperCase();
-};
-
 // 关闭提交对话框
 const closeSubmitDialog = () => {
   isSubmitDialogOpen.value = false;
@@ -1358,7 +1426,7 @@ const removeEcnFile = () => {
 
 // 提交单据
 const handleSubmit = async () => {
-  if (!submitForm.documentNo || !submitForm.wcName || !submitForm.daNo || !submitForm.submitterName) {
+  if (!submitForm.documentNo || !submitForm.wcName || submitForm.daNos.length === 0 || !submitForm.submitterName) {
     ElMessage.warning({ message: '请填写必填项', showClose: true, duration: 3000 });
     return;
   }
@@ -1366,7 +1434,7 @@ const handleSubmit = async () => {
   const ecnNo = submitForm.ecnNo ?? '';
 
   // DA编号为N/A时，ECN编号和ECN附件为必填
-  if (submitForm.daNo.toUpperCase() === 'N/A') {
+  if (hasNaDaNo.value) {
     if (!ecnNo.trim()) {
       ElMessage.warning({ message: 'DA编号为N/A时，ECN编号为必填', showClose: true, duration: 3000 });
       return;
@@ -1383,9 +1451,15 @@ const handleSubmit = async () => {
     return;
   }
 
+  // 使用逗号连接的DA编号字符串（兼容后端）
+  const daNoStr = submitForm.daNos.join(',');
+
   isSubmitting.value = true;
   try {
-    await createDAMaterialDocument(submitForm);
+    await createDAMaterialDocument({
+      ...submitForm,
+      daNo: daNoStr
+    });
     ElMessage.success({ message: '单据提交成功', showClose: true, duration: 3000 });
     closeSubmitDialog();
     clearRequestCache(); // 清除请求缓存，确保刷新获取最新数据
@@ -2666,6 +2740,68 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 13px;
   color: #6B7280;
+}
+
+/* DA编号多输入样式 */
+.da-no-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.da-no-input-container input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.da-no-input-container input:focus {
+  outline: none;
+  border-color: #0066CC;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
+}
+
+.da-no-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.da-no-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #0066CC 0%, #0052A3 100%);
+  color: white;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.da-no-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+}
+
+.da-no-tag-remove:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Checkbox */

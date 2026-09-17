@@ -9,7 +9,9 @@ import {
   FORMAL_LEAVE_TABLE,
   RESIGNATION_TRANSFER_TABLE,
   SCHEDULE_TABLE,
-  SPECIAL_WORKING_HOURS_TABLE
+  SPECIAL_WORKING_HOURS_TABLE,
+  WORKSTATION_ARRANGEMENT_TABLE,
+  WORKSTATION_TABLE
 } from '../config/db_constants.js';
 import {
   convertExcelDate,
@@ -403,6 +405,12 @@ export const handleSpecialWorkingHoursUpload = async (rows, registeredBy) => {
   const users = await fetchUsers();
   const userMap = createUserMap(users);
 
+  // 获取特殊工时工位ID
+  const workstationResult = await pool.query(
+    `SELECT id FROM ${WORKSTATION_TABLE} WHERE name LIKE '%特殊工时%' LIMIT 1`
+  );
+  const specialWorkstationId = workstationResult.rows.length > 0 ? workstationResult.rows[0].id : null;
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row?.[0] || !row[0].toString().trim()) continue;
@@ -449,6 +457,7 @@ export const handleSpecialWorkingHoursUpload = async (rows, registeredBy) => {
         event,
         employee_name: employeeName,
         old_employee_id: oldEmployeeId,
+        user_id: user.id,
         start_time: startDateTime.format('YYYY-MM-DD HH:mm:ss'),
         end_time: endDateTime.format('YYYY-MM-DD HH:mm:ss'),
         registered_by: registeredBy
@@ -458,14 +467,73 @@ export const handleSpecialWorkingHoursUpload = async (rows, registeredBy) => {
     }
   }
 
-  const { insertedIds, skippedCount } = await insertRows({
-    tableName: SPECIAL_WORKING_HOURS_TABLE,
-    uniqueCheckSql: `SELECT id FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE employee_name = $1 AND date = $2 AND start_time = $3 AND end_time = $4 LIMIT 1`,
-    uniqueCheckValues: (data) => [data.employee_name, data.date, data.start_time, data.end_time],
-    insertSql: `INSERT INTO ${SPECIAL_WORKING_HOURS_TABLE} (date, event, employee_name, old_employee_id, start_time, end_time, registered_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    insertValuesFn: (data) => [data.date, data.event, data.employee_name, data.old_employee_id, data.start_time, data.end_time, data.registered_by],
-    validData
-  });
+  // 手动插入并同步到工位安排表
+  const insertedIds = [];
+  const skippedCount = [];
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    for (const data of validData) {
+      // 检查是否已存在
+      const checkResult = await client.query(
+        `SELECT id FROM ${SPECIAL_WORKING_HOURS_TABLE} WHERE employee_name = $1 AND date = $2 AND start_time = $3 AND end_time = $4 LIMIT 1`,
+        [data.employee_name, data.date, data.start_time, data.end_time]
+      );
+
+      if (checkResult.rows.length > 0) {
+        skippedCount.push(data);
+        continue;
+      }
+
+      // 插入特殊工时记录
+      const result = await client.query(
+        `INSERT INTO ${SPECIAL_WORKING_HOURS_TABLE} (date, event, employee_name, old_employee_id, start_time, end_time, registered_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [data.date, data.event, data.employee_name, data.old_employee_id, data.start_time, data.end_time, data.registered_by]
+      );
+      insertedIds.push(result.rows[0].id);
+
+      // 同步到工位安排表
+      if (specialWorkstationId && data.user_id) {
+        // 从排班表获取该员工的班次
+        const scheduleResult = await client.query(
+          `SELECT shift FROM jso_hr_employee_schedule
+           WHERE employee_id = $1
+             AND DATE(schedule_date AT TIME ZONE 'Asia/Shanghai') = DATE($2::text)
+           LIMIT 1`,
+          [data.user_id, data.date]
+        );
+        const shiftName = scheduleResult.rows.length > 0 ? scheduleResult.rows[0].shift : null;
+
+        if (!shiftName) {
+          // 如果没有找到班次，不插入工位安排记录
+          console.log(`⚠️ 跳过工位安排（无班次）: ${data.employee_name} @ ${data.date}`);
+        } else {
+          // 提取时间部分 (HH:mm:ss)
+          const timeParts = data.start_time.split(' ')[1] || data.start_time;
+          const endTimeParts = data.end_time.split(' ')[1] || data.end_time;
+
+          await client.query(
+            `INSERT INTO ${WORKSTATION_ARRANGEMENT_TABLE}
+             (workstation_id, arrangement_date, shift_name, employee_id, start_time, end_time, reason)
+             VALUES ($1, $2, $3, $4, $5::TIME, $6::TIME, $7)
+             ON CONFLICT (workstation_id, arrangement_date, shift_name, employee_id, start_time)
+             DO UPDATE SET end_time = $6::TIME, reason = $7, updated_at = CURRENT_TIMESTAMP`,
+            [specialWorkstationId, data.date, shiftName, data.user_id, timeParts, endTimeParts, data.event]
+          );
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('批量导入特殊工时失败:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
 
   return {
     success: true,

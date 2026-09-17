@@ -1163,6 +1163,7 @@ interface ScheduleItem {
     endTime: string;
     reason: string;
     proof: boolean;
+    proofFileName?: string;
   };
 }
 
@@ -2449,7 +2450,7 @@ const errandFixList = computed(() => {
         leaveType: item.leaveType === 'ERRAND' ? '公差' : item.leaveType || item.type || '公差',
         reason: item.reason || '-',
         ot: ot,
-        evidence: item.proofFile ? `http://localhost:3001/uploads/${item.proofFile}` : ''
+        evidence: item.proofFile ? `/uploads/${item.proofFile}` : ''
       };
     });
 });
@@ -3616,6 +3617,7 @@ const editingData = ref({
     endTime: '',
     reason: '',
     proof: false,
+    proofFileName: '',
   },
 });
 
@@ -3636,6 +3638,7 @@ const openShiftEditDialog = (employee: Employee, date: string) => {
       endTime: '',
       reason: '',
       proof: false,
+      proofFileName: '',
     },
   };
   
@@ -3653,7 +3656,10 @@ const openShiftEditDialog = (employee: Employee, date: string) => {
     
     // 设置 tempMatter
     if (scheduleItem.tempMatter) {
-      resultData.tempMatter = scheduleItem.tempMatter;
+      resultData.tempMatter = {
+        ...scheduleItem.tempMatter,
+        proofFileName: scheduleItem.tempMatter.proofFileName || '',
+      };
     }
   }
   
@@ -3691,10 +3697,10 @@ const saveShift = async () => {
             endTime: tempMatter.endTime,
             hours: hours,
             reason: tempMatter.reason,
-            proofFile: tempMatter.proof ? '已上传' : '',
+            proofFile: tempMatter.proofFileName || '',
             applicantId: editingEmployee.value.id,
           };
-          
+
           try {
             await request.post('/temporary-overtime', overtimeData);
             ElMessage.success({ message: '临时加班保存成功！', showClose: true, duration: 3000 });
@@ -3717,10 +3723,10 @@ const saveShift = async () => {
             endTime: tempMatter.endTime,
             hours: hours,
             reason: tempMatter.reason,
-            proofFile: tempMatter.proof ? '已上传' : '',
+            proofFile: tempMatter.proofFileName || '',
             applicantId: editingEmployee.value.id,
           };
-          
+
           try {
             await request.post('/temporary-leave', leaveData);
             ElMessage.success({ message: '临时请假/公差保存成功！', showClose: true, duration: 3000 });
@@ -3821,6 +3827,7 @@ const closeShiftEditDialog = () => {
       endTime: '',
       reason: '',
       proof: false,
+      proofFileName: '',
     },
   };
 };
@@ -3841,12 +3848,44 @@ const uploadProof = () => {
   }
 };
 
-const handleFileChange = (event: Event) => {
+const handleFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (target.files && target.files.length > 0 && editingData.value && editingData.value.tempMatter) {
-    // 标记为已上传
-    editingData.value.tempMatter.proof = true;
-    console.log('文件已选择:', target.files[0]?.name || '');
+    const file = target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/proof/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jabil-token')}`,
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // 保存文件名
+        editingData.value.tempMatter.proofFileName = result.fileName;
+        editingData.value.tempMatter.proof = true;
+        ElMessage.success({ message: '文件上传成功', showClose: true, duration: 2000 });
+      } else {
+        ElMessage.error({ message: '文件上传失败', showClose: true, duration: 3000 });
+        editingData.value.tempMatter.proof = false;
+        editingData.value.tempMatter.proofFileName = '';
+      }
+    } catch (error) {
+      console.error('文件上传失败:', error);
+      ElMessage.error({ message: '文件上传失败', showClose: true, duration: 3000 });
+      editingData.value.tempMatter.proof = false;
+      editingData.value.tempMatter.proofFileName = '';
+    }
+
+    // 清空文件输入，允许重新选择同一文件
+    target.value = '';
   }
 };
 

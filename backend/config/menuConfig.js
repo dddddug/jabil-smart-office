@@ -30,7 +30,7 @@ const menuConfig = {
     // 数据中心
     { code: 'kpi-indicators', name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', group: 'data-center', sortOrder: 1 },
     { code: 'cost-summary', name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', group: 'data-center', sortOrder: 2 },
-    { code: 'production-tracking', name: '生产追踪', icon: '📊', routeName: 'production-tracking', group: 'data-center', sortOrder: 3 },
+    { code: 'production-tracking', name: '部门OLE追踪', icon: '📊', routeName: 'production-tracking', group: 'data-center', sortOrder: 3 },
     { code: 'bonus-evaluation', name: '奖金评估', icon: '🎯', routeName: 'bonus-evaluation', group: 'data-center', sortOrder: 4 },
 
     // 人事中心
@@ -66,9 +66,11 @@ const menuConfig = {
     { code: 'material-config', name: '物料模块 规则配置', icon: '📦', routeName: 'material-config', group: 'rules-config', sortOrder: 4 },
     { code: 'pnc-transfer-config', name: 'PNC转仓打印配置', icon: '📄', routeName: 'pnc-transfer-config', group: 'rules-config', sortOrder: 5 },
     { code: 'k2-diff-config', name: 'K**差异登记 规则配置', icon: '📝', routeName: 'k2-diff-config', group: 'rules-config', sortOrder: 6 },
-    { code: 'workstation-config', name: '工位配置', icon: '🏭', routeName: 'workstation-config', group: 'rules-config', sortOrder: 7 },
-    { code: 'employee-hourly-rate-config', name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', group: 'rules-config', sortOrder: 8 },
-    { code: 'welfare-base-config', name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', group: 'rules-config', sortOrder: 9 },
+    { code: 'ole-config', name: 'OLE配置', icon: '⚙️', routeName: 'ole-config', group: 'rules-config', sortOrder: 8 },
+    { code: 'workstation-config', name: '工位配置', icon: '🏭', routeName: 'workstation-config', group: 'rules-config', sortOrder: 9 },
+    { code: 'ole-efficiency-config', name: 'OLE效率配置', icon: '⚡', routeName: 'ole-efficiency-config', group: 'rules-config', sortOrder: 10 },
+    { code: 'employee-hourly-rate-config', name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', group: 'rules-config', sortOrder: 11 },
+    { code: 'welfare-base-config', name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', group: 'rules-config', sortOrder: 12 },
 
     // 其他
     { code: 'version-info', name: '版本信息', icon: '📋', routeName: 'version-info', group: 'other', sortOrder: 1 },

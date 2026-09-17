@@ -68,6 +68,7 @@ const rowToDocument = (row, items = []) => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   printCount: row.print_count || 0,
+  isUrgent: row.is_urgent || false,
   items: items.map(item => ({
     id: item.id,
     sequenceNo: item.sequence_no,
@@ -359,7 +360,7 @@ export const createDocument = async (req, res, next) => {
   const client = await pool.connect();
 
   try {
-    const { configId, departmentId, departmentName, items, creatorName } = req.body;
+    const { configId, departmentId, departmentName, items, creatorName, isUrgent = false } = req.body;
 
     // 验证必填字段
     if (!configId) {
@@ -399,8 +400,8 @@ export const createDocument = async (req, res, next) => {
         transfer_no, config_id, config_name, recipient_email, cc_email,
         contact_phone, recipient_name, receiving_address, system_location,
         department_id, department_name,
-        creator_name, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        creator_name, status, is_urgent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `, [
       transferNo,
@@ -415,7 +416,8 @@ export const createDocument = async (req, res, next) => {
       departmentId || null,
       departmentName || null,
       creatorName,
-      DocumentStatus.CREATED
+      DocumentStatus.CREATED,
+      isUrgent
     ]);
 
     const document = docResult.rows[0];
@@ -475,6 +477,7 @@ export const createDocument = async (req, res, next) => {
       departmentName: document.department_name,
       creatorName: document.creator_name,
       status: document.status,
+      isUrgent: document.is_urgent,
       createdAt: document.created_at,
       items: insertedItems
     }, '单据创建成功');

@@ -17,7 +17,7 @@ export const getConfigs = async (req, res, next) => {
     const result = await pool.query(`
       SELECT c.id, c.config_name, c.recipient_email, c.cc_email, c.contact_phone,
              c.recipient_name, c.receiving_address, c.system_location, c.is_active,
-             c.department_id, c.created_at, c.updated_at,
+             c.department_id, c.is_urgent, c.created_at, c.updated_at,
              d.name as department_name
       FROM ${CONFIG_TABLE} c
       LEFT JOIN ${DEPT_TABLE} d ON c.department_id = d.id
@@ -36,6 +36,7 @@ export const getConfigs = async (req, res, next) => {
       departmentId: row.department_id,
       departmentName: row.department_name,
       isActive: row.is_active,
+      isUrgent: row.is_urgent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
@@ -57,7 +58,7 @@ export const getConfigById = async (req, res, next) => {
     const result = await pool.query(`
       SELECT c.id, c.config_name, c.recipient_email, c.cc_email, c.contact_phone,
              c.recipient_name, c.receiving_address, c.system_location, c.is_active,
-             c.department_id, c.created_at, c.updated_at,
+             c.department_id, c.is_urgent, c.created_at, c.updated_at,
              d.name as department_name
       FROM ${CONFIG_TABLE} c
       LEFT JOIN ${DEPT_TABLE} d ON c.department_id = d.id
@@ -81,6 +82,7 @@ export const getConfigById = async (req, res, next) => {
       departmentId: row.department_id,
       departmentName: row.department_name,
       isActive: row.is_active,
+      isUrgent: row.is_urgent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -106,7 +108,8 @@ export const createConfig = async (req, res, next) => {
       receivingAddress,
       systemLocation,
       departmentId,
-      isActive = true
+      isActive = true,
+      isUrgent = false
     } = req.body;
 
     // 验证必填字段
@@ -127,8 +130,8 @@ export const createConfig = async (req, res, next) => {
     const result = await pool.query(`
       INSERT INTO ${CONFIG_TABLE} (
         config_name, recipient_email, cc_email, contact_phone,
-        recipient_name, receiving_address, system_location, department_id, is_active
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        recipient_name, receiving_address, system_location, department_id, is_active, is_urgent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       configName,
@@ -139,7 +142,8 @@ export const createConfig = async (req, res, next) => {
       receivingAddress || null,
       systemLocation || null,
       departmentId || null,
-      isActive
+      isActive,
+      isUrgent
     ]);
 
     const row = result.rows[0];
@@ -163,6 +167,7 @@ export const createConfig = async (req, res, next) => {
       departmentId: row.department_id,
       departmentName: departmentName,
       isActive: row.is_active,
+      isUrgent: row.is_urgent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -190,7 +195,8 @@ export const updateConfig = async (req, res, next) => {
       receivingAddress,
       systemLocation,
       departmentId,
-      isActive
+      isActive,
+      isUrgent
     } = req.body;
 
     // 检查配置是否存在
@@ -226,8 +232,9 @@ export const updateConfig = async (req, res, next) => {
           system_location = COALESCE($7, system_location),
           department_id = $8,
           is_active = COALESCE($9, is_active),
+          is_urgent = COALESCE($10, is_urgent),
           updated_at = NOW()
-      WHERE id = $10
+      WHERE id = $11
       RETURNING *
     `, [
       configName,
@@ -239,6 +246,7 @@ export const updateConfig = async (req, res, next) => {
       systemLocation,
       departmentId,
       isActive,
+      isUrgent,
       id
     ]);
 
@@ -263,6 +271,7 @@ export const updateConfig = async (req, res, next) => {
       departmentId: row.department_id,
       departmentName: departmentName,
       isActive: row.is_active,
+      isUrgent: row.is_urgent,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -309,7 +318,7 @@ export const getActiveConfigs = async (req, res, next) => {
     const result = await pool.query(`
       SELECT c.id, c.config_name, c.recipient_email, c.cc_email, c.contact_phone,
              c.recipient_name, c.receiving_address, c.system_location, c.department_id,
-             d.name as department_name
+             c.is_urgent, d.name as department_name
       FROM ${CONFIG_TABLE} c
       LEFT JOIN ${DEPT_TABLE} d ON c.department_id = d.id
       WHERE c.is_active = TRUE
@@ -326,7 +335,8 @@ export const getActiveConfigs = async (req, res, next) => {
       receivingAddress: row.receiving_address,
       systemLocation: row.system_location,
       departmentId: row.department_id,
-      departmentName: row.department_name
+      departmentName: row.department_name,
+      isUrgent: row.is_urgent
     }));
 
     success(res, configs, '获取配置成功');

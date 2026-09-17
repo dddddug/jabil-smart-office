@@ -231,8 +231,11 @@ service.interceptors.response.use(
     }
 
     // Check if the response is a standard API response with code, message, data structure
-    if (response.data && typeof response.data.code !== 'undefined') {
-      const { code, message, data } = response.data;
+    if (response.data && (typeof response.data.code !== 'undefined' || typeof response.data.success !== 'undefined')) {
+      // 支持两种格式: { code, message, data } 或 { success, data }
+      const code = response.data.code || (response.data.success ? 200 : undefined);
+      const message = response.data.message;
+
       if (code !== 200 && code !== 201) {
         return Promise.reject({
           code,

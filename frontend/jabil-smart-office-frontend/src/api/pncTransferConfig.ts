@@ -13,6 +13,7 @@ export interface PncTransferConfig {
   departmentId?: number;
   departmentName?: string;
   isActive?: boolean;
+  isUrgent?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

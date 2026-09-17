@@ -3,6 +3,8 @@ import { readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import pool from '../config/db.js';
+import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -102,6 +104,51 @@ router.get('/version', (req, res) => {
 // 健康检查
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 修复临时请假/加班数据的厂区和部门信息（基于员工信息填充）
+router.post('/fix-leave-overtime-plant-department', authenticateToken, (req, res, next) => {
+  // 仅允许超级管理员（roleId=1）执行此操作
+  if (req.user?.roleId !== 1) {
+    return res.status(403).json({ success: false, message: '仅超级管理员可以执行此操作' });
+  }
+  next();
+}, async (req, res) => {
+  try {
+    // 更新临时请假
+    const leaveResult = await pool.query(`
+      UPDATE jso_hr_temporary_leave t
+      SET plant_id = u.plant_id,
+          department_id = u.department_id,
+          updated_at = CURRENT_TIMESTAMP
+      FROM jso_system_user_management u
+      WHERE t.employee_id = u.id
+        AND (t.plant_id IS NULL OR t.department_id IS NULL)
+    `);
+
+    // 更新临时加班
+    const overtimeResult = await pool.query(`
+      UPDATE jso_hr_temporary_overtime o
+      SET plant_id = u.plant_id,
+          department_id = u.department_id,
+          updated_at = CURRENT_TIMESTAMP
+      FROM jso_system_user_management u
+      WHERE o.employee_id = u.id
+        AND (o.plant_id IS NULL OR o.department_id IS NULL)
+    `);
+
+    res.json({
+      success: true,
+      message: '数据修复成功',
+      details: {
+        temporaryLeave: leaveResult.rowCount,
+        temporaryOvertime: overtimeResult.rowCount
+      }
+    });
+  } catch (error) {
+    console.error('修复数据失败:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 export default router;

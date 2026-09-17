@@ -30,6 +30,7 @@ export interface PncTransferDocument {
   createdAt?: string;
   updatedAt?: string;
   printCount?: number;
+  isUrgent?: boolean;
   items: PncTransferDocumentItem[];
 }
 
@@ -68,6 +69,7 @@ export const createDocument = (data: {
   departmentName: string;
   items: PncTransferDocumentItem[];
   creatorName: string;
+  isUrgent?: boolean;
 }) => {
   return request.post<PncTransferDocument>('/pnc-transfer/documents', data);
 };

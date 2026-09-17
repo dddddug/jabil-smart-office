@@ -190,7 +190,7 @@ const removeNotificationClickOutside = () => {
 };
 
 // 权限控制
-const { userMenuPermissions, loadEffectivePermissions, effectivePermissions } = usePermission();
+const { userMenuPermissions, loadEffectivePermissions, effectivePermissions, resetState } = usePermission();
 
 // 检查是否有仪表盘权限
 const hasDashboardPermission = computed(() => {
@@ -239,6 +239,8 @@ const handleLogout = async () => {
     localStorage.removeItem('userPlantId');
     localStorage.removeItem('userDepartmentId');
     localStorage.removeItem('hasSkippedSetup');
+    // 重置权限状态（清除缓存的权限数据，防止换账号后菜单不更新）
+    resetState();
     window.location.href = '/login'; // Force full page reload to clear all state
   }
 };
@@ -420,11 +422,10 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: '工位安排', icon: '🏭', routeName: 'station-arrangement', parent: '业务中心', expanded: false },
   { name: 'K045 单据管理', icon: '📦', routeName: 'k045', parent: '业务中心', expanded: false },
   { name: '管控物料 单据管理', icon: '📋', routeName: 'da-material', parent: '业务中心', expanded: false },
-  { name: '产线回仓申请', icon: '📥', routeName: 'warehouse-return', parent: '业务中心', expanded: false },
   { name: '数据中心', isHeader: true, label: '数据中心', expanded: false, icon: '📊' },
   { name: '关键KPI', icon: '📉', routeName: 'kpi-indicators', parent: '数据中心', expanded: false },
   { name: 'Cost汇总', icon: '💰', routeName: 'cost-summary', parent: '数据中心', expanded: false },
-  { name: '生产追踪', icon: '📊', routeName: 'production-tracking', parent: '数据中心', expanded: false },
+  { name: '部门OLE追踪', icon: '📊', routeName: 'production-tracking', parent: '数据中心', expanded: false },
   { name: '奖金评估', icon: '🎯', routeName: 'bonus-evaluation', parent: '数据中心', expanded: false },
   { name: 'Stockroom Urgent Pull', icon: '📦', routeName: 'stockroom-urgent-pull', parent: '数据中心', expanded: false },
   { name: '人事中心', isHeader: true, label: '人事中心', expanded: false, icon: '👥' },
@@ -443,6 +444,9 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: 'K**差异登记', icon: '📝', routeName: 'k2-diff-registration', parent: '仓储管理', expanded: false },
   { name: '物料进出效期监控', icon: '📦', routeName: 'warehouse-monitor', parent: '仓储管理', expanded: false },
   { name: '物料包装信息', icon: '📦', routeName: 'material-package', parent: '仓储管理', expanded: false },
+  { name: '待填充料号', icon: '📦', routeName: 'missing-material-package', parent: '仓储管理', expanded: false },
+  { name: '收发差异登记', icon: '📝', routeName: 'warehouse-diff-registration', parent: '仓储管理', expanded: false },
+  { name: '回仓申请', icon: '📥', routeName: 'warehouse-return', parent: '仓储管理', expanded: false },
   { name: '系统管理', isHeader: true, label: '系统管理', expanded: false, icon: '⚙️' },
   { name: '系统公告', icon: '📢', routeName: 'announcement-management', parent: '系统管理', expanded: false },
   { name: '用户管理', icon: '👤', routeName: 'user-management', parent: '系统管理', expanded: false },
@@ -456,6 +460,7 @@ const sidebarMenuItems = ref<MenuItem[]>([
   { name: 'PNC转仓打印配置', icon: '📄', routeName: 'pnc-transfer-config', parent: '规则配置', expanded: false },
   { name: 'K**差异登记 规则配置', icon: '📝', routeName: 'k2-diff-config', parent: '规则配置', expanded: false },
   { name: 'Stockroom Urgent Pull 配置', icon: '⚙️', routeName: 'stockroom-urgent-pull-config', parent: '规则配置', expanded: false },
+  { name: 'OLE配置', icon: '⚙️', routeName: 'ole-config', parent: '规则配置', expanded: false },
   { name: '工位配置', icon: '🏭', routeName: 'workstation-config', parent: '规则配置', expanded: false },
   { name: '员工时薪配置', icon: '💵', routeName: 'employee-hourly-rate-config', parent: '规则配置', expanded: false },
   { name: '福利基础配置', icon: '🎁', routeName: 'welfare-base-config', parent: '规则配置', expanded: false },

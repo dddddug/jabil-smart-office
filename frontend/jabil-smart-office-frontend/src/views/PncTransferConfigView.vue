@@ -29,6 +29,7 @@
               <th>接收人</th>
               <th>接收地址</th>
               <th>系统位置</th>
+              <th>加急</th>
               <th>状态</th>
               <th style="width: 120px;">操作</th>
             </tr>
@@ -43,6 +44,10 @@
               <td>{{ item.recipientName || '-' }}</td>
               <td class="address-cell" :title="item.receivingAddress">{{ item.receivingAddress || '-' }}</td>
               <td>{{ item.systemLocation || '-' }}</td>
+              <td class="text-center">
+                <span v-if="item.isUrgent" class="urgent-badge">⚡ 加急</span>
+                <span v-else>-</span>
+              </td>
               <td class="text-center">
                 <span class="status-badge" :class="item.isActive ? 'status-active' : 'status-inactive'">
                   {{ item.isActive ? '启用' : '禁用' }}
@@ -79,10 +84,44 @@
           </el-select>
         </el-form-item>
         <el-form-item label="邮件收件人">
-          <el-input v-model="form.recipientEmail" placeholder="请输入邮件收件人" type="email" />
+          <div class="email-tag-input">
+            <el-tag
+              v-for="email in recipientEmailTags"
+              :key="email"
+              closable
+              @close="removeRecipientEmail(email)"
+              type="info"
+              class="email-tag"
+            >
+              {{ email }}
+            </el-tag>
+            <el-input
+              v-model="recipientEmailInput"
+              placeholder="输入邮箱后按回车添加"
+              @keyup.enter="addRecipientEmail"
+              class="email-input"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="邮件抄送人">
-          <el-input v-model="form.ccEmail" placeholder="多个邮箱用逗号分隔" type="email" />
+          <div class="email-tag-input">
+            <el-tag
+              v-for="email in ccEmailTags"
+              :key="email"
+              closable
+              @close="removeCcEmail(email)"
+              type="info"
+              class="email-tag"
+            >
+              {{ email }}
+            </el-tag>
+            <el-input
+              v-model="ccEmailInput"
+              placeholder="输入邮箱后按回车添加"
+              @keyup.enter="addCcEmail"
+              class="email-input"
+            />
+          </div>
         </el-form-item>
         <el-form-item label="联系电话">
           <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
@@ -95,6 +134,9 @@
         </el-form-item>
         <el-form-item label="系统位置">
           <el-input v-model="form.systemLocation" placeholder="请输入系统位置" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="form.isUrgent">⚡ 加急（转仓单显示急单标识）</el-checkbox>
         </el-form-item>
         <el-form-item>
           <el-checkbox v-model="form.isActive">启用此配置</el-checkbox>
@@ -122,6 +164,61 @@ const isEdit = ref(false);
 const submitting = ref(false);
 const editingId = ref<number | null>(null);
 
+// 邮箱标签相关
+const recipientEmailTags = ref<string[]>([]);
+const recipientEmailInput = ref('');
+const ccEmailTags = ref<string[]>([]);
+const ccEmailInput = ref('');
+
+// 邮箱验证正则
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// 添加收件人邮箱
+const addRecipientEmail = () => {
+  const email = recipientEmailInput.value.trim();
+  if (email && emailRegex.test(email) && !recipientEmailTags.value.includes(email)) {
+    recipientEmailTags.value.push(email);
+    form.recipientEmail = recipientEmailTags.value.join(';');
+    recipientEmailInput.value = '';
+  } else if (email && !emailRegex.test(email)) {
+    ElMessage.warning({ message: '请输入有效的邮箱地址', showClose: true, duration: 2000 });
+  } else if (recipientEmailTags.value.includes(email)) {
+    ElMessage.warning({ message: '该邮箱已添加', showClose: true, duration: 2000 });
+  }
+};
+
+// 移除收件人邮箱
+const removeRecipientEmail = (email: string) => {
+  recipientEmailTags.value = recipientEmailTags.value.filter(e => e !== email);
+  form.recipientEmail = recipientEmailTags.value.join(';');
+};
+
+// 添加抄送人邮箱
+const addCcEmail = () => {
+  const email = ccEmailInput.value.trim();
+  if (email && emailRegex.test(email) && !ccEmailTags.value.includes(email)) {
+    ccEmailTags.value.push(email);
+    form.ccEmail = ccEmailTags.value.join(';');
+    ccEmailInput.value = '';
+  } else if (email && !emailRegex.test(email)) {
+    ElMessage.warning({ message: '请输入有效的邮箱地址', showClose: true, duration: 2000 });
+  } else if (ccEmailTags.value.includes(email)) {
+    ElMessage.warning({ message: '该邮箱已添加', showClose: true, duration: 2000 });
+  }
+};
+
+// 移除抄送人邮箱
+const removeCcEmail = (email: string) => {
+  ccEmailTags.value = ccEmailTags.value.filter(e => e !== email);
+  form.ccEmail = ccEmailTags.value.join(';');
+};
+
+// 解析邮箱字符串为标签数组
+const parseEmailTags = (emailStr: string): string[] => {
+  if (!emailStr) return [];
+  return emailStr.split(';').map(e => e.trim()).filter(e => e && emailRegex.test(e));
+};
+
 const form = reactive({
   configName: '',
   departmentId: '',
@@ -132,7 +229,8 @@ const form = reactive({
   recipientName: '',
   receivingAddress: '',
   systemLocation: '',
-  isActive: true
+  isActive: true,
+  isUrgent: false
 });
 
 // 加载部门列表
@@ -187,6 +285,12 @@ const openEditDialog = (item: PncTransferConfig) => {
   form.receivingAddress = item.receivingAddress || '';
   form.systemLocation = item.systemLocation || '';
   form.isActive = item.isActive !== false;
+  form.isUrgent = item.isUrgent === true;
+  // 解析邮箱标签
+  recipientEmailTags.value = parseEmailTags(item.recipientEmail || '');
+  ccEmailTags.value = parseEmailTags(item.ccEmail || '');
+  recipientEmailInput.value = '';
+  ccEmailInput.value = '';
   dialogVisible.value = true;
 };
 
@@ -208,6 +312,12 @@ const resetForm = () => {
   form.receivingAddress = '';
   form.systemLocation = '';
   form.isActive = true;
+  form.isUrgent = false;
+  // 重置邮箱标签
+  recipientEmailTags.value = [];
+  recipientEmailInput.value = '';
+  ccEmailTags.value = [];
+  ccEmailInput.value = '';
 };
 
 // 提交表单
@@ -229,7 +339,8 @@ const handleSubmit = async () => {
       recipientName: form.recipientName || undefined,
       receivingAddress: form.receivingAddress || undefined,
       systemLocation: form.systemLocation || undefined,
-      isActive: form.isActive
+      isActive: form.isActive,
+      isUrgent: form.isUrgent
     };
 
     if (isEdit.value && editingId.value) {
@@ -335,6 +446,8 @@ onMounted(async () => {
 .status-active { background-color: #D1FAE5; color: #065F46; }
 .status-inactive { background-color: #FEE2E2; color: #991B1B; }
 
+.urgent-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; background-color: #FEF3C7; color: #92400E; }
+
 .btn-icon { padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; background: transparent; transition: all 0.2s; }
 .btn-icon:hover { background-color: #E5E7EB; }
 .btn-delete:hover { background-color: #FEE2E2; }
@@ -347,6 +460,42 @@ onMounted(async () => {
 
 .config-form {
   padding-right: 8px;
+}
+
+.email-tag-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid #DCDFE6;
+  border-radius: 4px;
+  background-color: #fff;
+}
+
+.email-tag-input:focus-within {
+  border-color: #409EFF;
+}
+
+.email-tag {
+  margin: 2px 0;
+}
+
+.email-input {
+  flex: 1;
+  min-width: 150px;
+}
+
+.email-input :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  padding: 0;
+  background: transparent;
+}
+
+.email-input :deep(.el-input__inner) {
+  border: none;
+  outline: none;
 }
 
 :deep(.el-dialog__header) {

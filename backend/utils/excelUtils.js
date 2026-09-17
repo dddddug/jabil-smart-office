@@ -1,11 +1,12 @@
 import XLSX from 'xlsx';
 import dayjs from 'dayjs';
 
-// 解析Excel文件
+// 解析Excel文件 - 返回对象数组
 export const parseExcel = (buffer) => {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+  // 使用 defval: '' 处理空单元格，返回对象数组
+  return XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
 };
 
 export const parseExcelObjects = (buffer) => {

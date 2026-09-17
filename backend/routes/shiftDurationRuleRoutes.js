@@ -150,4 +150,35 @@ router.post('/:id/disable', authenticateToken, async (req, res) => {
   }
 });
 
+// 获取班次列表（排除请假、调休、年假、离职、旷工）
+router.get('/shifts', authenticateToken, async (req, res) => {
+  try {
+    const { departmentId } = req.query;
+
+    let query = `
+      SELECT DISTINCT shift_name
+      FROM ${SHIFT_DURATION_RULES_TABLE}
+      WHERE status = 'active'
+        AND shift_name NOT IN ('请假', '调休', '年假', '离职', '旷工')
+    `;
+    const values = [];
+
+    // 如果指定了部门，只返回该部门的班次
+    if (departmentId) {
+      query += ` AND department_id = $1`;
+      values.push(departmentId);
+    }
+
+    query += ` ORDER BY shift_name`;
+
+    const result = await pool.query(query, values);
+    const shifts = result.rows.map(row => row.shift_name);
+
+    res.json({ code: 200, message: '获取成功', data: shifts });
+  } catch (error) {
+    console.error('获取班次列表失败:', error);
+    res.status(500).json({ code: 500, message: '获取班次列表失败', error: error.message });
+  }
+});
+
 export default router;

@@ -237,7 +237,7 @@
               <!-- 转仓部门 -->
               <div class="form-group">
                 <label>转仓部门 <span class="required">*</span></label>
-                <select v-model="pncForm.departmentId" @change="onDepartmentChange">
+                <select v-model="pncForm.departmentId" @change="onDepartmentChange(); saveSession()">
                   <option value="">请选择部门...</option>
                   <option v-for="dept in departmentList" :key="dept.id" :value="dept.id">
                     {{ dept.name }}
@@ -248,7 +248,7 @@
               <!-- 选择配置 -->
               <div class="form-group">
                 <label>接收方配置 <span class="required">*</span></label>
-                <select v-model="pncForm.configId" @change="onConfigChange">
+                <select v-model="pncForm.configId" @change="onConfigChange(); saveSession()">
                   <option value="">请选择配置...</option>
                   <option v-for="config in filteredConfigs" :key="config.id" :value="config.id">
                     {{ config.configName }}
@@ -281,6 +281,15 @@
                 <div class="detail-item">
                   <span class="detail-label">位置:</span>
                   <span class="detail-value">{{ selectedConfig.systemLocation || '-' }}</span>
+                </div>
+                <div class="detail-item urgent-item">
+                  <span class="detail-label">加急:</span>
+                  <span class="detail-value">
+                    <label class="urgent-checkbox">
+                      <input type="checkbox" v-model="isUrgent" />
+                      <span>⚡ 加急转仓（优先处理）</span>
+                    </label>
+                  </span>
                 </div>
               </div>
 
@@ -329,6 +338,9 @@
                   <div class="scan-status" v-if="lastScanInfo">
                     上次录入: <strong>{{ lastScanInfo.value }}</strong> → {{ lastScanInfo.target }}
                   </div>
+                  <div class="session-status" v-if="sessionSavedAt">
+                    💾 会话已保存 ({{ sessionSavedAt }})
+                  </div>
                 </div>
 
                 <div class="items-table">
@@ -365,6 +377,7 @@
                             type="text"
                             :value="getItemGrn(pncForm.items[item._index])"
                             @input="setItemGrn(pncForm.items[item._index], ($event.target as HTMLInputElement).value.toUpperCase())"
+                            @blur="saveSession"
                             placeholder="GRN"
                             :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'grn' }"
                             @focus="currentFocusIndex = item._index; currentFocusField = 'grn'"
@@ -375,6 +388,7 @@
                             type="text"
                             :value="getItemBatch(item._index)"
                             @input="setItemBatch(item._index, ($event.target as HTMLInputElement).value)"
+                            @blur="saveSession"
                             placeholder="Batch"
                             :class="{ 'scan-active-field': currentFocusIndex === item._index && currentFocusField === 'batch' }"
                             @focus="currentFocusIndex = item._index; currentFocusField = 'batch'"
@@ -389,6 +403,7 @@
                             type="number"
                             :value="getItemQty(pncForm.items[item._index])"
                             @input="setItemQty(pncForm.items[item._index], parseFloat(($event.target as HTMLInputElement).value) || 0)"
+                            @blur="saveSession"
                             placeholder="数量"
                             min="0"
                             step="0.001"
@@ -435,6 +450,7 @@
               <div class="preview-content">
                 <div class="preview-header">
                   <h2>PNC转仓单</h2>
+                  <div v-if="isUrgent" class="urgent-banner">⚡ 急单 · 优先转仓</div>
                   <div class="preview-meta">
                     <span>单号: {{ generatedTransferNo || '自动生成' }}</span>
                     <span>转仓部门: {{ selectedDepartmentName || '待选择' }}</span>
@@ -513,7 +529,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, onMounted, nextTick } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { getActiveConfigs, PncTransferConfig } from '../api/pncTransferConfig';
 import { formatShanghaiDate } from '../utils/dateUtils';
 import { createDocument, sendEmail, getDocuments, getDocumentById, PncTransferDocument, GetDocumentsParams, recordPrint } from '../api/pncTransfer';
@@ -552,6 +568,9 @@ const pncForm = reactive({
   creatorName: '',
   items: [] as PNCFormItem[]
 });
+
+// 加急标记
+const isUrgent = ref(false);
 
 // 智能计数模式
 const smartCountEnabled = ref(false);
@@ -991,6 +1010,9 @@ const openPrintWindow = (doc: PncTransferDocument) => {
     .content { background: white; padding: 20px; border: 2px solid #333; }
     .header { text-align: center; padding-bottom: 12px; border-bottom: 2px solid #E5E7EB; margin-bottom: 12px; }
     .header h2 { margin: 0 0 8px 0; font-size: 24px; color: #111827; font-weight: 700; }
+    .urgent-banner { background: #FEF3C7; color: #92400E; font-size: 28px; font-weight: 800; padding: 12px 20px; margin: 8px auto; border-radius: 8px; border: 2px solid #F59E0B; display: inline-block; }
+    .urgent-banner::before { content: '⚡ '; }
+    .urgent-banner::after { content: ' ⚡'; }
     .meta { display: flex; justify-content: center; gap: 30px; font-size: 16px; color: #374151; font-weight: 500; }
     .meta span { font-size: 16px; }
     .section { margin-bottom: 12px; }
@@ -1015,6 +1037,7 @@ const openPrintWindow = (doc: PncTransferDocument) => {
   <div class="content">
     <div class="header">
       <h2>PNC转仓单</h2>
+      ${doc.isUrgent ? '<div class="urgent-banner">急单 · 优先转仓</div>' : ''}
       <div class="meta">
         <span>单号: ${doc.transferNo}</span>
         <span>转仓部门: ${doc.departmentName || '待选择'}</span>
@@ -1190,6 +1213,83 @@ const currentFocusField = ref<'partNumber' | 'grn' | 'batch' | 'quantity'>('part
 const lastScanInfo = ref<{ value: string; target: string } | null>(null);
 const scanMode = ref<'A' | 'B'>('A'); // A模式: P/N→GRN→数量, B模式: P/N→GRN→Batch→数量
 
+// 会话恢复相关
+const SESSION_KEY = 'pnc-transfer-session';
+const sessionSavedAt = ref<string>('');
+
+interface PncSession {
+  departmentId: number | '';
+  configId: number | '';
+  creatorName: string;
+  items: PNCFormItem[];
+  scanMode: 'A' | 'B';
+  smartCountEnabled: boolean;
+  isUrgent: boolean;
+  savedAt: string;
+}
+
+// 保存会话到localStorage
+const saveSession = () => {
+  try {
+    const session: PncSession = {
+      departmentId: pncForm.departmentId,
+      configId: pncForm.configId,
+      creatorName: pncForm.creatorName,
+      items: JSON.parse(JSON.stringify(pncForm.items)), // 深拷贝
+      scanMode: scanMode.value,
+      smartCountEnabled: smartCountEnabled.value,
+      isUrgent: isUrgent.value,
+      savedAt: new Date().toLocaleString('zh-CN')
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionSavedAt.value = session.savedAt;
+  } catch (e) {
+    console.error('保存会话失败:', e);
+  }
+};
+
+// 从localStorage加载会话
+const loadSession = (): PncSession | null => {
+  try {
+    const saved = localStorage.getItem(SESSION_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('加载会话失败:', e);
+  }
+  return null;
+};
+
+// 清除会话
+const clearSession = () => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    sessionSavedAt.value = '';
+  } catch (e) {
+    console.error('清除会话失败:', e);
+  }
+};
+
+// 恢复会话
+const restoreSession = (session: PncSession) => {
+  pncForm.departmentId = session.departmentId;
+  pncForm.configId = session.configId;
+  pncForm.creatorName = session.creatorName;
+  pncForm.items = session.items;
+  scanMode.value = session.scanMode;
+  smartCountEnabled.value = session.smartCountEnabled;
+  isUrgent.value = session.isUrgent;
+  sessionSavedAt.value = session.savedAt;
+
+  // 更新焦点
+  if (pncForm.items.length > 0) {
+    currentFocusIndex.value = pncForm.items.length - 1;
+  }
+
+  ElMessage.success({ message: `已恢复扫描会话（保存于 ${session.savedAt}）`, showClose: true, duration: 3000 });
+};
+
 // A模式的字段顺序
 const modeAFields: Array<'partNumber' | 'grn' | 'batch' | 'quantity'> = ['partNumber', 'grn', 'quantity'];
 
@@ -1326,6 +1426,9 @@ const handleScanInput = () => {
     currentFocusField.value = 'partNumber';
   }
 
+  // 保存会话
+  saveSession();
+
   // 清空扫码输入
   scanInput.value = '';
 
@@ -1418,6 +1521,9 @@ const handleScanInputSmartMode = (value: string) => {
     }
   }
 
+  // 保存会话
+  saveSession();
+
   // 清空扫码输入
   scanInput.value = '';
 
@@ -1505,11 +1611,13 @@ const addItem = () => {
     grn: '',
     quantity: 0
   });
+  saveSession();
 };
 
 // 删除明细项
 const removeItem = (index: number) => {
   pncForm.items.splice(index, 1);
+  saveSession();
 };
 
 const executePrint = async () => {
@@ -1633,7 +1741,8 @@ const executePrint = async () => {
       departmentId: pncForm.departmentId as number,
       departmentName: selectedDepartmentName.value,
       creatorName: pncForm.creatorName,
-      items: printItems
+      items: printItems,
+      isUrgent: isUrgent.value
     });
 
     // 从响应中提取实际单据数据（后端返回 { code, message, data } 格式）
@@ -1675,6 +1784,10 @@ const executePrint = async () => {
     pncForm.configId = '';
     pncForm.items = [];
     pncForm.creatorName = '';
+    isUrgent.value = false;
+
+    // 清除已保存的会话
+    clearSession();
 
   } catch (error: unknown) {
     console.error('创建单据失败:', error);
@@ -1704,6 +1817,27 @@ onMounted(async () => {
     if (departmentList.value.some(d => d.id === deptId)) {
       pncForm.departmentId = deptId;
     }
+  }
+
+  // 检查是否有保存的会话
+  const savedSession = loadSession();
+  if (savedSession && savedSession.items && savedSession.items.length > 0) {
+    // 询问是否恢复会话
+    ElMessageBox.confirm(
+      `检测到未完成的扫描会话（保存于 ${savedSession.savedAt}），是否恢复？`,
+      '恢复会话',
+      {
+        confirmButtonText: '恢复',
+        cancelButtonText: '新建',
+        type: 'info',
+        distinguishCancelAndClose: true
+      }
+    ).then(() => {
+      restoreSession(savedSession);
+    }).catch(() => {
+      // 用户选择新建，清除会话
+      clearSession();
+    });
   }
 
   // 自动聚焦到扫码输入框
@@ -1860,6 +1994,40 @@ onMounted(async () => {
 .detail-value {
   color: #111827;
   flex: 1;
+}
+
+.urgent-item {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #D1D5DB;
+}
+
+.urgent-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #92400E;
+  font-weight: 600;
+}
+
+.urgent-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.urgent-banner {
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 28px;
+  font-weight: 800;
+  padding: 12px 20px;
+  margin: 8px auto;
+  border-radius: 8px;
+  border: 2px solid #F59E0B;
+  display: inline-block;
+  text-align: center;
 }
 
 .item-header {
@@ -2049,6 +2217,12 @@ onMounted(async () => {
   margin-top: 8px;
   font-size: 12px;
   color: #0369a1;
+}
+
+.session-status {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #10b981;
 }
 
 .scan-status strong {

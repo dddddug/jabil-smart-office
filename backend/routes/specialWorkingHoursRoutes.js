@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import { createExcelMemoryUpload } from '../utils/fileUtils.js';
 import { parseExcel } from '../utils/excelUtils.js';
 import { buildWhereClause, buildPagination } from '../utils/sqlUtils.js';
-import { SPECIAL_WORKING_HOURS_TABLE, USER_TABLE, WORKSTATION_ARRANGEMENT_TABLE } from '../config/db_constants.js';
+import { SPECIAL_WORKING_HOURS_TABLE, USER_TABLE, WORKSTATION_ARRANGEMENT_TABLE, WORKSTATION_TABLE } from '../config/db_constants.js';
 import { handleSpecialWorkingHoursUpload } from '../services/batchUploadService.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
@@ -123,8 +123,16 @@ router.post('/', authenticateToken, async (req, res) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      // 查找"特殊工时"工位ID
+      const workstationResult = await client.query(
+        `SELECT id FROM ${WORKSTATION_TABLE} WHERE name LIKE '%特殊工时%' LIMIT 1`
+      );
+      const specialWorkstationId = workstationResult.rows.length > 0 ? workstationResult.rows[0].id : null;
+
       const insertedRows = [];
       for (const record of recordsToInsert) {
+        // 插入特殊工时记录
         const result = await client.query(
           `INSERT INTO ${SPECIAL_WORKING_HOURS_TABLE}
            (date, event, employee_name, old_employee_id, start_time, end_time, registered_by)
@@ -133,17 +141,67 @@ router.post('/', authenticateToken, async (req, res) => {
           [record.date, record.event, record.employee_name, record.old_employee_id, record.start_time, record.end_time, record.registered_by]
         );
         insertedRows.push(result.rows[0]);
+
+        // 同步创建工位安排记录（如果有特殊工时工位）
+        if (specialWorkstationId) {
+          // 获取用户的主键 ID（不是 old_employee_id）
+          const userResult = await client.query(
+            `SELECT id FROM ${USER_TABLE} WHERE real_name = $1 LIMIT 1`,
+            [record.employee_name]
+          );
+          const userId = userResult.rows.length > 0 ? userResult.rows[0].id : null;
+
+          if (userId) {
+            // 从排班表获取该员工的班次
+            const scheduleResult = await client.query(
+              `SELECT shift FROM jso_hr_employee_schedule
+               WHERE employee_id = $1
+                 AND DATE(schedule_date AT TIME ZONE 'Asia/Shanghai') = DATE($2::text)
+               LIMIT 1`,
+              [userId, record.date]
+            );
+            const shiftName = scheduleResult.rows.length > 0 ? scheduleResult.rows[0].shift : null;
+
+            if (!shiftName) {
+              // 如果没有找到班次，不插入工位安排记录
+              console.log(`⚠️ 跳过工位安排（无班次）: ${record.employee_name} @ ${record.date}`);
+            } else {
+              // 提取时间部分 (HH:mm:ss)
+              const timeParts = record.start_time.split(' ')[1] || record.start_time;
+              const endTimeParts = record.end_time.split(' ')[1] || record.end_time;
+
+              await client.query(
+                `INSERT INTO ${WORKSTATION_ARRANGEMENT_TABLE}
+                 (workstation_id, arrangement_date, shift_name, employee_id, start_time, end_time, reason)
+                 VALUES ($1, $2, $3, $4, $5::TIME, $6::TIME, $7)
+                 ON CONFLICT (workstation_id, arrangement_date, shift_name, employee_id, start_time)
+                 DO UPDATE SET end_time = $6::TIME, reason = $7, updated_at = CURRENT_TIMESTAMP`,
+                [specialWorkstationId, record.date, shiftName, userId, timeParts, endTimeParts, record.event]
+              );
+            }
+          }
+        }
       }
       await client.query('COMMIT');
       res.status(201).json({ code: 201, message: '特殊工时记录添加成功', data: insertedRows });
     } catch (transactionError) {
+    try {
       await client.query('ROLLBACK');
-      console.error('特殊工时事务处理失败:', transactionError);
-      throw transactionError;
+    } catch (rollbackError) {
+      console.error('回滚事务失败:', rollbackError);
+    }
+    console.error('特殊工时事务处理失败:', transactionError);
+    throw transactionError;
     } finally {
       client.release();
     }
   } catch (error) {
+    // 确保事务回滚
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('回滚事务失败:', rollbackError);
+    }
     console.error('创建特殊工时记录失败:', error);
     res.status(500).json({ code: 500, message: '创建特殊工时记录失败', error: error.message });
   }
@@ -340,7 +398,7 @@ router.get('/export', authenticateToken, async (req, res) => {
     // 统计各事项用时
     const statsQuery = `
       SELECT event,
-             SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 3600 as total_hours
+             SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 3600) as total_hours
       FROM ${SPECIAL_WORKING_HOURS_TABLE}
     ` + where.clause + ` GROUP BY event ORDER BY total_hours DESC`;
 

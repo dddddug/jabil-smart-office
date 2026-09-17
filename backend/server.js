@@ -66,6 +66,8 @@ import temporaryOvertimeRoutes from './routes/temporaryOvertimeRoutes.js'; // �
 import temporaryLeaveRoutes from './routes/temporaryLeaveRoutes.js'; // 临时请假路由
 import class33MaterialsRoutes from './routes/class33MaterialsRoutes.js'; // 33类物料清单路由
 import warehouseReturnRoutes from './routes/warehouseReturnRoutes.js'; // 回仓申请路由
+import warehouseDiffRoutes from './routes/warehouseDiffRoutes.js'; // 仓储差异登记路由
+import oleTrackingRoutes from './routes/oleTrackingRoutes.js'; // 部门OLE追踪路由
 
 // 导入统一定时任务
 import { initScheduledTasks } from './scripts/scheduledTasks.js';
@@ -172,6 +174,8 @@ app.use('/api/temporary-overtime', temporaryOvertimeRoutes); // 临时加班路�
 app.use('/api/temporary-leave', temporaryLeaveRoutes); // 临时请假路由
 app.use('/api/class33-materials', class33MaterialsRoutes); // 33类物料清单路由
 app.use('/api/warehouse-return', warehouseReturnRoutes); // 回仓申请路由
+app.use('/api/warehouse-diff', warehouseDiffRoutes); // 仓储差异登记路由
+app.use('/api/ole-tracking', oleTrackingRoutes); // 部门OLE追踪路由
 
 
 // 确保 uploads 目录存在

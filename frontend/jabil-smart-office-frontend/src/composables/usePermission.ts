@@ -16,6 +16,16 @@ const userMenuPermissions = ref<string[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+// 重置所有状态（用于退出登录时调用）
+const resetState = () => {
+  modules.value = [];
+  permissions.value = [];
+  effectivePermissions.value = [];
+  userMenuPermissions.value = [];
+  loading.value = false;
+  error.value = null;
+};
+
 export interface Permission {
   id: number;
   code: string;
@@ -380,6 +390,7 @@ export function usePermission() {
     getPermissionDataScope,
     hasModulePermission,
     getDataScopeLabel,
-    dataScopeLabels
+    dataScopeLabels,
+    resetState
   };
 }

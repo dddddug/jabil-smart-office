@@ -134,13 +134,13 @@ router.get('/', authenticateToken, async (req, res) => {
 // 创建
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours } = req.body;
+    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours, plantId, departmentId, proofFile } = req.body;
     const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
     const result = await pool.query(`
-      INSERT INTO ${TABLE} (employee_id, start_date, end_date, start_time, end_time, leave_type, reason, hours, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', CURRENT_TIMESTAMP)
+      INSERT INTO ${TABLE} (employee_id, plant_id, department_id, start_date, end_date, start_time, end_time, leave_type, reason, hours, proof_file, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING', CURRENT_TIMESTAMP)
       RETURNING *
-    `, [employeeId, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours]);
+    `, [employeeId, plantId || null, departmentId || null, startDate, endDate, startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, proofFile || null]);
 
     res.json({ success: true, item: result.rows[0] });
   } catch (error) {
@@ -171,7 +171,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours } = req.body;
+    const { employeeId, startDate, endDate, startTime, endTime, leaveType, reason, hours, plantId, departmentId, proofFile } = req.body;
     const typeMap = { '请假': 'LEAVE', '公差': 'ERRAND', '病假': 'SICK' };
 
     // 解析日期：如果是纯日期格式 YYYY-MM-DD，直接使用（避免时区问题）
@@ -197,11 +197,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     const result = await pool.query(`
       UPDATE ${TABLE}
-      SET employee_id = $1, start_date = $2, end_date = $3, start_time = $4, end_time = $5,
-          leave_type = $6, reason = $7, hours = $8, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $9
+      SET employee_id = $1, plant_id = $2, department_id = $3, start_date = $4, end_date = $5, start_time = $6, end_time = $7,
+          leave_type = $8, reason = $9, hours = $10, proof_file = $11, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $12
       RETURNING *
-    `, [employeeId, parseDateForDb(startDate), parseDateForDb(endDate), startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, id]);
+    `, [employeeId, plantId || null, departmentId || null, parseDateForDb(startDate), parseDateForDb(endDate), startTime, endTime, typeMap[leaveType] || leaveType, reason, hours, proofFile || null, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: '记录不存在' });

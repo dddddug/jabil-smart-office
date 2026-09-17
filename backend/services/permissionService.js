@@ -43,6 +43,13 @@ const MODULE_TO_ROUTE_MAP = {
   'dashboard': 'dashboard',
   'stockroom-urgent-pull': 'stockroom-urgent-pull',
   'stockroom-urgent-pull-config': 'stockroom-urgent-pull-config',
+  'warehouse-monitor': 'warehouse-monitor',
+  'material-package': 'material-package',
+  'missing-material-package': 'missing-material-package',
+  'warehouse-diff-registration': 'warehouse-diff-registration',
+  'warehouse-return': 'warehouse-return',
+  'ole-config': 'ole-config',
+  'ole-efficiency-config': 'ole-efficiency-config',
 };
 
 class PermissionService {

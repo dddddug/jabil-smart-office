@@ -66,4 +66,19 @@ router.post('/set-security-question', authenticateToken, asyncHandler(userContro
 // 删除用户
 router.delete('/:id', authenticateToken, asyncHandler(userController.deleteUser));
 
+// 批量按SAP工号查询用户
+router.get('/by-sap-ids', authenticateToken, asyncHandler(userController.getUsersBySapIds));
+
+// 批量按姓名查询用户
+router.get('/by-names', authenticateToken, asyncHandler(userController.getUsersByNames));
+
+// 批量按姓名和日期查询用户及其班次
+router.get('/by-names-and-date', authenticateToken, asyncHandler(userController.getUsersByNamesAndDate));
+
+// 获取所有职位列表
+router.get('/positions', authenticateToken, asyncHandler(userController.getPositions));
+
+// 更新员工SAP工号
+router.put('/:id/sap-employee-id', authenticateToken, asyncHandler(userController.updateSapEmployeeId));
+
 export default router;

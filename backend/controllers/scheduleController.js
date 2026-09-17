@@ -678,11 +678,28 @@ export const getScheduleByDate = async (req, res, next) => {
       throw BadRequestError('请提供查询日期 (scheduleDate)');
     }
 
+    console.log(`[DEBUG] getScheduleByDate called with scheduleDate: ${scheduleDate}`);
+
     // 查询指定日期的所有排班记录，JOIN 用户表获取姓名和SAP工号
-    // 日期存储为UTC时间，需要用 at time zone 转换到北京时间比较
+    // 获取该员工在该日期所有工位安排中的SAP工号（去重合并）
     const result = await pool.query(`
       SELECT s.employee_id, s.shift, s.special_status,
-             u.real_name, u.employee_id as sap_employee_id, u.plant_id, u.department_id, u.employee_type, u.position,
+             u.real_name,
+             (
+               SELECT COALESCE(
+                 NULLIF(
+                   string_agg(DISTINCT wa.sap_employee_id::text, '&'),
+                   ''
+                 ),
+                 u.employee_id
+               )
+               FROM jso_hr_workstation_arrangement wa
+               WHERE wa.employee_id = s.employee_id
+                 AND DATE(wa.arrangement_date AT TIME ZONE 'Asia/Shanghai') = $1::date
+                 AND wa.sap_employee_id IS NOT NULL
+                 AND wa.sap_employee_id != ''
+             ) as sap_employee_id,
+             u.plant_id, u.department_id, u.employee_type, u.position, u.level,
              p.name as plant_name, d.name as department_name,
              COALESCE(sh.duration_hours, 0) as duration_hours
       FROM ${SCHEDULE_TABLE} s
@@ -697,6 +714,12 @@ export const getScheduleByDate = async (req, res, next) => {
       WHERE (s.schedule_date at time zone 'Asia/Shanghai') >= $1::date
         AND (s.schedule_date at time zone 'Asia/Shanghai') < ($1::date + interval '1 day')
     `, [scheduleDate]);
+
+    // Debug: 打印蒋学军的 SAP 工号
+    const jiangRecord = result.rows.find(r => r.real_name === '蒋学军');
+    if (jiangRecord) {
+      console.log(`[DEBUG] 蒋学军 sap_employee_id: ${jiangRecord.sap_employee_id}`);
+    }
 
     success(res, { list: result.rows }, '获取排班数据成功');
   } catch (err) {

@@ -56,6 +56,12 @@ const router = createRouter({
           meta: { requiresAuth: true, title: '回仓申请' },
         },
         {
+          path: 'warehouse-diff-registration',
+          name: 'warehouse-diff-registration',
+          component: () => import('../views/WarehouseDiffRegistrationView.vue'),
+          meta: { requiresAuth: true, title: '收发差异登记' },
+        },
+        {
           path: 'k045',
           name: 'k045',
           component: () => import('../views/K045View.vue'),
@@ -75,7 +81,8 @@ const router = createRouter({
         {
           path: 'production-tracking',
           name: 'production-tracking',
-          component: () => import('../views/ProductionTrackingView.vue'),
+          component: () => import('../views/OleTrackingView.vue'),
+          meta: { requiresAuth: true, title: '部门OLE追踪' },
         },
         {
           path: 'bonus-evaluation',
@@ -233,6 +240,18 @@ const router = createRouter({
           name: 'k2-diff-config',
           component: () => import('../views/K2DiffConfigView.vue'),
           meta: { requiresAuth: true, title: 'K**差异登记 规则配置' },
+        },
+        {
+          path: 'ole-config',
+          name: 'ole-config',
+          component: () => import('../views/OleTrackingConfigView.vue'),
+          meta: { requiresAuth: true, title: 'OLE配置' },
+        },
+        {
+          path: 'ole-efficiency-config',
+          name: 'ole-efficiency-config',
+          component: () => import('../views/OleEfficiencyConfigView.vue'),
+          meta: { requiresAuth: true, title: 'OLE效率配置' },
         },
         {
           path: 'version-info',

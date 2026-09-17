@@ -129,13 +129,27 @@ router.get('/', authenticateToken, async (req, res) => {
       targetTableAlias = 'fl';
     }
 
+    // 日期范围使用重叠检查：请假记录与查询范围有交集即返回
+    // 条件: start_date <= queryEndDate AND end_date >= queryStartDate
+    const dateField = type === 'resignation' ? 'transfer_date' : 'start_date';
+    const endField = type === 'resignation' ? 'transfer_date' : 'end_date';
+    const dateConditions = [];
+    const dateValues = [];
+    if (startDate) {
+      dateConditions.push(`${targetTableAlias}.${endField} >= ?`);
+      dateValues.push(startDate);
+    }
+    if (endDate) {
+      dateConditions.push(`${targetTableAlias}.${dateField} <= ?`);
+      dateValues.push(endDate);
+    }
+
     const where = buildWhereClause([
       { sql: ` AND ${targetTableAlias}.plant_id = ?`, value: plantId },
       { sql: ` AND ${targetTableAlias}.department_id = ?`, value: departmentId },
       { sql: ` AND ${targetTableAlias}.employee_id = ?`, value: employeeId },
       { sql: ` AND ${targetTableAlias}.status = ?`, value: status },
-      { sql: ` AND ${targetTableAlias}.${type === 'resignation' ? 'transfer_date' : 'start_date'} >= ?`, value: startDate },
-      { sql: ` AND ${targetTableAlias}.${type === 'resignation' ? 'transfer_date' : 'end_date'} <= ?`, value: endDate }
+      ...(dateConditions.length > 0 ? [{ sql: ` AND ${dateConditions.join(' AND ')}`, value: dateValues }] : [])
     ]);
 
     const countQuery = `SELECT COUNT(*) FROM ${targetTable} ${targetTableAlias}` + where.clause;

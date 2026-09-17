@@ -1077,6 +1077,264 @@ export const deleteUser = async (req, res, next) => {
   }
 };
 
+/**
+ * 更新员工SAP工号
+ */
+export const updateSapEmployeeId = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { sapEmployeeId } = req.body;
+
+    if (!sapEmployeeId || typeof sapEmployeeId !== 'string') {
+      throw BadRequestError('SAP工号不能为空');
+    }
+
+    // 检查用户是否存在
+    const userCheck = await pool.query(`SELECT * FROM ${USER_TABLE} WHERE id = $1`, [id]);
+    if (userCheck.rows.length === 0) {
+      throw NotFoundError('用户不存在');
+    }
+
+    const existing = userCheck.rows[0];
+
+    // 更新SAP工号
+    const result = await pool.query(
+      `UPDATE ${USER_TABLE} SET sap_employee_id = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+      [sapEmployeeId.trim(), id]
+    );
+
+    logInfo('更新员工SAP工号成功', {
+      userId: id,
+      oldSapEmployeeId: existing.sap_employee_id,
+      newSapEmployeeId: sapEmployeeId,
+      updatedBy: req.user?.username
+    });
+    logUserAction(req.user?.id, req.user?.username, 'update_sap_employee_id', {
+      targetUserId: id,
+      oldSapEmployeeId: existing.sap_employee_id,
+      newSapEmployeeId: sapEmployeeId
+    });
+
+    success(res, {
+      id: result.rows[0].id,
+      sapEmployeeId: result.rows[0].sap_employee_id
+    }, 'SAP工号更新成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 批量按SAP工号查询用户
+ */
+export const getUsersBySapIds = async (req, res, next) => {
+  try {
+    const { sapIds } = req.query;
+
+    if (!sapIds) {
+      throw BadRequestError('请提供SAP工号列表');
+    }
+
+    // 支持逗号分隔的SAP工号列表
+    const sapIdList = sapIds.split(',').map(id => id.trim()).filter(Boolean);
+
+    if (sapIdList.length === 0) {
+      throw BadRequestError('SAP工号列表不能为空');
+    }
+
+    if (sapIdList.length > 1000) {
+      throw BadRequestError('单次查询的SAP工号不能超过1000个');
+    }
+
+    // 批量查询用户（大小写不敏感）
+    const placeholders = sapIdList.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await pool.query(
+      `SELECT id, real_name, employee_id, plant_id, department_id, employee_type, position
+       FROM ${USER_TABLE}
+       WHERE UPPER(employee_id) IN (${sapIdList.map((_, i) => `UPPER($${i + 1})`).join(', ')})`,
+      sapIdList
+    );
+
+    // 建立员工ID到用户的映射（保留原始大小写作为key）
+    const sapIdToUser = {};
+    for (const row of result.rows) {
+      if (row.employee_id) {
+        // 使用原始输入的员工ID作为key
+        const originalId = sapIdList.find(id => id.toUpperCase() === row.employee_id.toUpperCase());
+        if (originalId) {
+          sapIdToUser[originalId] = {
+            employeeId: row.id,
+            realName: row.real_name,
+            employeeIdValue: row.employee_id,
+            plantId: row.plant_id,
+            departmentId: row.department_id,
+            employeeType: row.employee_type,
+            position: row.position
+          };
+        }
+      }
+    }
+
+    success(res, {
+      list: result.rows,
+      map: sapIdToUser,
+      total: result.rows.length
+    }, '查询成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 按姓名批量查询用户（用于工位安排导入）
+ */
+export const getUsersByNames = async (req, res, next) => {
+  try {
+    const { names } = req.query;
+
+    if (!names) {
+      throw BadRequestError('请提供姓名列表');
+    }
+
+    // 支持逗号分隔的姓名列表
+    const nameList = names.split(',').map(name => name.trim()).filter(Boolean);
+
+    if (nameList.length === 0) {
+      throw BadRequestError('姓名列表不能为空');
+    }
+
+    if (nameList.length > 1000) {
+      throw BadRequestError('单次查询的姓名不能超过1000个');
+    }
+
+    // 批量查询用户（大小写不敏感）
+    const placeholders = nameList.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await pool.query(
+      `SELECT id, real_name, employee_id, plant_id, department_id, employee_type, position
+       FROM ${USER_TABLE}
+       WHERE UPPER(real_name) IN (${nameList.map((_, i) => `UPPER($${i + 1})`).join(', ')})`,
+      nameList
+    );
+
+    // 建立姓名到用户的映射
+    const nameToUser = {};
+    for (const row of result.rows) {
+      if (row.real_name) {
+        nameToUser[row.real_name] = {
+          employeeId: row.id,
+          realName: row.real_name,
+          employeeIdValue: row.employee_id,
+          plantId: row.plant_id,
+          departmentId: row.department_id,
+          employeeType: row.employee_type,
+          position: row.position
+        };
+      }
+    }
+
+    success(res, {
+      list: result.rows,
+      map: nameToUser,
+      total: result.rows.length
+    }, '查询成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * 批量按姓名和日期查询用户及其班次
+ * 用于 Excel 导入工位安排时获取正确的班次
+ */
+export const getUsersByNamesAndDate = async (req, res, next) => {
+  try {
+    const { names, date } = req.query;
+
+    if (!names) {
+      throw BadRequestError('请提供姓名列表');
+    }
+    if (!date) {
+      throw BadRequestError('请提供日期');
+    }
+
+    // 支持逗号分隔的姓名列表
+    const nameList = names.split(',').map(name => name.trim()).filter(Boolean);
+
+    if (nameList.length === 0) {
+      throw BadRequestError('姓名列表不能为空');
+    }
+
+    if (nameList.length > 1000) {
+      throw BadRequestError('单次查询的姓名不能超过1000个');
+    }
+
+    // 批量查询用户及其班次
+    const placeholders = nameList.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await pool.query(
+      `SELECT
+         u.id, u.real_name, u.employee_id, u.plant_id, u.department_id,
+         u.employee_type, u.position,
+         s.shift
+       FROM ${USER_TABLE} u
+       LEFT JOIN jso_hr_employee_schedule s
+         ON u.id = s.employee_id
+         AND DATE(s.schedule_date AT TIME ZONE 'Asia/Shanghai') = $${nameList.length + 1}::date
+       WHERE UPPER(u.real_name) IN (${nameList.map((_, i) => `UPPER($${i + 1})`).join(', ')})`,
+      [...nameList, date]
+    );
+
+    // 建立姓名到用户的映射（包含班次信息）
+    const nameToUser = {};
+    for (const row of result.rows) {
+      if (row.real_name) {
+        nameToUser[row.real_name] = {
+          employeeId: row.id,
+          realName: row.real_name,
+          employeeIdValue: row.employee_id,
+          plantId: row.plant_id,
+          departmentId: row.department_id,
+          employeeType: row.employee_type,
+          position: row.position,
+          shift: row.shift  // 包含班次信息
+        };
+      }
+    }
+
+    success(res, {
+      list: result.rows,
+      map: nameToUser,
+      total: result.rows.length
+    }, '查询成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// 获取所有职位列表（去重，可按部门筛选）
+export const getPositions = async (req, res, next) => {
+  try {
+    const { departmentId } = req.query;
+
+    let sql = `SELECT DISTINCT position FROM ${USER_TABLE}
+       WHERE position IS NOT NULL AND position != ''`;
+    const params = [];
+
+    if (departmentId && departmentId !== '0') {
+      sql += ` AND department_id = $1`;
+      params.push(parseInt(departmentId));
+    }
+
+    sql += ` ORDER BY position`;
+
+    const result = await pool.query(sql, params);
+
+    const positions = result.rows.map(row => row.position).filter(Boolean);
+    success(res, positions, '查询成功');
+  } catch (err) {
+    next(err);
+  }
+};
+
 export default {
   getCurrentUser,
   login,
@@ -1092,4 +1350,9 @@ export default {
   resetUserPassword,
   adminResetPassword,
   deleteUser,
+  updateSapEmployeeId,
+  getUsersBySapIds,
+  getUsersByNames,
+  getUsersByNamesAndDate,
+  getPositions,
 };

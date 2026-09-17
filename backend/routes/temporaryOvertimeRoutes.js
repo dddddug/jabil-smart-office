@@ -127,12 +127,12 @@ router.get('/', authenticateToken, async (req, res) => {
 // 创建
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { employeeId, overtimeDate, startTime, endTime, hours, reason, type } = req.body;
+    const { employeeId, overtimeDate, startTime, endTime, hours, reason, type, plantId, departmentId } = req.body;
     const result = await pool.query(`
-      INSERT INTO ${TABLE} (employee_id, overtime_date, start_time, end_time, hours, reason, overtime_type, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', CURRENT_TIMESTAMP)
+      INSERT INTO ${TABLE} (employee_id, plant_id, department_id, overtime_date, start_time, end_time, hours, reason, overtime_type, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', CURRENT_TIMESTAMP)
       RETURNING *
-    `, [employeeId, overtimeDate, startTime, endTime, hours, reason, type || '临时加班']);
+    `, [employeeId, plantId || null, departmentId || null, overtimeDate, startTime, endTime, hours, reason, type || '临时加班']);
 
     res.json({ success: true, item: result.rows[0] });
   } catch (error) {
@@ -163,7 +163,7 @@ router.put('/:id/status', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { employeeId, overtimeDate, startTime, endTime, hours, reason, type } = req.body;
+    const { employeeId, overtimeDate, startTime, endTime, hours, reason, type, plantId, departmentId } = req.body;
 
     // 解析日期：如果是纯日期格式 YYYY-MM-DD，直接使用（避免时区问题）
     const parseDateForDb = (dateStr) => {
@@ -185,11 +185,11 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
     const result = await pool.query(`
       UPDATE ${TABLE}
-      SET employee_id = $1, overtime_date = $2, start_time = $3, end_time = $4,
-          hours = $5, reason = $6, overtime_type = $7, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $8
+      SET employee_id = $1, plant_id = $2, department_id = $3, overtime_date = $4, start_time = $5, end_time = $6,
+          hours = $7, reason = $8, overtime_type = $9, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $10
       RETURNING *
-    `, [employeeId, parseDateForDb(overtimeDate), startTime, endTime, hours, reason, type || '临时加班', id]);
+    `, [employeeId, plantId || null, departmentId || null, parseDateForDb(overtimeDate), startTime, endTime, hours, reason, type || '临时加班', id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: '记录不存在' });
