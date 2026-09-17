@@ -15,6 +15,8 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'
 const appVersion = packageJson.version;
 
 const versionHistory = [
+  { version: '1.2.3', date: '2026-09-17' },
+  { version: '1.2.2', date: '2026-09-15' },
   { version: '1.1.9', date: '2026-08-04' },
   { version: '1.1.6', date: '2026-07-30' },
   { version: '1.1.5', date: '2026-07-29' },
