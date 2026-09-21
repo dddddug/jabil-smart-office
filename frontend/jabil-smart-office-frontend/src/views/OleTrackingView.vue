@@ -301,12 +301,15 @@
           </div>
         </div>
         <div class="table-container">
-          <el-table :data="scrollRecords" border stripe size="small" max-height="370">
+          <el-table :data="scrollRecords" border stripe size="small" max-height="650" default-sort="{ prop: 'percentage', order: 'descending' }">
               <el-table-column prop="name" label="姓名" width="100" fixed />
-            <el-table-column label="User ID" width="170">
+            <el-table-column label="User ID" width="180">
               <template #default="{ row }">
                 <span v-if="row.user_ids && (Array.isArray(row.user_ids) ? row.user_ids.length > 0 : String(row.user_ids).length > 0)">
-                  <el-tag v-for="(uid, idx) in (Array.isArray(row.user_ids) ? row.user_ids : String(row.user_ids).split(/[&,]/).map((s: string) => s.trim()).filter((s: string) => s))" :key="idx" size="small" :type="getTagType(idx)" style="margin-right: 4px;">
+                  <el-tag v-for="(uid, idx) in (() => {
+                    const ids = Array.isArray(row.user_ids) ? row.user_ids : String(row.user_ids).split(/[&,]/).map((s: string) => s.trim()).filter((s: string) => s);
+                    return ids.filter((id: string) => id !== String(row.employee_id));
+                  })()" :key="idx" size="small" :type="getTagType(idx)" style="margin-right: 4px;">
                     {{ uid }}
                   </el-tag>
                 </span>

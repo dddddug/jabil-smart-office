@@ -81,8 +81,10 @@ export const login = async (req, res, next) => {
       jti: uuidv4(),
     };
 
+    // 访客账号 token 永不过期
+    const isGuest = user.username === 'guest' || user.employee_type === 'guest';
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '4h'
+      expiresIn: isGuest ? '365d' : (process.env.JWT_EXPIRES_IN || '4h')
     });
 
     // 5. 更新登录次数和最后登录时间
