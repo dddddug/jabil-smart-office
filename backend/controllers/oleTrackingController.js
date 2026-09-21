@@ -877,7 +877,6 @@ const getShiftDetail = async (req, res) => {
         SELECT
           sd.employee_id,
           sd.real_name,
-          sd.sap_employee_id as custom_sap_ids,
           sd.employee_level,
           -- 保持原始格式（逗号分隔）用于显示
           string_agg(DISTINCT COALESCE(sd.area_name, sd.workstation_id::text), ',') as areas,
@@ -885,14 +884,21 @@ const getShiftDetail = async (req, res) => {
           string_agg(DISTINCT sd.effective_shift, ',') as shift_names,
           -- 备注：合并所有工位的备注
           string_agg(DISTINCT sd.remark, ',') as remark,
-          -- 拆分多SAP工号（如 "2876866&1167023" 拆成数组）
-          CASE
-            WHEN sd.sap_employee_id IS NOT NULL AND sd.sap_employee_id != ''
-            THEN array_remove(string_to_array(sd.sap_employee_id, '&'), '')
-            ELSE ARRAY[sd.employee_id::text]
-          END as sap_employee_ids
+          -- 合并所有工位的SAP工号（去重）
+          (
+            SELECT array_agg(DISTINCT sap ORDER BY sap)
+            FROM (
+              SELECT unnest(string_to_array(COALESCE(sd2.sap_employee_id, ''), '&')) as sap
+              FROM shift_data sd2
+              WHERE sd2.employee_id = sd.employee_id AND sd2.sap_employee_id IS NOT NULL AND sd2.sap_employee_id != ''
+              UNION
+              SELECT sd2.employee_id::text WHERE NOT EXISTS (
+                SELECT 1 FROM shift_data sd3 WHERE sd3.employee_id = sd.employee_id AND sd3.sap_employee_id IS NOT NULL AND sd3.sap_employee_id != ''
+              )
+            ) sub
+          ) as sap_employee_ids
         FROM shift_data sd
-        GROUP BY sd.employee_id, sd.real_name, sd.sap_employee_id, sd.employee_level
+        GROUP BY sd.employee_id, sd.real_name, sd.employee_level
       ),
       -- 合并员工信息和排除标记
       employee_info_full AS (

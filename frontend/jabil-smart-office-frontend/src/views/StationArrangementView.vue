@@ -1521,11 +1521,13 @@ const fetchScheduledEmployees = async () => {
       if (!existingSapId) {
         // 首次设置
         editableSapIds.value[emp.realName] = newSapId;
-      } else if (newSapId && !existingSapId.split('&').includes(newSapId)) {
-        // 追加新的SAP工号（去重）
-        editableSapIds.value[emp.realName] = existingSapId + '&' + newSapId;
+      } else if (newSapId) {
+        // 合并所有SAP工号并去重
+        const existingSet = new Set(existingSapId.split('&').map(s => s.trim()).filter(Boolean));
+        newSapId.split('&').map(s => s.trim()).filter(Boolean).forEach(sap => existingSet.add(sap));
+        editableSapIds.value[emp.realName] = Array.from(existingSet).sort().join('&');
       }
-      // 如果 newSapId 为空或已存在，不做处理
+      // 如果 newSapId 为空，不做处理
     }
 
     // 同步 employeeId 的映射（用于显示）
