@@ -681,23 +681,26 @@ export const getScheduleByDate = async (req, res, next) => {
     console.log(`[DEBUG] getScheduleByDate called with scheduleDate: ${scheduleDate}`);
 
     // 查询指定日期的所有排班记录，JOIN 用户表获取姓名和SAP工号
-    // 获取该员工在该日期所有工位安排中的SAP工号（去重合并）
+    // 获取该员工在该日期所有工位安排中的SAP工号（拆分&后再去重合并）
     const result = await pool.query(`
       SELECT s.employee_id, s.shift, s.special_status,
              u.real_name,
              (
-               SELECT COALESCE(
-                 NULLIF(
-                   string_agg(DISTINCT wa.sap_employee_id::text, '&'),
-                   ''
-                 ),
-                 u.employee_id
-               )
-               FROM jso_hr_workstation_arrangement wa
-               WHERE wa.employee_id = s.employee_id
-                 AND DATE(wa.arrangement_date AT TIME ZONE 'Asia/Shanghai') = $1::date
-                 AND wa.sap_employee_id IS NOT NULL
-                 AND wa.sap_employee_id != ''
+               SELECT
+                 COALESCE(
+                   (
+                     SELECT string_agg(DISTINCT sap_id, '&' ORDER BY sap_id)
+                     FROM (
+                       SELECT unnest(string_to_array(wa2.sap_employee_id, '&')) as sap_id
+                       FROM jso_hr_workstation_arrangement wa2
+                       WHERE wa2.employee_id = s.employee_id
+                         AND DATE(wa2.arrangement_date AT TIME ZONE 'Asia/Shanghai') = $1::date
+                         AND wa2.sap_employee_id IS NOT NULL
+                         AND wa2.sap_employee_id != ''
+                     ) sub
+                   ),
+                   u.employee_id::text
+                 )
              ) as sap_employee_id,
              u.plant_id, u.department_id, u.employee_type, u.position, u.level,
              p.name as plant_name, d.name as department_name,
