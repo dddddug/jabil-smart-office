@@ -5139,17 +5139,17 @@ const checkWeeklyHours = () => {
       
       let wh = 0;
       if (schedule && schedule.shift) {
-        // 检查是否是请假或调休
-        const isLeaveOrDayOff = schedule.shift === '请假' || schedule.shift === '调休';
-        
+        // 检查是否是请假、调休或离职
+        const isLeaveOrDayOff = schedule.shift === '请假' || schedule.shift === '调休' || schedule.shift === '离职';
+
         if (isLeaveOrDayOff) {
-          // 请假或调休，工时为0
+          // 请假、调休或离职，工时为0
           wh = 0;
-        } else if (dayOfWeek >= 1 && dayOfWeek <= 4) {
-          // 周一到周四：按实际排班计算
+        } else if (dayOfWeek >= 1 && dayOfWeek <= 3) {
+          // 周一到周三：按实际排班计算
           wh = getWorkHours(schedule.shift);
         } else {
-          // 周五到周天：只要不是请假或调休，就按12H算
+          // 周四到周日：只要不是请假、调休、离职，就按12H算
           wh = 12;
         }
         
