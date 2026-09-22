@@ -420,6 +420,9 @@ const loadCommitHistory = async (append = false) => {
     // 模拟从 git log 获取的提交历史
     // 在实际环境中，这应该从后端 API 获取
     const mockCommits: CommitInfo[] = [
+      { hash: 'xyz9999', fullHash: 'xyz99990123456789abcdef123456789abcdef1234', message: 'fix: 修复员工排班提交临时请假日期格式与LeaveTab不一致的问题', type: 'fix', time: '刚刚' },
+      { hash: 'abc1234', fullHash: 'abc1234567890abcdef1234567890abcdef1234', message: 'fix: 移除OleTrackingView中未定义的P变量', type: 'fix', time: '刚刚' },
+      { hash: 'abc0001', fullHash: 'abc00011234567890abcdef123456789abcdef1234', message: 'v1.2.6: 修复员工排班提交临时请假不同步到请假公差界面的问题', type: 'feat', time: '刚刚', version: '1.2.6', date: '2026-09-22' },
       { hash: 'lmn7890', fullHash: 'lmn7890123456abcdef1234567890abcdef1234', message: 'fix: 修复首次登录设置安全问题保存后不生效的问题，改为调用实际API', type: 'fix', time: '刚刚' },
       { hash: 'opq4567', fullHash: 'opq4567890123abcdef1234567890abcdef1234', message: 'feat: 新增/api/users/reset-password/verify和/api/users/reset-password端点用于忘记密码重置', type: 'feat', time: '刚刚' },
       { hash: 'ijk3456', fullHash: 'ijk3456789012abcdef1234567890abcdef1234', message: 'fix: 修复破7休1结束日期逻辑，如有调休请假则用实际结束日期，否则用开始日期+12天', type: 'fix', time: '刚刚' },

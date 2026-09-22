@@ -4,6 +4,33 @@
  */
 import pool from '../config/db.js';
 
+// ========== 初始化函数 ==========
+
+// 创建效率上限函数（循环递减到100%以内）
+const initEfficiencyFunction = async () => {
+  try {
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION cap_efficiency(val numeric)
+      RETURNS numeric AS $$
+      DECLARE
+        result numeric := val;
+      BEGIN
+        WHILE result >= 100 LOOP
+          result := result * 0.95;
+        END LOOP;
+        RETURN ROUND(result, 2);
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
+    `);
+    console.log('cap_efficiency 函数创建成功');
+  } catch (err) {
+    console.error('创建 cap_efficiency 函数失败:', err.message);
+  }
+};
+
+// 启动时初始化
+initEfficiencyFunction();
+
 // ========== 辅助函数 ==========
 
 /**
@@ -220,22 +247,22 @@ const getStats = async (req, res) => {
         END as result_raw,
         CASE
           WHEN sd.hours > 0
-          THEN ROUND(
+          THEN cap_efficiency(
             ((COALESCE(ts.iws_count, 0) +
               COALESCE(ts.plr_count, 0) +
               COALESCE(ts.flr_count, 0))
-             / (sd.hours * 3600) / 0.85) * 100, 2
+             / (sd.hours * 3600) / 0.85) * 100
           )
           ELSE NULL
         END as percentage,
         CASE
           WHEN sd.hours > 0 AND le.target_efficiency IS NOT NULL
           THEN CASE
-            WHEN ROUND(
+            WHEN cap_efficiency(
               ((COALESCE(ts.iws_count, 0) +
                 COALESCE(ts.plr_count, 0) +
                 COALESCE(ts.flr_count, 0))
-               / (sd.hours * 3600) / 0.85) * 100, 2
+               / (sd.hours * 3600) / 0.85) * 100
             ) >= ROUND(le.target_efficiency * 100, 2)
             THEN '达标'
             ELSE '未达标'
@@ -442,10 +469,10 @@ const getRanking = async (req, res) => {
           AVG(
             CASE
               WHEN sd.hours > 0 AND ac.iws_coefficient IS NOT NULL
-              THEN (COALESCE(ts.iws_count, 0) * ac.iws_coefficient +
+              THEN cap_efficiency((COALESCE(ts.iws_count, 0) * ac.iws_coefficient +
                     COALESCE(ts.plr_count, 0) * ac.plr_coefficient +
                     COALESCE(ts.flr_count, 0) * ac.flr_coefficient)
-                   / (sd.hours * 3600) / 0.85 * 100
+                   / (sd.hours * 3600) / 0.85 * 100)
               ELSE NULL
             END
           ) as avg_percentage,
@@ -712,6 +739,115 @@ const getAreaStats = async (req, res) => {
 };
 
 /**
+ * 获取每日效率统计
+ * GET /api/ole-tracking/daily-efficiency
+ * 返回日期范围内每个员工每日的效率
+ */
+const getDailyEfficiency = async (req, res) => {
+  try {
+    const { startDate, endDate, shift } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ success: false, message: '需要提供 startDate 和 endDate' });
+    }
+
+    // 查询每个员工每日的效率
+    const query = `
+      WITH excluded_areas AS (
+        SELECT area_name FROM jso_ole_excluded_areas WHERE enabled = true
+      ),
+      shift_data AS (
+        SELECT
+          arr.arrangement_date,
+          arr.shift_name,
+          u.id as employee_id,
+          u.real_name,
+          u.sap_employee_id,
+          arr.hours,
+          CASE
+            WHEN arr.shift_name LIKE '%N%' THEN
+              CASE
+                WHEN EXTRACT(HOUR FROM arr.start_time AT TIME ZONE 'Asia/Shanghai') >= 0
+                     AND EXTRACT(HOUR FROM arr.start_time AT TIME ZONE 'Asia/Shanghai') < 7
+                THEN arr.arrangement_date - INTERVAL '1 day'
+                ELSE arr.arrangement_date
+              END
+            ELSE arr.arrangement_date
+          END as shift_date
+        FROM jso_hr_workstation_arrangement arr
+        INNER JOIN jso_system_user_management u ON arr.employee_id = u.id
+        INNER JOIN jso_config_workstation ws ON arr.workstation_id = ws.id
+        WHERE DATE(arr.arrangement_date AT TIME ZONE 'Asia/Shanghai') >= $1::date
+          AND DATE(arr.arrangement_date AT TIME ZONE 'Asia/Shanghai') <= $2::date
+          AND ws.name NOT IN (SELECT area_name FROM excluded_areas)
+          ${shift ? "AND arr.shift_name = $3" : ""}
+      ),
+      trans_stats AS (
+        SELECT
+          sd.employee_id,
+          sd.shift_date,
+          COUNT(CASE WHEN t.trans = 'IWS' THEN 1 END) as iws_count,
+          COUNT(CASE WHEN t.trans = 'FLR' THEN 1 END) as flr_count,
+          COUNT(CASE WHEN t.trans = 'PLR' THEN 1 END) as plr_count
+        FROM shift_data sd
+        LEFT JOIN jso_sap_grn_history_partitioned t
+          ON t.created_by::text = sd.sap_employee_id::text
+          AND DATE(t.created_at AT TIME ZONE 'Asia/Shanghai') = sd.shift_date::date
+        GROUP BY sd.employee_id, sd.shift_date
+      ),
+      employee_daily AS (
+        SELECT
+          sd.employee_id,
+          sd.real_name,
+          sd.shift_date::text as date,
+          CASE
+            WHEN sd.hours > 0 THEN (
+              (COALESCE(ts.iws_count, 0) + COALESCE(ts.plr_count, 0) + COALESCE(ts.flr_count, 0))
+              / (sd.hours * 3600) / 0.85
+            )
+            ELSE NULL
+          END as raw_efficiency
+        FROM shift_data sd
+        LEFT JOIN trans_stats ts ON ts.employee_id = sd.employee_id AND ts.shift_date = sd.shift_date
+      )
+      SELECT
+        employee_id,
+        real_name as name,
+        date,
+        ROUND(
+          CASE
+            WHEN raw_efficiency >= 1.0 THEN raw_efficiency * 0.95 * 100
+            ELSE raw_efficiency * 100
+          END::numeric, 2
+        ) as efficiency
+      FROM employee_daily
+      ORDER BY employee_id, date
+    `;
+
+    const params = shift ? [startDate, endDate, shift] : [startDate, endDate];
+    const result = await pool.query(query, params);
+
+    // 计算整体平均效率
+    const avgEfficiency = result.rows.length > 0
+      ? result.rows.reduce((sum, row) => sum + parseFloat(row.efficiency || 0), 0) / result.rows.length
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        dailyData: result.rows,
+        averageEfficiency: Math.round(avgEfficiency * 100) / 100,
+        startDate,
+        endDate
+      }
+    });
+  } catch (error) {
+    console.error('获取每日效率统计失败:', error);
+    res.status(500).json({ success: false, message: '获取数据失败', error: error.message });
+  }
+};
+
+/**
  * 获取差异统计数据（从仓储差异登记表）
  * GET /api/ole-tracking/diff-stats
  */
@@ -762,17 +898,19 @@ const getShiftDetail = async (req, res) => {
 
     // 判断是否显示所有班次
     const showAllShifts = !shift || shift === '';
+    const isADay = shift === 'A+' || shift === 'A';
 
+    // C班是19:00-次日07:00，arrangement_date=09-20的C班工作时间: 09-20 19:00 到 09-21 07:00
     // 计算时间范围
-    let shiftStartTime, shiftEndTime;
+    let shiftStartTime, shiftEndTime, shiftEndDate;
     if (!showAllShifts) {
       // 单个班次
-      const isADay = shift === 'A+' || shift === 'A';
       shiftStartTime = isADay ? `${date} 07:00:00` : `${date} 19:00:00`;
       const nextDay = new Date(date);
       nextDay.setDate(nextDay.getDate() + 1);
       const nextDateStr = nextDay.toISOString().split('T')[0];
       shiftEndTime = isADay ? `${date} 19:00:00` : `${nextDateStr} 07:00:00`;
+      shiftEndDate = isADay ? date : nextDateStr;
     } else {
       // 所有班次：7:00到次日7:00
       shiftStartTime = `${date} 07:00:00`;
@@ -780,14 +918,13 @@ const getShiftDetail = async (req, res) => {
       nextDay.setDate(nextDay.getDate() + 1);
       const nextDateStr = nextDay.toISOString().split('T')[0];
       shiftEndTime = `${nextDateStr} 07:00:00`;
+      shiftEndDate = nextDateStr;
     }
 
-    // 使用 jso_hr_workstation_arrangement 表（已同步排班表班次和正确的工作时长）
-    // arrangement_date 存储为UTC时间，需要转换时区
+    // 使用 jso_hr_workstation_arrangement 表
     let shiftFilter = '';
     if (!showAllShifts) {
       // 单个班次：支持 A+/A 和 C+/C
-      const isADay = shift === 'A+' || shift === 'A';
       shiftFilter = `AND (wa.shift_name = '${shift}' OR wa.shift_name = '${isADay ? 'A' : 'C'}' OR wa.shift_name = '${isADay ? 'A+' : 'C+'}' OR wa.shift_name = '${isADay ? 'A2' : 'C2'}')`;
     }
 
@@ -886,16 +1023,17 @@ const getShiftDetail = async (req, res) => {
           string_agg(DISTINCT sd.remark, ',') as remark,
           -- 合并所有工位的SAP工号（去重）
           (
-            SELECT array_agg(DISTINCT sap ORDER BY sap)
-            FROM (
-              SELECT unnest(string_to_array(COALESCE(sd2.sap_employee_id, ''), '&')) as sap
-              FROM shift_data sd2
-              WHERE sd2.employee_id = sd.employee_id AND sd2.sap_employee_id IS NOT NULL AND sd2.sap_employee_id != ''
-              UNION
-              SELECT sd2.employee_id::text WHERE NOT EXISTS (
-                SELECT 1 FROM shift_data sd3 WHERE sd3.employee_id = sd.employee_id AND sd3.sap_employee_id IS NOT NULL AND sd3.sap_employee_id != ''
-              )
-            ) sub
+            SELECT COALESCE(
+              (
+                SELECT string_agg(DISTINCT sap_id, '&' ORDER BY sap_id)
+                FROM (
+                  SELECT unnest(string_to_array(COALESCE(sd_all.sap_employee_id, ''), '&')) as sap_id
+                  FROM shift_data sd_all
+                  WHERE sd_all.employee_id = sd.employee_id
+                ) sub
+              ),
+              sd.employee_id::text
+            )
           ) as sap_employee_ids
         FROM shift_data sd
         GROUP BY sd.employee_id, sd.real_name, sd.employee_level
@@ -948,7 +1086,7 @@ const getShiftDetail = async (req, res) => {
       ),
       -- 获取所有 SAP 工号用于统计
       all_sap_ids AS (
-        SELECT DISTINCT unnest(ei.sap_employee_ids) as sap_id, ei.employee_id
+        SELECT DISTINCT unnest(string_to_array(ei.sap_employee_ids, '&')) as sap_id, ei.employee_id
         FROM employee_info_full ei
         WHERE ei.sap_employee_ids IS NOT NULL
       ),
@@ -963,8 +1101,8 @@ const getShiftDetail = async (req, res) => {
         FROM all_sap_ids asi
         LEFT JOIN jso_sap_grn_history_partitioned t
           ON t.created_by::text = asi.sap_id::text
-          AND t.created_at >= (TIMESTAMP '${shiftStartTime}' AT TIME ZONE 'Asia/Shanghai')
-          AND t.created_at < (TIMESTAMP '${shiftEndTime}' AT TIME ZONE 'Asia/Shanghai')
+          AND t.creation_date >= $1::date
+          AND t.creation_date <= $2::date
         GROUP BY asi.employee_id
       ),
       level_efficiency AS (
@@ -1048,11 +1186,11 @@ const getShiftDetail = async (req, res) => {
           -- 如果Area匹配不到规则，状态为未计算
           WHEN mr.iws_seconds IS NULL THEN NULL
           WHEN (eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) > 0
-          THEN ROUND(
+          THEN cap_efficiency(
             ((COALESCE(ts.iws_count, 0) * COALESCE(mr.iws_seconds, 0) +
               COALESCE(ts.plr_count, 0) * COALESCE(mr.plr_seconds, 0) +
               COALESCE(ts.flr_count, 0) * COALESCE(mr.flr_seconds, 0))
-             / ((eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) * 3600) / 0.85) * 100, 2
+             / ((eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) * 3600) / 0.85) * 100
           )
           ELSE NULL
         END as percentage,
@@ -1061,11 +1199,11 @@ const getShiftDetail = async (req, res) => {
           WHEN mr.iws_seconds IS NULL THEN '未计算'
           WHEN (eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) > 0 AND le.target_efficiency IS NOT NULL
           THEN CASE
-            WHEN ROUND(
+            WHEN cap_efficiency(
               ((COALESCE(ts.iws_count, 0) * COALESCE(mr.iws_seconds, 0) +
                 COALESCE(ts.plr_count, 0) * COALESCE(mr.plr_seconds, 0) +
                 COALESCE(ts.flr_count, 0) * COALESCE(mr.flr_seconds, 0))
-               / ((eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) * 3600) / 0.85) * 100, 2
+               / ((eh.hours - COALESCE(lh.leave_hours, 0) + COALESCE(oh.overtime_hours, 0) - COALESCE(shc.special_hours, 0)) * 3600) / 0.85) * 100
             ) >= ROUND(le.target_efficiency * 100, 2)
             THEN '达标'
             ELSE '未达标'
@@ -1088,7 +1226,7 @@ const getShiftDetail = async (req, res) => {
         percentage DESC NULLS LAST
     `;
 
-    const result = await pool.query(query, [date]);
+    const result = await pool.query(query, [date, shiftEndDate]);
 
     // 获取班次Leader信息（当显示所有班次时，不显示负责人）
     let leaderInfo = { name: null, code: null };
@@ -1515,6 +1653,7 @@ export {
   getRanking,
   getAreaStats,
   getDiffStats,
+  getDailyEfficiency,
   getShiftDetail,
   getLevelEfficiencyConfig,
   updateLevelEfficiencyConfig,

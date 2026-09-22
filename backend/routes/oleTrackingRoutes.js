@@ -24,6 +24,9 @@ router.get('/area-stats', oleTrackingController.getAreaStats);
 // 获取差异统计数据
 router.get('/diff-stats', oleTrackingController.getDiffStats);
 
+// 获取每日效率统计
+router.get('/daily-efficiency', oleTrackingController.getDailyEfficiency);
+
 // 获取班次明细数据
 router.get('/shift-detail', oleTrackingController.getShiftDetail);
 

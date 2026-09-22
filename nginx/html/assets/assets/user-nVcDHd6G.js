@@ -1,1 +1,0 @@
-import{o as e}from"./index-DE0AlzTC.js";function t(){return e({url:`/users/me`,method:`get`})}export{t};

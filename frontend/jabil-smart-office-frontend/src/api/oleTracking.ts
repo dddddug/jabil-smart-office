@@ -91,6 +91,11 @@ export const getOleShiftDetail = (params: OleShiftDetailQueryParams) => {
   return request.get('/ole-tracking/shift-detail', { params });
 };
 
+// 获取每日效率统计数据
+export const getDailyEfficiency = (params: { startDate: string; endDate: string; shift?: string }) => {
+  return request.get('/ole-tracking/daily-efficiency', { params });
+};
+
 // ========== 配置管理 ==========
 
 // 岗位等级目标效率配置

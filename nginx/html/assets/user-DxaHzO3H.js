@@ -1,1 +1,0 @@
-import{o as e}from"./index-8TOnLuMA.js";function t(){return e({url:`/users/me`,method:`get`})}export{t};

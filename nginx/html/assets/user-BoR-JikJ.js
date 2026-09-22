@@ -1,1 +1,0 @@
-import{o as e}from"./index-C7SjaKI2.js";function t(){return e({url:`/users/me`,method:`get`})}export{t};

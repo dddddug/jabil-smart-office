@@ -1523,8 +1523,8 @@ const fetchScheduledEmployees = async () => {
         editableSapIds.value[emp.realName] = newSapId;
       } else if (newSapId) {
         // 合并所有SAP工号并去重
-        const existingSet = new Set(existingSapId.split('&').map(s => s.trim()).filter(Boolean));
-        newSapId.split('&').map(s => s.trim()).filter(Boolean).forEach(sap => existingSet.add(sap));
+        const existingSet = new Set(existingSapId.split('&').map((s: string) => s.trim()).filter(Boolean));
+        newSapId.split('&').map((s: string) => s.trim()).filter(Boolean).forEach((sap: string) => existingSet.add(sap));
         editableSapIds.value[emp.realName] = Array.from(existingSet).sort().join('&');
       }
       // 如果 newSapId 为空，不做处理
