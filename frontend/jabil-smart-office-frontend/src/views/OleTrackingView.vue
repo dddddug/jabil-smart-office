@@ -1,5 +1,6 @@
 <template>
   <div class="ole-tracking-container">
+    <!-- TEST_MARKER: BUILD_TEST_20260922_XYZ123 -->
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="breadcrumb">
@@ -25,7 +26,6 @@
             <el-radio-button value="day">日</el-radio-button>
             <el-radio-button value="week">周</el-radio-button>
             <el-radio-button value="month">月</el-radio-button>
-            <el-radio-button value="year">年</el-radio-button>
           </el-radio-group>
         </div>
         <div class="filter-item">
@@ -44,13 +44,13 @@
         </div>
         <div class="filter-item">
           <label>班次:</label>
-          <el-select v-model="filterShift" placeholder="全部班次" clearable size="default" @change="onFilterChange">
+          <el-select v-model="filterShift" placeholder="请选择" size="default" @change="onFilterChange" style="width: 200px;">
             <el-option v-for="shift in shiftOptions" :key="shift.value" :label="shift.label" :value="shift.value" />
           </el-select>
         </div>
         <div class="filter-item">
           <label>Area:</label>
-          <el-select v-model="filterArea" placeholder="全部Area" clearable size="default" @change="onFilterChange">
+          <el-select v-model="filterArea" placeholder="全部Area" clearable size="default" @change="onFilterChange" style="width: 200px;">
             <el-option v-for="area in areaOptions" :key="area" :label="area" :value="area" />
           </el-select>
         </div>
@@ -68,8 +68,50 @@
     </div>
 
     <template v-else>
-      <!-- 主体内容区域 -->
-      <div class="main-content">
+      <!-- 每日效率表格（周/月维度显示） -->
+      <div v-if="showDailyEfficiencyTable" class="chart-section">
+        <div class="chart-card wide">
+          <div class="chart-title">📅 {{ filterDimension === 'week' ? weekDisplayText : '本月' }}每日效率明细</div>
+          <div class="daily-efficiency-summary">
+            <span class="summary-label">平均效率：</span>
+            <span class="summary-value" :class="getEfficiencyClass(dailyEfficiencyData.averageEfficiency)">
+              {{ dailyEfficiencyData.averageEfficiency }}%
+            </span>
+          </div>
+          <div class="daily-table-wrapper">
+            <table class="daily-table" border="1">
+              <thead>
+                <tr>
+                  <th class="sticky-col">姓名</th>
+                  <th v-for="date in dailyEfficiencyDates" :key="date">{{ (date.split(' ')[0] || date).substring(5) }}</th>
+                  <th>平均</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in dailyEfficiencyTableData" :key="row.name">
+                  <td class="sticky-col">{{ row.name }}</td>
+                  <td v-for="date in dailyEfficiencyDates" :key="date" align="center">
+                    <span v-if="row[date] !== null && row[date] !== undefined" class="efficiency-value" :class="getEfficiencyClass(row[date])">
+                      {{ row[date] }}%
+                    </span>
+                    <span v-else>-</span>
+                  </td>
+                  <td align="center">
+                    <span class="efficiency-value" :class="getEfficiencyClass(row.avgEfficiency)">
+                      {{ row.avgEfficiency }}%
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主体内容区域（日维度显示完整布局） -->
+      <template v-else>
+        <!-- 主体内容区域 -->
+        <div class="main-content">
         <!-- 左侧：班次信息 + 统计卡片 -->
         <div class="left-panel">
           <!-- 班次信息头部（显示当前选中班次或默认班次） -->
@@ -288,7 +330,7 @@
       <div class="chart-section">
         <div class="chart-card wide">
           <div class="chart-title">📊 产出明细与效率完成比</div>
-          <div class="chart-container" ref="efficiencyChartRef"></div>
+          <div class="chart-container tall-chart" ref="efficiencyChartRef"></div>
         </div>
       </div>
 
@@ -379,6 +421,7 @@
           </el-table>
         </div>
       </div>
+      </template>
 
     </template>
   </div>
@@ -396,7 +439,8 @@ import {
   getOleTrackingRanking,
   getOleAreaStats,
   getOleDiffStats,
-  getOleShiftDetail
+  getOleShiftDetail,
+  getDailyEfficiency
 } from '@/api/oleTracking';
 
 interface ShiftSummary {
@@ -435,9 +479,10 @@ const getCurrentShiftType = (): 'A+' | 'C+' => {
   return 'C+';
 };
 
-// 获取当前班次显示（从API获取）
+// 获取当前班次显示（根据筛选条件）
 const getCurrentShiftDisplay = () => {
-  return currentShiftLeader.value?.shiftDisplay || (getCurrentShiftType() === 'A+' ? 'A班' : 'C班');
+  if (filterShift.value === 'C') return 'C班';
+  return 'A班';
 };
 
 // 获取当前班次Leader信息（从API响应中获取）
@@ -522,12 +567,28 @@ interface AreaStat {
 
 // 筛选条件
 const filterDimension = ref('day');
-// 从 sessionStorage 恢复之前的选择，否则使用当天日期
+
+// 班次选项（硬编码）
+const shiftOptions = [
+  { value: '', label: '全部班次' },
+  { value: 'A', label: 'A班' },
+  { value: 'C', label: 'C班' },
+];
+
+// 根据当前班次判断是否为C班
+const getDefaultShiftByTime = (): string => {
+  const hour = new Date().getHours();
+  // 7:00-19:00 默认A班，19:00-次日7:00 默认C班
+  return (hour >= 7 && hour < 19) ? 'A' : 'C';
+};
+
+// 从 sessionStorage 恢复之前的选择
 const savedDate = sessionStorage.getItem('oleTrackingDate');
 const savedShift = sessionStorage.getItem('oleTrackingShift');
 const savedDimension = sessionStorage.getItem('oleTrackingDimension');
 const filterDate = ref(savedDate || dayjs().format('YYYY-MM-DD'));
-const filterShift = ref(savedShift || '');
+// 周/月维度默认不筛选班次，日维度根据时间默认筛选
+const filterShift = ref(savedShift || (savedDimension === 'day' ? getDefaultShiftByTime() : ''));
 const filterArea = ref('');
 const filterEmployee = ref('');
 
@@ -553,8 +614,18 @@ const filteredDiffData = computed(() => {
   return diffData.value.filter(item => item.diff_pic === selectedDiffPic.value);
 });
 const areaData = ref<AreaStat[]>([]);
-const selectedShift = ref('');
 const statsSummary = ref<any>({});  // 存储API返回的summary数据
+
+// 每日效率数据（用于周/月维度显示）
+const dailyEfficiencyData = ref<{
+  dailyData: Array<{
+    employee_id: number;
+    name: string;
+    date: string;
+    efficiency: number;
+  }>;
+  averageEfficiency: number;
+}>({ dailyData: [], averageEfficiency: 0 });
 
 // 滚动播放相关
 const scrollRecords = ref<ShiftDetail[]>([]);
@@ -575,19 +646,6 @@ const efficiencyChartRef = ref<HTMLElement>();
 const areaChartRef = ref<HTMLElement>();
 const diffChartRef = ref<HTMLElement>();
 
-// 班次选项
-const shiftOptions = [
-  { value: 'A', label: 'A班' },
-  { value: 'B', label: 'B班' },
-  { value: 'C', label: 'C班' },
-  { value: 'N', label: 'N班' },
-  { value: 'A+', label: 'A+班' },
-  { value: 'B+', label: 'B+班' },
-  { value: 'C+', label: 'C+班' },
-  { value: 'N+', label: 'N+班' },
-  { value: 'A2', label: 'A2班' },
-];
-
 // 可用的班次
 const availableShifts = computed(() => {
   return shiftOptions.filter(s => shiftStats.value[s.value]);
@@ -607,38 +665,57 @@ const areaOptions = computed(() => {
 // 日期选择器配置
 const datePickerType = computed(() => {
   if (filterDimension.value === 'month') return 'month';
-  if (filterDimension.value === 'year') return 'year';
+  if (filterDimension.value === 'week') return 'week';
   return 'date';
 });
 
 const datePickerPlaceholder = computed(() => {
   if (filterDimension.value === 'month') return '选择月份';
-  if (filterDimension.value === 'year') return '选择年份';
+  if (filterDimension.value === 'week') return '选择周';
   return '选择日期';
 });
 
 const datePickerFormat = computed(() => {
   if (filterDimension.value === 'month') return 'YYYY-MM';
-  if (filterDimension.value === 'year') return 'YYYY';
+  if (filterDimension.value === 'week') return 'YYYY-WW';
   return 'YYYY-MM-DD';
 });
 
 const datePickerValueFormat = computed(() => {
   if (filterDimension.value === 'month') return 'YYYY-MM';
-  if (filterDimension.value === 'year') return 'YYYY';
+  if (filterDimension.value === 'week') return 'YYYY-wo';
   return 'YYYY-MM-DD';
+});
+
+// 获取周信息显示文本
+const weekDisplayText = computed(() => {
+  if (filterDimension.value !== 'week') return '';
+  // YYYY-wo 格式解析，例如 "2026-W36" -> ["2026", "W36"]
+  const parts = filterDate.value.split('-');
+  const year = parts[0] || '';
+  const weekPart = parts[1] || '';
+  // 提取周数 (去掉 'W' 前缀)
+  const week = weekPart.replace(/W/i, '');
+  // 计算该周的实际日期范围
+  const d = dayjs(`${year}-01-01`).add(parseInt(week) - 1, 'week');
+  const startOfWeek = d.startOf('week').format('MM-DD');
+  const endOfWeek = d.endOf('week').format('MM-DD');
+  return `${year}-WK${week} (${startOfWeek}~${endOfWeek})`;
 });
 
 // 当前班次汇总
 const currentShiftSummary = computed(() => {
+  // 总工时始终从 statsSummary 获取（不参与班次筛选联动）
+  const totalHours = statsSummary.value?.totalHours || '0';
+
   // 如果没有选中特定班次，返回所有班次的汇总数据
-  if (!selectedShift.value) {
+  if (!filterShift.value) {
     const allShifts = Object.values(shiftStats.value);
-    if (allShifts.length === 0) return {} as ShiftSummary;
+    if (allShifts.length === 0) return { totalHours } as ShiftSummary;
 
     return {
       totalEmployees: allShifts.reduce((sum, s) => sum + (s.totalEmployees || 0), 0),
-      totalHours: allShifts.reduce((sum, s) => sum + parseFloat(s.totalHours || '0'), 0).toFixed(2),
+      totalHours: totalHours,
       totalIws: allShifts.reduce((sum, s) => sum + (s.totalIws || 0), 0),
       totalFlr: allShifts.reduce((sum, s) => sum + (s.totalFlr || 0), 0),
       totalPlr: allShifts.reduce((sum, s) => sum + (s.totalPlr || 0), 0),
@@ -651,7 +728,12 @@ const currentShiftSummary = computed(() => {
       totalPullList: allShifts.reduce((sum, s) => sum + (s.totalPullList || 0), 0)
     } as ShiftSummary;
   }
-  return shiftStats.value[selectedShift.value] || {} as ShiftSummary;
+  // 选中特定班次时，也使用 statsSummary.totalHours
+  const shiftData = shiftStats.value[filterShift.value] || {};
+  return {
+    ...shiftData,
+    totalHours: totalHours
+  } as ShiftSummary;
 });
 
 // 所有班次总人数
@@ -721,6 +803,79 @@ const cShiftEfficiency = computed(() => {
 
   return { avgPercentage, achievedCount, unachievedCount };
 });
+
+// 是否显示每日效率表格（周/月维度时显示）
+const showDailyEfficiencyTable = computed(() => {
+  return filterDimension.value === 'week' || filterDimension.value === 'month';
+});
+
+// 获取所有日期列表
+const dailyEfficiencyDates = computed(() => {
+  const dates = new Set<string>();
+  dailyEfficiencyData.value.dailyData.forEach(row => {
+    // 去掉时间部分，只保留日期
+    const dateStr = row.date || '';
+    const dateOnly = dateStr.split('T')[0];
+    if (dateOnly) {
+      dates.add(dateOnly);
+    }
+  });
+  return Array.from(dates).sort();
+});
+
+// 每日效率表格数据（按人员分组）
+const dailyEfficiencyTableData = computed(() => {
+  const data = dailyEfficiencyData.value.dailyData;
+  if (data.length === 0) return [];
+
+  // 按人员分组
+  const employeeMap = new Map<number, any>();
+
+  data.forEach(row => {
+    if (!employeeMap.has(row.employee_id)) {
+      employeeMap.set(row.employee_id, {
+        employee_id: row.employee_id,
+        name: row.name,
+        totalEfficiency: 0,
+        count: 0
+      });
+    }
+    const emp = employeeMap.get(row.employee_id)!;
+    // 去掉时间部分，只保留日期作为key
+    const dateKey = (row.date || '').split('T')[0];
+    if (dateKey) {
+      emp[dateKey] = row.efficiency;
+      emp.totalEfficiency += row.efficiency;
+      emp.count++;
+    }
+  });
+
+  // 计算平均值并转换为数组
+  const result = Array.from(employeeMap.values())
+    .map(emp => ({
+      employee_id: emp.employee_id,
+      name: emp.name,
+      avgEfficiency: emp.count > 0 ? Math.round((emp.totalEfficiency / emp.count) * 10) / 10 : 0,
+      ...emp
+    }))
+    .filter(item => item.employee_id) // 过滤掉无效数据
+    .sort((a, b) => b.avgEfficiency - a.avgEfficiency); // 按平均效率排序
+
+  return result;
+});
+
+// 每日效率表格合并方法（姓名列合并）
+const dailyTableSpanMethod = ({ row, column, rowIndex, columnIndex }: any) => {
+  if (columnIndex === 0) {
+    // 姓名列，相同员工ID合并
+    const currentRow = dailyEfficiencyTableData.value[rowIndex];
+    const nextRow = dailyEfficiencyTableData.value[rowIndex + 1];
+    if (nextRow && currentRow.employee_id === nextRow.employee_id) {
+      return { rowspan: 0, colspan: 1 };
+    }
+    return { rowspan: 1, colspan: 1 };
+  }
+};
 
 // 效率达标排名 - 从OLE明细表格中筛选状态为达标的人员
 interface AchievedRankingItem {
@@ -840,21 +995,17 @@ const selectShift = (shift: string) => {
 
 // 日期变化
 const onDateChange = () => {
-  selectedShift.value = '';
   // 保存筛选条件到 sessionStorage
   sessionStorage.setItem('oleTrackingDate', filterDate.value);
   sessionStorage.setItem('oleTrackingDimension', filterDimension.value);
-  sessionStorage.removeItem('oleTrackingShift');
   loadData();
 };
 
 // 维度变化
 const onDimensionChange = () => {
-  selectedShift.value = '';
   // 保存筛选条件到 sessionStorage
   sessionStorage.setItem('oleTrackingDate', filterDate.value);
   sessionStorage.setItem('oleTrackingDimension', filterDimension.value);
-  sessionStorage.removeItem('oleTrackingShift');
   loadData();
 };
 
@@ -864,15 +1015,31 @@ const prevDate = () => {
   if (filterDimension.value === 'day') {
     newDate = dayjs(filterDate.value).subtract(1, 'day');
   } else if (filterDimension.value === 'week') {
-    newDate = dayjs(filterDate.value).subtract(1, 'week');
+    // 周：YYYY-Wxx 格式，上一周
+    const parts = filterDate.value.split('-');
+    const year = parseInt(parts[0] || '0');
+    const weekPart = parts[1] || 'W1';
+    let week = parseInt(weekPart.replace(/W/i, '') || '1');
+    week--;
+    if (week < 1) {
+      // 上一年的最后一周
+      const lastYearLastWeek = dayjs(`${year - 1}-12-31`).isoWeek();
+      filterDate.value = `${year - 1}-W${lastYearLastWeek.toString().padStart(2, '0')}`;
+      sessionStorage.setItem('oleTrackingDate', filterDate.value);
+      loadData();
+      return;
+    }
+    filterDate.value = `${year}-W${week.toString().padStart(2, '0')}`;
+    sessionStorage.setItem('oleTrackingDate', filterDate.value);
+    loadData();
+    return;
   } else if (filterDimension.value === 'month') {
-    newDate = dayjs(filterDate.value).subtract(1, 'month');
+    newDate = dayjs(filterDate.value + '-01').subtract(1, 'month');
   } else {
-    newDate = dayjs(filterDate.value).subtract(1, 'year');
+    newDate = dayjs(filterDate.value);
   }
   filterDate.value = newDate.format(datePickerValueFormat.value);
   sessionStorage.setItem('oleTrackingDate', filterDate.value);
-  selectedShift.value = '';
   loadData();
 };
 
@@ -882,21 +1049,41 @@ const nextDate = () => {
   if (filterDimension.value === 'day') {
     newDate = dayjs(filterDate.value).add(1, 'day');
   } else if (filterDimension.value === 'week') {
-    newDate = dayjs(filterDate.value).add(1, 'week');
+    // 周：YYYY-Wxx 格式，下一周
+    const parts = filterDate.value.split('-');
+    const year = parseInt(parts[0] || '0');
+    const weekPart = parts[1] || 'W1';
+    let week = parseInt(weekPart.replace(/W/i, '') || '1');
+    week++;
+    // 获取该年最后一周
+    const lastWeek = dayjs(`${year}-12-28`).isoWeek();
+    if (week > lastWeek) {
+      // 下一年的第一周
+      filterDate.value = `${year + 1}-W01`;
+      sessionStorage.setItem('oleTrackingDate', filterDate.value);
+      loadData();
+      return;
+    }
+    filterDate.value = `${year}-W${week.toString().padStart(2, '0')}`;
+    sessionStorage.setItem('oleTrackingDate', filterDate.value);
+    loadData();
+    return;
   } else if (filterDimension.value === 'month') {
-    newDate = dayjs(filterDate.value).add(1, 'month');
+    newDate = dayjs(filterDate.value + '-01').add(1, 'month');
   } else {
-    newDate = dayjs(filterDate.value).add(1, 'year');
+    newDate = dayjs(filterDate.value);
   }
   filterDate.value = newDate.format(datePickerValueFormat.value);
   sessionStorage.setItem('oleTrackingDate', filterDate.value);
-  selectedShift.value = '';
   loadData();
 };
 
 // 筛选变化
 const onFilterChange = () => {
-  // 筛选在前端处理
+  // 保存筛选条件到 sessionStorage
+  sessionStorage.setItem('oleTrackingShift', filterShift.value);
+  // 重新加载班次明细数据
+  loadShiftDetail();
 };
 
 // 加载数据
@@ -914,25 +1101,27 @@ const loadData = async () => {
       startDate = filterDate.value;
       endDate = filterDate.value;
     } else if (filterDimension.value === 'week') {
-      // 周：从周一开始
-      const current = dayjs(filterDate.value);
-      const dayOfWeek = current.day();
-      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      startDate = current.add(mondayOffset, 'day').format('YYYY-MM-DD');
-      endDate = current.add(6 + mondayOffset, 'day').format('YYYY-MM-DD');
+      // 周：解析 ISO 周格式 (YYYY-wo，如 "2026-W36")
+      const parts = filterDate.value.split('-');
+      const year = parseInt(parts[0] || '0');
+      const weekPart = parts[1] || 'W1';
+      const week = parseInt(weekPart.replace(/W/i, '') || '1');
+      // 找到该年的第week周的第一天
+      const firstDayOfYear = dayjs(`${year}-01-01`);
+      const firstMonday = firstDayOfYear.day() === 1 ? firstDayOfYear : firstDayOfYear.add(1 - firstDayOfYear.day() + (firstDayOfYear.day() === 0 ? 1 : 8 - firstDayOfYear.day()), 'day');
+      const weekStart = firstMonday.add(week - 1, 'week');
+      const weekEnd = weekStart.add(6, 'day');
+      startDate = weekStart.format('YYYY-MM-DD');
+      endDate = weekEnd.format('YYYY-MM-DD');
     } else if (filterDimension.value === 'month') {
       // 月：月初到月末（filterDate格式为 YYYY-MM）
       const current = dayjs(filterDate.value + '-01');
       startDate = current.startOf('month').format('YYYY-MM-DD');
       endDate = current.endOf('month').format('YYYY-MM-DD');
-    } else if (filterDimension.value === 'year') {
-      // 年：年初到年末（filterDate格式为 YYYY）
-      const current = dayjs(filterDate.value + '-01-01');
-      startDate = current.startOf('year').format('YYYY-MM-DD');
-      endDate = current.endOf('year').format('YYYY-MM-DD');
     }
 
     // 获取统计数据
+    let dailyEffRes = { data: null };
     const [statsRes, rankingRes, areaRes, diffRes] = await Promise.all([
       getOleTrackingStats({
         startDate: startDate,
@@ -954,22 +1143,21 @@ const loadData = async () => {
       }).catch(() => ({ data: [] }))
     ]);
 
+    // 周/月维度时获取每日效率数据
+    if (filterDimension.value === 'week' || filterDimension.value === 'month') {
+      dailyEffRes = await getDailyEfficiency({
+        startDate: startDate,
+        endDate: endDate,
+        shift: filterShift.value || undefined
+      }).catch(() => ({ data: null }));
+      if (dailyEffRes.data) {
+        dailyEfficiencyData.value = dailyEffRes.data;
+      }
+    }
+
     if (statsRes.data) {
       shiftStats.value = statsRes.data.shiftStats || {};
       statsSummary.value = statsRes.data.summary || {};  // 保存summary数据
-      // 自动选择第一个有数据的班次
-      const firstShift = Object.keys(shiftStats.value)[0];
-      if (firstShift && !selectedShift.value) {
-        // 始终显示所有班次，不自动选择特定班次
-        // const savedShift = sessionStorage.getItem('oleTrackingShift');
-        // if (savedShift && shiftStats.value[savedShift]) {
-        //   selectedShift.value = savedShift;
-        // } else {
-        //   selectedShift.value = firstShift;
-        // }
-        // 清空班次选择，显示所有班次
-        selectedShift.value = '';
-      }
     }
 
     rankingData.value = rankingRes.data?.data || [];
@@ -1010,24 +1198,24 @@ const loadShiftDetail = async () => {
   if (filterDimension.value === 'day') {
     queryDate = filterDate.value;
   } else if (filterDimension.value === 'week') {
-    // 周：使用该周的周一
-    const current = dayjs(filterDate.value);
-    const dayOfWeek = current.day();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    queryDate = current.add(mondayOffset, 'day').format('YYYY-MM-DD');
+    // 周：使用该周的周一 (YYYY-Wxx 格式)
+    const parts = filterDate.value.split('-');
+    const year = parseInt(parts[0] || '0');
+    const weekPart = parts[1] || 'W1';
+    const week = parseInt(weekPart.replace(/W/i, '') || '1');
+    // 找到该年的第week周的第一天(周一)
+    const firstMonday = dayjs(`${year}-01-04`).startOf('week');
+    queryDate = firstMonday.add(week - 1, 'week').format('YYYY-MM-DD');
   } else if (filterDimension.value === 'month') {
     // 月：使用该月第一天
     queryDate = dayjs(filterDate.value + '-01').startOf('month').format('YYYY-MM-DD');
-  } else if (filterDimension.value === 'year') {
-    // 年：使用该年第一天
-    queryDate = dayjs(filterDate.value + '-01-01').startOf('year').format('YYYY-MM-DD');
   }
 
   try {
     const params: any = { date: queryDate };
     // 如果选择了特定班次则传入shift参数，否则获取所有班次
-    if (selectedShift.value) {
-      params.shift = selectedShift.value;
+    if (filterShift.value) {
+      params.shift = filterShift.value;
     }
     const res = await getOleShiftDetail(params);
 
@@ -1124,6 +1312,9 @@ const updateEfficiencyChart = () => {
 
   const currentHours = getCurrentShiftElapsedHours();
 
+  // 判断是否查看历史数据（不是今天）
+  const isHistorical = filterDate.value !== new Date().toISOString().split('T')[0];
+
   // 图表数据：排除不参与效率计算的Area的员工 或 状态为未计算
   const chartData = records.value
     .filter(r => !r.is_excluded_from_efficiency && r.status !== '未计算')
@@ -1133,10 +1324,11 @@ const updateEfficiencyChart = () => {
     const targetEff = r.target_efficiency ? r.target_efficiency * 100 : 85;
     const availableHours = workingHours - specialHours;
 
-    // 当前平均效率 = 目标效率 × (当前已过小时数 / 工作时长)，最高不超过100%
+    // 预计效率：历史数据按100%计算（完整班次），今天的按当前进度计算
+    const hoursForCalc = isHistorical ? availableHours : currentHours;
     let avgEfficiency = 0;
-    if (availableHours > 0 && currentHours > 0) {
-      avgEfficiency = Math.min(targetEff * (currentHours / availableHours), 100);
+    if (availableHours > 0 && hoursForCalc > 0) {
+      avgEfficiency = Math.min(targetEff * (hoursForCalc / availableHours), 100);
     }
 
     return {
@@ -1160,7 +1352,6 @@ const updateEfficiencyChart = () => {
       formatter: (params: any) => {
         const data = chartData[params[0]?.dataIndex];
         if (!data) return '';
-        const isHistorical = filterDate.value !== new Date().toISOString().split('T')[0];
         const isMeet = data.efficiency >= data.avgEfficiency;
         const statusText = isMeet ? '✓ 已达标' : '✗ 未达标';
         const statusColor = isMeet ? '#67C23A' : '#F56C6C';
@@ -2273,16 +2464,29 @@ onUnmounted(() => {
   padding: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   max-width: 100%;
-  overflow: hidden;
-  height: 100%;
+  overflow: visible;
+  height: auto;
   display: flex;
   flex-direction: column;
 }
 
 .chart-card.wide .chart-container {
-  height: 230px !important;
   width: 100% !important;
-  min-height: 230px !important;
+  min-height: unset !important;
+  flex: unset;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.chart-card.wide .chart-container .table-container {
+  height: auto !important;
+  max-height: none !important;
+}
+
+/* 日维度图表增加高度 */
+.chart-card.wide .chart-container.tall-chart {
+  height: 320px !important;
+  min-height: 320px !important;
 }
 
 /* 表格区域 */
@@ -2293,6 +2497,50 @@ onUnmounted(() => {
   margin-bottom: 20px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   min-height: 480px;
+}
+
+/* 原生每日效率表格 */
+.daily-table-wrapper {
+  width: 100%;
+  overflow: visible;
+}
+
+.daily-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.daily-table th,
+.daily-table td {
+  padding: 8px 12px;
+  border: 1px solid #EBEEF5;
+  font-size: 13px;
+}
+
+.daily-table th {
+  background-color: #F5F7FA;
+  font-weight: 600;
+  color: #303133;
+  text-align: center;
+}
+
+.daily-table td {
+  background-color: #FFFFFF;
+  color: #606266;
+}
+
+.daily-table .sticky-col {
+  position: sticky;
+  left: 0;
+  background-color: #F5F7FA;
+  z-index: 1;
+  font-weight: 500;
+  text-align: center;
+}
+
+.daily-table td.sticky-col {
+  background-color: #FFFFFF;
 }
 
 .table-header {
@@ -2309,7 +2557,8 @@ onUnmounted(() => {
 }
 
 .table-container {
-  overflow-x: auto;
+  overflow: visible !important;
+  max-height: none !important;
 }
 
 .output-badges {
@@ -2351,7 +2600,31 @@ onUnmounted(() => {
 
 /* 表格滚动 */
 .table-container {
-  overflow: hidden;
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+:deep(.el-table) {
+  overflow: visible !important;
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+:deep(.el-table__body) {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+:deep(.el-table__header-wrapper),
+:deep(.el-table__fixed-body-wrapper) {
+  overflow: visible !important;
+}
+
+:deep(.el-table__body) {
+  display: block !important;
 }
 
 /* 表格内容自动滚动 - 只滚动tbody */
@@ -2533,4 +2806,59 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 }
+
+/* 每日效率表格样式 */
+.daily-efficiency-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 8px;
+  border-left: 4px solid #409EFF;
+}
+
+.daily-efficiency-summary .summary-label {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.daily-efficiency-summary .summary-value {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.daily-efficiency-summary .efficiency-value.efficiency-high { color: #67C23A; }
+.daily-efficiency-summary .efficiency-value.efficiency-medium { color: #E6A23C; }
+.daily-efficiency-summary .efficiency-value.efficiency-low { color: #F56C6C; }
+
+.weekday {
+  font-size: 11px;
+  color: #909399;
+}
+
+.shift-cell {
+  text-align: center;
+}
+
+.shift-cell .shift-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 2px;
+}
+
+.shift-cell .shift-output {
+  font-size: 10px;
+  color: #606266;
+  margin-bottom: 2px;
+}
+
+.shift-cell .shift-efficiency {
+  font-size: 13px;
+  font-weight: 600;
+}
 </style>
+
