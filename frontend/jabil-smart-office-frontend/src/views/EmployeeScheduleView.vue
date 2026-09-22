@@ -3717,8 +3717,9 @@ const saveShift = async () => {
             plantId: editingEmployee.value.plantId || 0,
             departmentId: editingEmployee.value.departmentId || 0,
             leaveType: tempMatter.type === '临时请假' ? 'LEAVE' : 'ERRAND',
-            startDate: editingDate.value,
-            endDate: editingDate.value,
+            // 保持与 LeaveTab.vue 一致的日期时间格式
+            startDate: `${editingDate.value} ${tempMatter.startTime}:00`,
+            endDate: `${editingDate.value} ${tempMatter.endTime}:00`,
             startTime: tempMatter.startTime,
             endTime: tempMatter.endTime,
             hours: hours,
