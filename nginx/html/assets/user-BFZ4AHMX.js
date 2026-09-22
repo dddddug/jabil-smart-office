@@ -1,0 +1,1 @@
+import{o as e}from"./index-B4G6vf8O.js";function t(){return e({url:`/users/me`,method:`get`})}export{t};
