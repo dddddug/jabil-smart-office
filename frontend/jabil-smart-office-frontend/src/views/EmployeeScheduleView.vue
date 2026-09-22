@@ -5123,8 +5123,14 @@ const checkWeeklyHours = () => {
   
   filteredForCheck.forEach((emp, index) => {
     const empName = emp.name || emp.realName;
-    console.log(`📊 [${index}] 检查员工:`, empName);
-    
+
+    // 特别调试刘林林
+    if (empName === '刘林林') {
+      console.log(`🔍 [刘林林] 开始计算周工时`);
+      console.log(`🔍 [刘林林] currentPeriodStart: ${currentPeriodStart.value}`);
+      console.log(`🔍 [刘林林] scheduleViewMode: ${scheduleViewMode.value}`);
+    }
+
     let scheduleHours = 0;
     let overtimeHours = 0;
     
@@ -5152,12 +5158,12 @@ const checkWeeklyHours = () => {
           // 周四到周日：只要不是请假、调休、离职，就按12H算
           wh = 12;
         }
-        
-        // 打印彭绍勇或第一个员工的详细工时
+
+        // 特别打印刘林林的详细工时
+        if (empName === '刘林林') {
           const weekDays = ['日','一','二','三','四','五','六'];
-          if (empName === '彭绍勇' || index === 0) {
-            console.log(`📊 [${index}] ${empName} - ${dateStr} (周${weekDays[dayOfWeek]}): 班次=${schedule.shift}, 工时=${wh}`);
-          }
+          console.log(`🔍 [刘林林] ${dateStr} (周${weekDays[dayOfWeek]}): 班次=${schedule.shift}, 计算工时=${wh}`);
+        }
         scheduleHours += wh;
       }
       
@@ -5169,8 +5175,11 @@ const checkWeeklyHours = () => {
     
     const totalHours = scheduleHours + overtimeHours;
     const overLimitHours = totalHours - weeklyLimitSetting.value;
-    
-    console.log(`📊 [${index}] ${empName}: 排班=${scheduleHours}h, 加班=${overtimeHours}h, 总计=${totalHours}h, 超限=${overLimitHours > 0 ? overLimitHours : 0}h`);
+
+    // 特别打印刘林林的汇总
+    if (empName === '刘林林') {
+      console.log(`🔍 [刘林林] 排班工时=${scheduleHours}h, 加班=${overtimeHours}h, 总计=${totalHours}h, 超限=${overLimitHours > 0 ? overLimitHours : 0}h`);
+    }
     
     if (overLimitHours > 0 && !((emp.employee_type || '').toString().toLowerCase() === 'jabil')) {
       // 只显示周一的日期
